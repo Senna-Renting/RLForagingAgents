@@ -1,0 +1,204 @@
+%%% dashing-sweep-1 uepzn3er %%%
+Traced<ShapedArray(float32[3])>with<DynamicJaxprTrace(level=1/0)>
+Traceback (most recent call last):
+  File "C:\Users\31614\Documents\AI_course_stuff\RLForaging Thesis\RLForagingAgents\RL-models\TD3\train_loops.py", line 107, in wandb_train_td3
+    if done:
+       ^^^^
+  File "C:\Users\31614\anaconda3\Lib\site-packages\jax\_src\core.py", line 781, in __bool__
+    return self.aval._bool(self)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\31614\anaconda3\Lib\site-packages\jax\_src\core.py", line 1547, in error
+    raise TracerBoolConversionError(arg)
+jax.errors.TracerBoolConversionError: Attempted boolean conversion of traced array with shape bool[].
+The error occurred while tracing the function wandb_train_td3 at C:\Users\31614\Documents\AI_course_stuff\RLForaging Thesis\RLForagingAgents\RL-models\TD3\train_loops.py:82 for jit. This value became a tracer due to JAX operations on these lines:
+
+  operation a[35m:i32[][39m = convert_element_type[new_dtype=int32 weak_type=False] b
+    from line C:\Users\31614\Documents\AI_course_stuff\RLForaging Thesis\RLForagingAgents\RL-models\TD3\train_loops.py:84:10 (wandb_train_td3)
+
+  operation a[35m:f32[100][39m = pjit[
+  name=_uniform
+  jaxpr={ [34m[22m[1mlambda [39m[22m[22m; b[35m:key<fry>[][39m c[35m:f32[][39m d[35m:f32[][39m. [34m[22m[1mlet
+      [39m[22m[22me[35m:f32[][39m = convert_element_type[new_dtype=float32 weak_type=False] c
+      f[35m:f32[][39m = convert_element_type[new_dtype=float32 weak_type=False] d
+      g[35m:f32[1][39m = broadcast_in_dim[broadcast_dimensions=() shape=(1,)] e
+      h[35m:f32[1][39m = broadcast_in_dim[broadcast_dimensions=() shape=(1,)] f
+      i[35m:u32[100][39m = random_bits[bit_width=32 shape=(100,)] b
+      j[35m:u32[100][39m = shift_right_logical i 9
+      k[35m:u32[100][39m = or j 1065353216
+      l[35m:f32[100][39m = bitcast_convert_type[new_dtype=float32] k
+      m[35m:f32[100][39m = sub l 1.0
+      n[35m:f32[1][39m = sub h g
+      o[35m:f32[100][39m = mul m n
+      p[35m:f32[100][39m = add o g
+      q[35m:f32[100][39m = max g p
+    [34m[22m[1min [39m[22m[22m(q,) }
+] r s t
+    from line C:\Users\31614\Documents\AI_course_stuff\RLForaging Thesis\RLForagingAgents\RL-models\TD3\train_loops.py:98:18 (wandb_train_td3)
+
+  operation a[35m:f32[3][39m b[35m:i32[][39m c[35m:f32[][39m d[35m:f32[][39m e[35m:f32[][39m = pjit[
+  name=reset
+  jaxpr={ [34m[22m[1mlambda [39m[22m[22mf[35m:f32[2][39m; g[35m:u32[2][39m h[35m:i32[][39m i[35m:f32[][39m j[35m:f32[][39m k[35m:f32[][39m l[35m:f32[][39m m[35m:f32[][39m
+      n[35m:f32[][39m. [34m[22m[1mlet
+      [39m[22m[22mo[35m:f32[2][39m = neg f
+      p[35m:key<fry>[][39m = random_wrap[impl=fry] g
+      q[35m:f32[2][39m = pjit[
+        name=_uniform
+        jaxpr={ [34m[22m[1mlambda [39m[22m[22m; r[35m:key<fry>[][39m s[35m:f32[2][39m t[35m:f32[2][39m. [34m[22m[1mlet
+            [39m[22m[22mu[35m:u32[2][39m = random_bits[bit_width=32 shape=(2,)] r
+            v[35m:u32[2][39m = shift_right_logical u 9
+            w[35m:u32[2][39m = or v 1065353216
+            x[35m:f32[2][39m = bitcast_convert_type[new_dtype=float32] w
+            y[35m:f32[2][39m = sub x 1.0
+            z[35m:f32[2][39m = sub t s
+            ba[35m:f32[2][39m = mul y z
+            bb[35m:f32[2][39m = add ba s
+            bc[35m:f32[2][39m = max s bb
+          [34m[22m[1min [39m[22m[22m(bc,) }
+      ] p o f
+      bd[35m:f32[1][39m = slice[limit_indices=(1,) start_indices=(0,) strides=None] q
+      be[35m:f32[][39m = squeeze[dimensions=(0,)] bd
+      bf[35m:f32[1][39m = slice[limit_indices=(2,) start_indices=(1,) strides=None] q
+      bg[35m:f32[][39m = squeeze[dimensions=(0,)] bf
+      bh[35m:f32[][39m = cos be
+      bi[35m:f32[][39m = sin be
+      bj[35m:f32[1][39m = broadcast_in_dim[broadcast_dimensions=() shape=(1,)] bh
+      bk[35m:f32[1][39m = broadcast_in_dim[broadcast_dimensions=() shape=(1,)] bi
+      bl[35m:f32[1][39m = broadcast_in_dim[broadcast_dimensions=() shape=(1,)] bg
+      bm[35m:f32[3][39m = concatenate[dimension=0] bj bk bl
+    [34m[22m[1min [39m[22m[22m(bm, 0, be, bg, 0.0) }
+] bn bo bp bq br bs bt bt
+    from line C:\Users\31614\Documents\AI_course_stuff\RLForaging Thesis\RLForagingAgents\RL-models\TD3\train_loops.py:99:21 (wandb_train_td3)
+
+  operation a[35m:f32[3][39m b[35m:i32[][39m c[35m:f32[][39m d[35m:f32[][39m e[35m:f32[][39m f[35m:f32[][39m g[35m:bool[][39m h[35m:f32[][39m = pjit[
+  name=step
+  jaxpr={ [34m[22m[1mlambda [39m[22m[22mi[35m:f32[2][39m; j[35m:u32[2][39m k[35m:i32[][39m l[35m:f32[][39m m[35m:f32[][39m n[35m:f32[][39m o[35m:f32[][39m p[35m:i32[][39m
+      q[35m:f32[][39m r[35m:f32[][39m s[35m:f32[][39m t[35m:f32[][39m u[35m:f32[][39m v[35m:f32[][39m. [34m[22m[1mlet
+      [39m[22m[22mw[35m:key<fry>[][39m = random_wrap[impl=fry] j
+      x[35m:key<fry>[2][39m = random_split[shape=(2,)] w
+      y[35m:u32[2,2][39m = random_unwrap x
+      z[35m:u32[1,2][39m = slice[
+        limit_indices=(1, 2)
+        start_indices=(0, 0)
+        strides=(1, 1)
+      ] y
+      _[35m:u32[2][39m = squeeze[dimensions=(0,)] z
+      ba[35m:u32[1,2][39m = slice[
+        limit_indices=(2, 2)
+        start_indices=(1, 0)
+        strides=(1, 1)
+      ] y
+      bb[35m:u32[2][39m = squeeze[dimensions=(0,)] ba
+      bc[35m:f32[][39m = neg r
+      bd[35m:f32[][39m = pjit[
+        name=clip
+        jaxpr={ [34m[22m[1mlambda [39m[22m[22m; be[35m:f32[][39m bf[35m:f32[][39m bg[35m:f32[][39m. [34m[22m[1mlet
+            [39m[22m[22mbh[35m:f32[][39m = convert_element_type[new_dtype=float32 weak_type=False] bf
+            bi[35m:f32[][39m = max bh be
+            bj[35m:f32[][39m = convert_element_type[new_dtype=float32 weak_type=False] bg
+            bk[35m:f32[][39m = min bj bi
+          [34m[22m[1min [39m[22m[22m(bk,) }
+      ] o bc r
+      bl[35m:f32[][39m = add l 3.1415927410125732
+      bm[35m:f32[][39m = pjit[
+        name=remainder
+        jaxpr={ [34m[22m[1mlambda [39m[22m[22m; bn[35m:f32[][39m bo[35m:f32[][39m. [34m[22m[1mlet
+            [39m[22m[22mbp[35m:f32[][39m = convert_element_type[new_dtype=float32 weak_type=False] bo
+            bq[35m:f32[][39m = rem bn bp
+            br[35m:bool[][39m = ne bq 0.0
+            bs[35m:bool[][39m = lt bq 0.0
+            bt[35m:bool[][39m = lt bp 0.0
+            bu[35m:bool[][39m = ne bs bt
+            bv[35m:bool[][39m = and bu br
+            bw[35m:f32[][39m = add bq bp
+            bx[35m:f32[][39m = select_n bv bq bw
+          [34m[22m[1min [39m[22m[22m(bx,) }
+      ] bl 6.283185307179586
+      by[35m:f32[][39m = sub bm 3.1415927410125732
+      bz[35m:f32[][39m = integer_pow[y=2] by
+      ca[35m:f32[][39m = integer_pow[y=2] m
+      cb[35m:f32[][39m = mul 0.10000000149011612 ca
+      cc[35m:f32[][39m = add bz cb
+      cd[35m:f32[][39m = integer_pow[y=2] bd
+      ce[35m:f32[][39m = mul 0.0010000000474974513 cd
+      cf[35m:f32[][39m = add cc ce
+      cg[35m:f32[][39m = neg cf
+      ch[35m:f32[][39m = mul 3.0 t
+      ci[35m:f32[][39m = mul 2.0 v
+      cj[35m:f32[][39m = div ch ci
+      ck[35m:f32[][39m = sin l
+      cl[35m:f32[][39m = convert_element_type[new_dtype=float32 weak_type=False] cj
+      cm[35m:f32[][39m = mul cl ck
+      cn[35m:f32[][39m = integer_pow[y=2] v
+      co[35m:f32[][39m = mul u cn
+      cp[35m:f32[][39m = div 3.0 co
+      cq[35m:f32[][39m = convert_element_type[new_dtype=float32 weak_type=False] cp
+      cr[35m:f32[][39m = mul cq bd
+      cs[35m:f32[][39m = add cm cr
+      ct[35m:f32[][39m = convert_element_type[new_dtype=float32 weak_type=False] s
+      cu[35m:f32[][39m = mul cs ct
+      cv[35m:f32[][39m = add m cu
+      cw[35m:f32[][39m = neg q
+      cx[35m:f32[][39m = pjit[
+        name=clip
+        jaxpr={ [34m[22m[1mlambda [39m[22m[22m; be[35m:f32[][39m bf[35m:f32[][39m bg[35m:f32[][39m. [34m[22m[1mlet
+            [39m[22m[22mbh[35m:f32[][39m = convert_element_type[new_dtype=float32 weak_type=False] bf
+            bi[35m:f32[][39m = max bh be
+            bj[35m:f32[][39m = convert_element_type[new_dtype=float32 weak_type=False] bg
+            bk[35m:f32[][39m = min bj bi
+          [34m[22m[1min [39m[22m[22m(bk,) }
+      ] cv cw q
+      cy[35m:f32[][39m = convert_element_type[new_dtype=float32 weak_type=False] s
+      cz[35m:f32[][39m = mul cx cy
+      da[35m:f32[][39m = add l cz
+      db[35m:f32[][39m = reshape[dimensions=None new_sizes=()] bd
+      dc[35m:i32[][39m = add k 1
+      dd[35m:bool[][39m = ge dc p
+      de[35m:bool[][39m = copy dd
+      df[35m:f32[][39m = cos da
+      dg[35m:f32[][39m = sin da
+      dh[35m:f32[1][39m = broadcast_in_dim[broadcast_dimensions=() shape=(1,)] df
+      di[35m:f32[1][39m = broadcast_in_dim[broadcast_dimensions=() shape=(1,)] dg
+      dj[35m:f32[1][39m = broadcast_in_dim[broadcast_dimensions=() shape=(1,)] cx
+      dk[35m:f32[3][39m = concatenate[dimension=0] dh di dj
+      dl[35m:f32[3][39m = stop_gradient dk
+      dm[35m:f32[][39m = stop_gradient da
+      dn[35m:f32[][39m = stop_gradient cx
+      do[35m:f32[][39m = stop_gradient db
+      dp[35m:bool[][39m = ge dc p
+      dq[35m:bool[][39m = copy dp
+      dr[35m:f32[][39m = select_n dq 1.0 0.0
+      ds[35m:f32[2][39m = neg i
+      dt[35m:key<fry>[][39m = random_wrap[impl=fry] bb
+      du[35m:f32[2][39m = pjit[
+        name=_uniform
+        jaxpr={ [34m[22m[1mlambda [39m[22m[22m; dv[35m:key<fry>[][39m dw[35m:f32[2][39m dx[35m:f32[2][39m. [34m[22m[1mlet
+            [39m[22m[22mdy[35m:u32[2][39m = random_bits[bit_width=32 shape=(2,)] dv
+            dz[35m:u32[2][39m = shift_right_logical dy 9
+            ea[35m:u32[2][39m = or dz 1065353216
+            eb[35m:f32[2][39m = bitcast_convert_type[new_dtype=float32] ea
+            ec[35m:f32[2][39m = sub eb 1.0
+            ed[35m:f32[2][39m = sub dx dw
+            ee[35m:f32[2][39m = mul ec ed
+            ef[35m:f32[2][39m = add ee dw
+            eg[35m:f32[2][39m = max dw ef
+          [34m[22m[1min [39m[22m[22m(eg,) }
+      ] dt ds i
+      eh[35m:f32[1][39m = slice[limit_indices=(1,) start_indices=(0,) strides=None] du
+      ei[35m:f32[][39m = squeeze[dimensions=(0,)] eh
+      ej[35m:f32[1][39m = slice[limit_indices=(2,) start_indices=(1,) strides=None] du
+      ek[35m:f32[][39m = squeeze[dimensions=(0,)] ej
+      el[35m:f32[][39m = cos ei
+      em[35m:f32[][39m = sin ei
+      en[35m:f32[1][39m = broadcast_in_dim[broadcast_dimensions=() shape=(1,)] el
+      eo[35m:f32[1][39m = broadcast_in_dim[broadcast_dimensions=() shape=(1,)] em
+      ep[35m:f32[1][39m = broadcast_in_dim[broadcast_dimensions=() shape=(1,)] ek
+      eq[35m:f32[3][39m = concatenate[dimension=0] en eo ep
+      er[35m:i32[][39m = select_n de dc 0
+      es[35m:f32[][39m = select_n de dm ei
+      et[35m:f32[][39m = select_n de dn ek
+      eu[35m:f32[][39m = select_n de do 0.0
+      ev[35m:f32[3][39m = select_n de dl eq
+    [34m[22m[1min [39m[22m[22m(ev, er, es, et, eu, cg, de, dr) }
+] ew ex ey ez fa fb fc fd fe ff fg fh fh
+    from line C:\Users\31614\Documents\AI_course_stuff\RLForaging Thesis\RLForagingAgents\RL-models\TD3\train_loops.py:104:52 (wandb_train_td3)
+See https://jax.readthedocs.io/en/latest/errors.html#jax.errors.TracerBoolConversionError

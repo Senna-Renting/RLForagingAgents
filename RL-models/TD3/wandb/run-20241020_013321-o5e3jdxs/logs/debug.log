@@ -1,0 +1,39 @@
+2024-10-20 01:33:21,086 INFO    Thread-11 (_run_job):22364 [wandb_setup.py:_flush():79] Current SDK version is 0.18.3
+2024-10-20 01:33:21,086 INFO    Thread-11 (_run_job):22364 [wandb_setup.py:_flush():79] Configure stats pid to 22364
+2024-10-20 01:33:21,086 INFO    Thread-11 (_run_job):22364 [wandb_setup.py:_flush():79] Loading settings from C:\Users\31614\.config\wandb\settings
+2024-10-20 01:33:21,086 INFO    Thread-11 (_run_job):22364 [wandb_setup.py:_flush():79] Loading settings from C:\Users\31614\Documents\AI_course_stuff\RLForaging Thesis\RLForagingAgents\RL-models\TD3\wandb\settings
+2024-10-20 01:33:21,086 INFO    Thread-11 (_run_job):22364 [wandb_setup.py:_flush():79] Loading settings from environment variables: {'project': 'Pendulum-TD3', 'entity': 'senna-renting-radboud-university', 'root_dir': 'C:\\Users\\31614\\Documents\\AI_course_stuff\\RLForaging Thesis\\RLForagingAgents\\RL-models\\TD3', 'sweep_id': 'vp2izp9y', 'run_id': 'o5e3jdxs', 'sweep_param_path': 'C:\\Users\\31614\\Documents\\AI_course_stuff\\RLForaging Thesis\\RLForagingAgents\\RL-models\\TD3\\wandb\\sweep-vp2izp9y\\config-o5e3jdxs.yaml'}
+2024-10-20 01:33:21,092 INFO    Thread-11 (_run_job):22364 [wandb_setup.py:_flush():79] Applying setup settings: {'mode': None, '_disable_service': None}
+2024-10-20 01:33:21,092 INFO    Thread-11 (_run_job):22364 [wandb_setup.py:_flush():79] Inferring run settings from compute environment: {'program': '<python with no main file>'}
+2024-10-20 01:33:21,092 INFO    Thread-11 (_run_job):22364 [wandb_setup.py:_flush():79] Applying login settings: {}
+2024-10-20 01:33:21,092 INFO    Thread-11 (_run_job):22364 [wandb_init.py:_log_setup():532] Logging user logs to C:\Users\31614\Documents\AI_course_stuff\RLForaging Thesis\RLForagingAgents\RL-models\TD3\wandb\run-20241020_013321-o5e3jdxs\logs\debug.log
+2024-10-20 01:33:21,092 INFO    Thread-11 (_run_job):22364 [wandb_init.py:_log_setup():533] Logging internal logs to C:\Users\31614\Documents\AI_course_stuff\RLForaging Thesis\RLForagingAgents\RL-models\TD3\wandb\run-20241020_013321-o5e3jdxs\logs\debug-internal.log
+2024-10-20 01:33:21,092 INFO    Thread-11 (_run_job):22364 [wandb_init.py:_jupyter_setup():478] configuring jupyter hooks <wandb.sdk.wandb_init._WandbInit object at 0x000002136FC094C0>
+2024-10-20 01:33:21,092 INFO    Thread-11 (_run_job):22364 [wandb_init.py:init():617] calling init triggers
+2024-10-20 01:33:21,092 INFO    Thread-11 (_run_job):22364 [wandb_init.py:init():624] wandb.init called with sweep_config: {'batch_size': 512, 'buffer_size': 50000, 'gamma': 0.99, 'lr_actor': 8.850914602790532e-05, 'lr_critic': 0.00014750689487130517, 'max_length_episode': 40, 'noise_clip': 1.852474841848503, 'num_episodes': 500, 'policy_interval': 2, 'sigma': 1.3188029822293774, 'sigma_explore': 0.9303309473713725, 'tau': 0.05619844527832307, 'update_interval': 1}
+config: {}
+2024-10-20 01:33:21,092 INFO    Thread-11 (_run_job):22364 [wandb_init.py:init():667] starting backend
+2024-10-20 01:33:21,092 INFO    Thread-11 (_run_job):22364 [wandb_init.py:init():671] sending inform_init request
+2024-10-20 01:33:21,103 INFO    Thread-11 (_run_job):22364 [backend.py:_multiprocessing_setup():104] multiprocessing start_methods=spawn, using: spawn
+2024-10-20 01:33:21,104 INFO    Thread-11 (_run_job):22364 [wandb_init.py:init():684] backend started and connected
+2024-10-20 01:33:21,125 INFO    Thread-11 (_run_job):22364 [wandb_run.py:_config_callback():1394] config_cb None None {'batch_size': 512, 'buffer_size': 50000, 'gamma': 0.99, 'lr_actor': 8.850914602790532e-05, 'lr_critic': 0.00014750689487130517, 'max_length_episode': 40, 'noise_clip': 1.852474841848503, 'num_episodes': 500, 'policy_interval': 2, 'sigma': 1.3188029822293774, 'sigma_explore': 0.9303309473713725, 'tau': 0.05619844527832307, 'update_interval': 1}
+2024-10-20 01:33:21,126 INFO    Thread-11 (_run_job):22364 [wandb_run.py:_label_probe_notebook():1346] probe notebook
+2024-10-20 01:33:21,127 INFO    Thread-11 (_run_job):22364 [wandb_run.py:_label_probe_notebook():1356] Unable to probe notebook: 'NoneType' object has no attribute 'get'
+2024-10-20 01:33:21,128 INFO    Thread-11 (_run_job):22364 [wandb_init.py:init():779] updated telemetry
+2024-10-20 01:33:21,179 INFO    Thread-11 (_run_job):22364 [wandb_init.py:init():812] communicating run to backend with 90.0 second timeout
+2024-10-20 01:33:21,400 INFO    Thread-11 (_run_job):22364 [wandb_init.py:init():863] starting run threads in backend
+2024-10-20 01:33:22,190 INFO    Thread-11 (_run_job):22364 [wandb_run.py:_console_start():2465] atexit reg
+2024-10-20 01:33:22,190 INFO    Thread-11 (_run_job):22364 [wandb_run.py:_redirect():2313] redirect: wrap_raw
+2024-10-20 01:33:22,190 INFO    Thread-11 (_run_job):22364 [wandb_run.py:_redirect():2378] Wrapping output streams.
+2024-10-20 01:33:22,190 INFO    Thread-11 (_run_job):22364 [wandb_run.py:_redirect():2403] Redirects installed.
+2024-10-20 01:33:22,194 INFO    Thread-11 (_run_job):22364 [wandb_init.py:init():907] run started, returning control to user process
+2024-10-20 01:33:29,326 INFO    Thread-11 (_run_job):22364 [wandb_run.py:_finish():2164] finishing run senna-renting-radboud-university/Pendulum-TD3/o5e3jdxs
+2024-10-20 01:33:29,327 INFO    Thread-11 (_run_job):22364 [jupyter.py:save_history():459] not saving jupyter history
+2024-10-20 01:33:29,327 INFO    Thread-11 (_run_job):22364 [jupyter.py:save_ipynb():387] not saving jupyter notebook
+2024-10-20 01:33:29,327 INFO    Thread-11 (_run_job):22364 [wandb_init.py:_jupyter_teardown():460] cleaning up jupyter logic
+2024-10-20 01:33:29,327 INFO    Thread-11 (_run_job):22364 [wandb_run.py:_atexit_cleanup():2428] got exitcode: 1
+2024-10-20 01:33:29,327 INFO    Thread-11 (_run_job):22364 [wandb_run.py:_restore():2410] restore
+2024-10-20 01:33:29,327 INFO    Thread-11 (_run_job):22364 [wandb_run.py:_restore():2416] restore done
+2024-10-20 01:33:31,610 INFO    Thread-11 (_run_job):22364 [wandb_run.py:_footer_history_summary_info():4049] rendering history
+2024-10-20 01:33:31,610 INFO    Thread-11 (_run_job):22364 [wandb_run.py:_footer_history_summary_info():4081] rendering summary
+2024-10-20 01:33:31,618 INFO    Thread-11 (_run_job):22364 [wandb_run.py:_footer_sync_info():4008] logging synced files

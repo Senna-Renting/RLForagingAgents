@@ -1,0 +1,13 @@
+%%% zesty-sweep-1 m05pa0mb %%%
+Traced<ShapedArray(float32[3])>with<DynamicJaxprTrace(level=1/0)>
+Traceback (most recent call last):
+  File "C:\Users\31614\Documents\AI_course_stuff\RLForaging Thesis\RLForagingAgents\RL-models\TD3\train_loops.py", line 131, in wandb_train_td3
+    ep_loss_Q1, ep_loss_Q2, ep_loss_actor = td3.train(config.batch_size)
+                                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\31614\Documents\AI_course_stuff\RLForaging Thesis\RLForagingAgents\RL-models\TD3\model.py", line 62, in train
+    buffer_out = self.buffer.sample(subkey, batch_size)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\31614\Documents\AI_course_stuff\RLForaging Thesis\RLForagingAgents\RL-models\TD3\buffer.py", line 32, in sample
+    ind = random.randint(rng, (batch_size,), 0, self.size)
+          ^^^^^^
+NameError: name 'random' is not defined. Did you forget to import 'random'

@@ -1,0 +1,7 @@
+%%% apricot-sweep-1 lt5u4bd3 %%%
+2.0
+Traceback (most recent call last):
+  File "C:\Users\31614\Documents\AI_course_stuff\RLForaging Thesis\RLForagingAgents\RL-models\TD3\train_loops.py", line 97, in wandb_train_td3
+    actions = jax.random.uniform(key_actions, shape=config.warmup_amount, min_val=-action_max, max_val=action_max)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: uniform() got an unexpected keyword argument 'min_val'

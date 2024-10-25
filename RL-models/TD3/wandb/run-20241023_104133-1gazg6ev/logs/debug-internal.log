@@ -1,0 +1,18 @@
+{"time":"2024-10-23T10:41:33.9325328+02:00","level":"INFO","msg":"using version","core version":"0.18.3"}
+{"time":"2024-10-23T10:41:33.9325328+02:00","level":"INFO","msg":"created symlink","path":"C:\\Users\\31614\\Documents\\AI_course_stuff\\RLForaging Thesis\\RLForagingAgents\\RL-models\\TD3\\wandb\\run-20241023_104133-1gazg6ev\\logs\\debug-core.log"}
+{"time":"2024-10-23T10:41:33.945288+02:00","level":"ERROR","msg":"dialing: google: could not find default credentials. See https://cloud.google.com/docs/authentication/external/set-up-adc for more information"}
+{"time":"2024-10-23T10:41:33.9543238+02:00","level":"INFO","msg":"created new stream","id":"1gazg6ev"}
+{"time":"2024-10-23T10:41:33.9543238+02:00","level":"INFO","msg":"stream: started","id":"1gazg6ev"}
+{"time":"2024-10-23T10:41:33.9543238+02:00","level":"INFO","msg":"handler: started","stream_id":{"value":"1gazg6ev"}}
+{"time":"2024-10-23T10:41:33.9543238+02:00","level":"INFO","msg":"sender: started","stream_id":{"value":"1gazg6ev"}}
+{"time":"2024-10-23T10:41:33.9543238+02:00","level":"INFO","msg":"writer: Do: started","stream_id":{"value":"1gazg6ev"}}
+{"time":"2024-10-23T10:41:34.2343572+02:00","level":"INFO","msg":"wandb-core","!BADKEY":null}
+{"time":"2024-10-23T10:41:34.2359303+02:00","level":"INFO","msg":"Starting system monitor"}
+{"time":"2024-10-23T10:41:35.8488596+02:00","level":"INFO","msg":"Stopping system monitor"}
+{"time":"2024-10-23T10:41:35.8488596+02:00","level":"INFO","msg":"Stopped system monitor"}
+{"time":"2024-10-23T10:41:36.5639772+02:00","level":"INFO","msg":"fileTransfer: Close: file transfer manager closed"}
+{"time":"2024-10-23T10:41:37.7673876+02:00","level":"INFO","msg":"stream: closing","id":"1gazg6ev"}
+{"time":"2024-10-23T10:41:37.7673876+02:00","level":"INFO","msg":"handler: closed","stream_id":{"value":"1gazg6ev"}}
+{"time":"2024-10-23T10:41:37.7673876+02:00","level":"INFO","msg":"writer: Close: closed","stream_id":{"value":"1gazg6ev"}}
+{"time":"2024-10-23T10:41:37.7673876+02:00","level":"INFO","msg":"sender: closed","stream_id":{"value":"1gazg6ev"}}
+{"time":"2024-10-23T10:41:37.7673876+02:00","level":"INFO","msg":"stream: closed","id":"1gazg6ev"}

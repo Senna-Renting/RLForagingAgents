@@ -1,0 +1,20 @@
+{"time":"2024-10-22T12:01:23.0222493+02:00","level":"INFO","msg":"using version","core version":"0.18.3"}
+{"time":"2024-10-22T12:01:23.0222493+02:00","level":"INFO","msg":"created symlink","path":"C:\\Users\\31614\\Documents\\AI_course_stuff\\RLForaging Thesis\\RLForagingAgents\\RL-models\\TD3\\wandb\\run-20241022_120123-dlujenwh\\logs\\debug-core.log"}
+{"time":"2024-10-22T12:01:23.0363197+02:00","level":"ERROR","msg":"dialing: google: could not find default credentials. See https://cloud.google.com/docs/authentication/external/set-up-adc for more information"}
+{"time":"2024-10-22T12:01:23.0458636+02:00","level":"INFO","msg":"created new stream","id":"dlujenwh"}
+{"time":"2024-10-22T12:01:23.0458636+02:00","level":"INFO","msg":"stream: started","id":"dlujenwh"}
+{"time":"2024-10-22T12:01:23.0458636+02:00","level":"INFO","msg":"writer: Do: started","stream_id":{"value":"dlujenwh"}}
+{"time":"2024-10-22T12:01:23.0463872+02:00","level":"INFO","msg":"sender: started","stream_id":{"value":"dlujenwh"}}
+{"time":"2024-10-22T12:01:23.0464564+02:00","level":"INFO","msg":"handler: started","stream_id":{"value":"dlujenwh"}}
+{"time":"2024-10-22T12:01:23.5348708+02:00","level":"INFO","msg":"wandb-core","!BADKEY":null}
+{"time":"2024-10-22T12:01:23.5367722+02:00","level":"INFO","msg":"Starting system monitor"}
+{"time":"2024-10-22T18:57:10.1679791+02:00","level":"INFO","msg":"api: retrying error","error":"Post \"https://api.wandb.ai/files/senna-renting-radboud-university/Pendulum-TD3/dlujenwh/file_stream\": dial tcp: lookup api.wandb.ai: no such host"}
+{"time":"2024-10-22T18:57:12.6168229+02:00","level":"INFO","msg":"api: retrying error","error":"Post \"https://api.wandb.ai/graphql\": dial tcp: lookup api.wandb.ai: no such host"}
+{"time":"2024-10-22T18:57:12.6480878+02:00","level":"INFO","msg":"api: retrying error","error":"Post \"https://api.wandb.ai/files/senna-renting-radboud-university/Pendulum-TD3/dlujenwh/file_stream\": dial tcp: lookup api.wandb.ai: no such host"}
+{"time":"2024-10-22T18:57:14.7285508+02:00","level":"INFO","msg":"api: retrying error","error":"Post \"https://api.wandb.ai/graphql\": dial tcp: lookup api.wandb.ai: no such host"}
+{"time":"2024-10-22T18:57:16.7289464+02:00","level":"INFO","msg":"api: retrying error","error":"Post \"https://api.wandb.ai/files/senna-renting-radboud-university/Pendulum-TD3/dlujenwh/file_stream\": dial tcp: lookup api.wandb.ai: no such host"}
+{"time":"2024-10-22T18:57:18.9529001+02:00","level":"INFO","msg":"api: retrying error","error":"Post \"https://api.wandb.ai/graphql\": dial tcp: lookup api.wandb.ai: no such host"}
+{"time":"2024-10-22T18:57:25.1294351+02:00","level":"INFO","msg":"api: retrying error","error":"Post \"https://api.wandb.ai/files/senna-renting-radboud-university/Pendulum-TD3/dlujenwh/file_stream\": dial tcp: lookup api.wandb.ai: no such host"}
+{"time":"2024-10-22T18:57:28.8217803+02:00","level":"INFO","msg":"api: retrying error","error":"Post \"https://api.wandb.ai/graphql\": dial tcp: lookup api.wandb.ai: no such host"}
+{"time":"2024-10-22T18:57:42.7125716+02:00","level":"INFO","msg":"api: retrying error","error":"Post \"https://api.wandb.ai/files/senna-renting-radboud-university/Pendulum-TD3/dlujenwh/file_stream\": dial tcp: lookup api.wandb.ai: no such host"}
+{"time":"2024-10-22T18:57:46.6931545+02:00","level":"INFO","msg":"api: retrying error","error":"Post \"https://api.wandb.ai/graphql\": dial tcp: lookup api.wandb.ai: no such host"}

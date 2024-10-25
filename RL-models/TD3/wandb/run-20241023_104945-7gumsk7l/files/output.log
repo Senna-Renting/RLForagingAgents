@@ -1,0 +1,6 @@
+%%% vibrant-sweep-1 dmwfmid6 %%%
+Traceback (most recent call last):
+  File "C:\Users\31614\Documents\AI_course_stuff\RLForaging Thesis\RLForagingAgents\RL-models\TD3\train_loops.py", line 103, in wandb_train_td3
+    td3.buffer.add(state, actions[i], next_state, reward, int(terminated))
+                                                              ^^^^^^^^^^
+NameError: name 'terminated' is not defined

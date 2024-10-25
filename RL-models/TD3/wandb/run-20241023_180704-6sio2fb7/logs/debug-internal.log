@@ -1,0 +1,10 @@
+{"time":"2024-10-23T18:07:04.5642616+02:00","level":"INFO","msg":"using version","core version":"0.18.3"}
+{"time":"2024-10-23T18:07:04.5647809+02:00","level":"INFO","msg":"created symlink","path":"C:\\Users\\31614\\Documents\\AI_course_stuff\\RLForaging Thesis\\RLForagingAgents\\RL-models\\TD3\\wandb\\run-20241023_180704-6sio2fb7\\logs\\debug-core.log"}
+{"time":"2024-10-23T18:07:04.5771866+02:00","level":"ERROR","msg":"dialing: google: could not find default credentials. See https://cloud.google.com/docs/authentication/external/set-up-adc for more information"}
+{"time":"2024-10-23T18:07:04.5852388+02:00","level":"INFO","msg":"created new stream","id":"6sio2fb7"}
+{"time":"2024-10-23T18:07:04.5857704+02:00","level":"INFO","msg":"stream: started","id":"6sio2fb7"}
+{"time":"2024-10-23T18:07:04.5857704+02:00","level":"INFO","msg":"writer: Do: started","stream_id":{"value":"6sio2fb7"}}
+{"time":"2024-10-23T18:07:04.5857704+02:00","level":"INFO","msg":"handler: started","stream_id":{"value":"6sio2fb7"}}
+{"time":"2024-10-23T18:07:04.5857704+02:00","level":"INFO","msg":"sender: started","stream_id":{"value":"6sio2fb7"}}
+{"time":"2024-10-23T18:07:04.8770323+02:00","level":"INFO","msg":"wandb-core","!BADKEY":null}
+{"time":"2024-10-23T18:07:04.8787951+02:00","level":"INFO","msg":"Starting system monitor"}

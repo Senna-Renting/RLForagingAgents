@@ -1,0 +1,55 @@
+%%% brisk-sweep-1 0gingoyv %%%
+Traceback (most recent call last):
+  File "C:\Users\31614\anaconda3\Lib\site-packages\jax\_src\core.py", line 824, in __getattr__
+    attr = getattr(self.aval, name)
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'ShapedArray' object has no attribute 'theta'
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\31614\Documents\AI_course_stuff\RLForaging Thesis\RLForagingAgents\RL-models\TD3\train_loops.py", line 102, in wandb_train_td3
+    next_obs, next_state, reward, done, _ = env.step(key_step, obs, actions[i], env_params)
+                                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\31614\anaconda3\Lib\site-packages\jax\_src\traceback_util.py", line 180, in reraise_with_filtered_traceback
+    return fun(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\31614\anaconda3\Lib\site-packages\jax\_src\pjit.py", line 356, in cache_miss
+    outs, out_flat, out_tree, args_flat, jaxpr, attrs_tracked = _python_pjit_helper(
+                                                                ^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\31614\anaconda3\Lib\site-packages\jax\_src\pjit.py", line 179, in _python_pjit_helper
+    p, args_flat = _infer_params(fun, jit_info, args, kwargs)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\31614\anaconda3\Lib\site-packages\jax\_src\pjit.py", line 773, in _infer_params
+    p, args_flat = _infer_params_impl(
+                   ^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\31614\anaconda3\Lib\site-packages\jax\_src\pjit.py", line 670, in _infer_params_impl
+    jaxpr, consts, out_avals, attrs_tracked = _create_pjit_jaxpr(
+                                              ^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\31614\anaconda3\Lib\site-packages\jax\_src\linear_util.py", line 352, in memoized_fun
+    ans = call(fun, *args)
+          ^^^^^^^^^^^^^^^^
+  File "C:\Users\31614\anaconda3\Lib\site-packages\jax\_src\pjit.py", line 1314, in _create_pjit_jaxpr
+    jaxpr, global_out_avals, consts, attrs_tracked = pe.trace_to_jaxpr_dynamic(
+                                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\31614\anaconda3\Lib\site-packages\jax\_src\profiler.py", line 333, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\31614\anaconda3\Lib\site-packages\jax\_src\interpreters\partial_eval.py", line 2278, in trace_to_jaxpr_dynamic
+    jaxpr, out_avals, consts, attrs_tracked = trace_to_subjaxpr_dynamic(
+                                              ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\31614\anaconda3\Lib\site-packages\jax\_src\interpreters\partial_eval.py", line 2301, in trace_to_subjaxpr_dynamic
+    ans = fun.call_wrapped(*in_tracers_)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\31614\anaconda3\Lib\site-packages\jax\_src\linear_util.py", line 193, in call_wrapped
+    ans = self.f(*args, **dict(self.params, **kwargs))
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\31614\anaconda3\Lib\site-packages\gymnax\environments\environment.py", line 45, in step
+    obs_st, state_st, reward, done, info = self.step_env(key, state, action, params)
+                                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\31614\anaconda3\Lib\site-packages\gymnax\environments\classic_control\pendulum.py", line 60, in step_env
+    angle_normalize(state.theta) ** 2
+                    ^^^^^^^^^^^
+  File "C:\Users\31614\anaconda3\Lib\site-packages\jax\_src\core.py", line 826, in __getattr__
+    raise AttributeError(
+AttributeError: DynamicJaxprTracer has no attribute theta

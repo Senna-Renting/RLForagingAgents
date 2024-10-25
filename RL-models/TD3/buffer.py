@@ -1,5 +1,5 @@
 import jax
-import numpy as np
+import numpy as onp
 from haiku import PRNGSequence
 from jax import random
 
@@ -12,11 +12,11 @@ class ReplayBuffer:
         self.ptr = 0
         self.size = 0
 
-        self.state = np.empty((max_size, state_dim))
-        self.action = np.empty((max_size, action_dim))
-        self.next_state = np.empty((max_size, state_dim))
-        self.reward = np.empty((max_size, 1))
-        self.not_done = np.empty((max_size, 1))
+        self.state = onp.empty((max_size, state_dim))
+        self.action = onp.empty((max_size, action_dim))
+        self.next_state = onp.empty((max_size, state_dim))
+        self.reward = onp.empty((max_size, 1))
+        self.not_done = onp.empty((max_size, 1))
 
     def add(self, state, action, next_state, reward, done):
         self.state[self.ptr] = state
@@ -38,7 +38,7 @@ class ReplayBuffer:
             jax.device_put(self.reward[ind]),
             jax.device_put(self.not_done[ind]),
         )
-
+        
 ## Below functions to test the buffer can be found
 def test_add():
     buffer = ReplayBuffer(3,1,1000)

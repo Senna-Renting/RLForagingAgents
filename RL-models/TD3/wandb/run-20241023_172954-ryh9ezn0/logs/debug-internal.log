@@ -1,0 +1,18 @@
+{"time":"2024-10-23T17:29:54.7383585+02:00","level":"INFO","msg":"using version","core version":"0.18.3"}
+{"time":"2024-10-23T17:29:54.7383585+02:00","level":"INFO","msg":"created symlink","path":"C:\\Users\\31614\\Documents\\AI_course_stuff\\RLForaging Thesis\\RLForagingAgents\\RL-models\\TD3\\wandb\\run-20241023_172954-ryh9ezn0\\logs\\debug-core.log"}
+{"time":"2024-10-23T17:29:54.7552111+02:00","level":"ERROR","msg":"dialing: google: could not find default credentials. See https://cloud.google.com/docs/authentication/external/set-up-adc for more information"}
+{"time":"2024-10-23T17:29:54.7647967+02:00","level":"INFO","msg":"created new stream","id":"ryh9ezn0"}
+{"time":"2024-10-23T17:29:54.7647967+02:00","level":"INFO","msg":"stream: started","id":"ryh9ezn0"}
+{"time":"2024-10-23T17:29:54.7647967+02:00","level":"INFO","msg":"handler: started","stream_id":{"value":"ryh9ezn0"}}
+{"time":"2024-10-23T17:29:54.7647967+02:00","level":"INFO","msg":"sender: started","stream_id":{"value":"ryh9ezn0"}}
+{"time":"2024-10-23T17:29:54.7647967+02:00","level":"INFO","msg":"writer: Do: started","stream_id":{"value":"ryh9ezn0"}}
+{"time":"2024-10-23T17:29:55.0339952+02:00","level":"INFO","msg":"wandb-core","!BADKEY":null}
+{"time":"2024-10-23T17:29:55.0355864+02:00","level":"INFO","msg":"Starting system monitor"}
+{"time":"2024-10-23T17:30:21.4220602+02:00","level":"INFO","msg":"Stopping system monitor"}
+{"time":"2024-10-23T17:30:21.4220602+02:00","level":"INFO","msg":"Stopped system monitor"}
+{"time":"2024-10-23T17:30:22.928768+02:00","level":"INFO","msg":"fileTransfer: Close: file transfer manager closed"}
+{"time":"2024-10-23T17:30:24.373712+02:00","level":"INFO","msg":"stream: closing","id":"ryh9ezn0"}
+{"time":"2024-10-23T17:30:24.373712+02:00","level":"INFO","msg":"handler: closed","stream_id":{"value":"ryh9ezn0"}}
+{"time":"2024-10-23T17:30:24.373712+02:00","level":"INFO","msg":"writer: Close: closed","stream_id":{"value":"ryh9ezn0"}}
+{"time":"2024-10-23T17:30:24.373712+02:00","level":"INFO","msg":"sender: closed","stream_id":{"value":"ryh9ezn0"}}
+{"time":"2024-10-23T17:30:24.373712+02:00","level":"INFO","msg":"stream: closed","id":"ryh9ezn0"}

@@ -1,0 +1,8 @@
+%%% feasible-sweep-1 m77u1crf %%%
+[Array(0, dtype=int32, weak_type=True), Array(-0.54084283, dtype=float32), Array(0.00817394, dtype=float32), Array(0., dtype=float32, weak_type=True)]
+PyTreeDef(CustomNode(EnvState[()], [*, *, *, *]))
+Traceback (most recent call last):
+  File "C:\Users\31614\Documents\AI_course_stuff\RLForaging Thesis\RLForagingAgents\RL-models\TD3\train_loops.py", line 102, in wandb_train_td3
+    print(flat_state.shape)
+          ^^^^^^^^^^^^^^^^
+AttributeError: 'list' object has no attribute 'shape'

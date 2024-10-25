@@ -1,0 +1,1 @@
+{"Epoch":500,"_step":499,"_wandb":{"runtime":1399},"_runtime":1399.3309919,"Qnet1 average loss":0.02031967411749065,"Actor average loss":3.0692089319229128,"Qnet2 average loss":0.020574044971726834,"Highest reward":-1.4774040545798586,"_timestamp":1.7293570775282998e+09,"Average return":-5.9113279754783585}

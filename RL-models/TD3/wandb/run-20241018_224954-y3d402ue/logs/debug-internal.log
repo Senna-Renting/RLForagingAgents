@@ -1,0 +1,10 @@
+{"time":"2024-10-18T22:49:54.8832777+02:00","level":"INFO","msg":"using version","core version":"0.18.3"}
+{"time":"2024-10-18T22:49:54.8832777+02:00","level":"INFO","msg":"created symlink","path":"C:\\Users\\31614\\Documents\\AI_course_stuff\\RLForaging Thesis\\RLForagingAgents\\RL-models\\TD3\\wandb\\run-20241018_224954-y3d402ue\\logs\\debug-core.log"}
+{"time":"2024-10-18T22:49:54.9065921+02:00","level":"ERROR","msg":"dialing: google: could not find default credentials. See https://cloud.google.com/docs/authentication/external/set-up-adc for more information"}
+{"time":"2024-10-18T22:49:54.9187033+02:00","level":"INFO","msg":"created new stream","id":"y3d402ue"}
+{"time":"2024-10-18T22:49:54.9231537+02:00","level":"INFO","msg":"stream: started","id":"y3d402ue"}
+{"time":"2024-10-18T22:49:54.9231537+02:00","level":"INFO","msg":"writer: Do: started","stream_id":{"value":"y3d402ue"}}
+{"time":"2024-10-18T22:49:54.9231537+02:00","level":"INFO","msg":"sender: started","stream_id":{"value":"y3d402ue"}}
+{"time":"2024-10-18T22:49:54.9231537+02:00","level":"INFO","msg":"handler: started","stream_id":{"value":"y3d402ue"}}
+{"time":"2024-10-18T22:49:55.2350786+02:00","level":"INFO","msg":"wandb-core","!BADKEY":null}
+{"time":"2024-10-18T22:49:55.2402661+02:00","level":"INFO","msg":"Starting system monitor"}

@@ -1,0 +1,28 @@
+wandb_version: 1
+
+batch_size:
+  value: 256
+buffer_size:
+  value: 50000
+gamma:
+  value: 0.99
+lr_actor:
+  value: 0.0004755500563723337
+lr_critic:
+  value: 0.000561173550715831
+max_length_episode:
+  value: 200
+noise_clip:
+  value: 1.4676908416019383
+num_episodes:
+  value: 100
+policy_interval:
+  value: 2
+sigma:
+  value: 0.7973193538846707
+sigma_explore:
+  value: 0.765581788144996
+tau:
+  value: 0.07637355981110483
+warmup_amount:
+  value: 100

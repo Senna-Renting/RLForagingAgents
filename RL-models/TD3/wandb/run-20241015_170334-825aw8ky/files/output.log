@@ -1,0 +1,5 @@
+Traceback (most recent call last):
+  File "C:\Users\31614\Documents\AI_course_stuff\RLForaging Thesis\RLForagingAgents\RL-models\TD3\train_loops.py", line 76, in wandb_train_td3
+    env = TimeLimit(gym.make("Pendulum-v1"), max_episode_steps=config.max_length_episode)
+          ^^^^^^^^^
+NameError: name 'TimeLimit' is not defined

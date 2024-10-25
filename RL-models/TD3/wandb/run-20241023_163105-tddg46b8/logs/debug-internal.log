@@ -1,0 +1,18 @@
+{"time":"2024-10-23T16:31:06.0144663+02:00","level":"INFO","msg":"using version","core version":"0.18.3"}
+{"time":"2024-10-23T16:31:06.0144663+02:00","level":"INFO","msg":"created symlink","path":"C:\\Users\\31614\\Documents\\AI_course_stuff\\RLForaging Thesis\\RLForagingAgents\\RL-models\\TD3\\wandb\\run-20241023_163105-tddg46b8\\logs\\debug-core.log"}
+{"time":"2024-10-23T16:31:06.0448144+02:00","level":"ERROR","msg":"dialing: google: could not find default credentials. See https://cloud.google.com/docs/authentication/external/set-up-adc for more information"}
+{"time":"2024-10-23T16:31:06.0579149+02:00","level":"INFO","msg":"created new stream","id":"tddg46b8"}
+{"time":"2024-10-23T16:31:06.0595996+02:00","level":"INFO","msg":"stream: started","id":"tddg46b8"}
+{"time":"2024-10-23T16:31:06.0595996+02:00","level":"INFO","msg":"writer: Do: started","stream_id":{"value":"tddg46b8"}}
+{"time":"2024-10-23T16:31:06.0595996+02:00","level":"INFO","msg":"handler: started","stream_id":{"value":"tddg46b8"}}
+{"time":"2024-10-23T16:31:06.0595996+02:00","level":"INFO","msg":"sender: started","stream_id":{"value":"tddg46b8"}}
+{"time":"2024-10-23T16:31:06.3892283+02:00","level":"INFO","msg":"wandb-core","!BADKEY":null}
+{"time":"2024-10-23T16:31:06.3910614+02:00","level":"INFO","msg":"Starting system monitor"}
+{"time":"2024-10-23T16:31:08.1298924+02:00","level":"INFO","msg":"Stopping system monitor"}
+{"time":"2024-10-23T16:31:08.1298924+02:00","level":"INFO","msg":"Stopped system monitor"}
+{"time":"2024-10-23T16:31:08.9698191+02:00","level":"INFO","msg":"fileTransfer: Close: file transfer manager closed"}
+{"time":"2024-10-23T16:31:10.2128999+02:00","level":"INFO","msg":"stream: closing","id":"tddg46b8"}
+{"time":"2024-10-23T16:31:10.2128999+02:00","level":"INFO","msg":"handler: closed","stream_id":{"value":"tddg46b8"}}
+{"time":"2024-10-23T16:31:10.2128999+02:00","level":"INFO","msg":"writer: Close: closed","stream_id":{"value":"tddg46b8"}}
+{"time":"2024-10-23T16:31:10.2128999+02:00","level":"INFO","msg":"sender: closed","stream_id":{"value":"tddg46b8"}}
+{"time":"2024-10-23T16:31:10.2134127+02:00","level":"INFO","msg":"stream: closed","id":"tddg46b8"}

@@ -1,0 +1,6 @@
+{'batch_size': 512, 'buffer_size': 50000, 'gamma': 0.99, 'lr_actor': 8.850914602790532e-05, 'lr_critic': 0.00014750689487130517, 'max_length_episode': 40, 'noise_clip': 1.852474841848503, 'num_episodes': 500, 'policy_interval': 2, 'sigma': 1.3188029822293774, 'sigma_explore': 0.9303309473713725, 'tau': 0.05619844527832307, 'update_interval': 1}
+Traceback (most recent call last):
+  File "C:\Users\31614\Documents\AI_course_stuff\RLForaging Thesis\RLForagingAgents\RL-models\TD3\train_loops.py", line 123, in wandb_train_td3
+    best_policy = td3.get_policy()
+                  ^^^^^^^^^^^^^^
+AttributeError: 'TD3' object has no attribute 'get_policy'

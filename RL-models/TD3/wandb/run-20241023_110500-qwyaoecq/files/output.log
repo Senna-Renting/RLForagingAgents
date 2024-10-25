@@ -1,0 +1,12 @@
+%%% confused-sweep-1 tkt2is0r %%%
+[ 0.         -0.54084283  0.00817394  0.        ]
+PyTreeDef(CustomNode(EnvState[()], [*, *, *, *]))
+(4,)
+EnvState(time=Array(0., dtype=float32), theta=Array(-0.54084283, dtype=float32), theta_dot=Array(0.00817394, dtype=float32), last_u=Array(0., dtype=float32))
+Traceback (most recent call last):
+  File "C:\Users\31614\Documents\AI_course_stuff\RLForaging Thesis\RLForagingAgents\RL-models\TD3\train_loops.py", line 111, in wandb_train_td3
+    td3.buffer.add(state, actions[i], next_state, reward, int(done))
+  File "C:\Users\31614\Documents\AI_course_stuff\RLForaging Thesis\RLForagingAgents\RL-models\TD3\buffer.py", line 22, in add
+    self.state[self.ptr] = state
+    ~~~~~~~~~~^^^^^^^^^^
+TypeError: float() argument must be a string or a real number, not 'EnvState'

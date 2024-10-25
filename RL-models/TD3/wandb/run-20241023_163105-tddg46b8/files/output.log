@@ -1,0 +1,42 @@
+%%% smooth-sweep-1 zdjs4l59 %%%
+Traced<ShapedArray(float32[3])>with<DynamicJaxprTrace(level=1/0)>
+Traceback (most recent call last):
+  File "C:\Users\31614\Documents\AI_course_stuff\RLForaging Thesis\RLForagingAgents\RL-models\TD3\train_loops.py", line 131, in wandb_train_td3
+    ep_loss_Q1, ep_loss_Q2, ep_loss_actor = td3.train(config.batch_size)
+                                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\31614\Documents\AI_course_stuff\RLForaging Thesis\RLForagingAgents\RL-models\TD3\model.py", line 63, in train
+    loss_Q1, loss_Q2 = self._update_critics(buffer_out)
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\31614\Documents\AI_course_stuff\RLForaging Thesis\RLForagingAgents\RL-models\TD3\model.py", line 83, in _update_critics
+    return loss_Q1.item(), loss_Q2.item()
+           ^^^^^^^^^^^^^^
+  File "C:\Users\31614\anaconda3\Lib\site-packages\jax\_src\numpy\array_methods.py", line 1042, in meth
+    return getattr(self.aval, name).fun(self, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\31614\anaconda3\Lib\site-packages\jax\_src\numpy\array_methods.py", line 209, in _item
+    arr = core.concrete_or_error(np.asarray, self, context="This occurred in the item() method of jax.Array")
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\31614\anaconda3\Lib\site-packages\jax\_src\core.py", line 1564, in concrete_or_error
+    raise ConcretizationTypeError(val, context)
+jax.errors.ConcretizationTypeError: Abstract tracer value encountered where concrete value is expected: traced array with shape float32[]
+This occurred in the item() method of jax.Array
+The error occurred while tracing the function wandb_train_td3 at C:\Users\31614\Documents\AI_course_stuff\RLForaging Thesis\RLForagingAgents\RL-models\TD3\train_loops.py:82 for jit. This value became a tracer due to JAX operations on these lines:
+
+  operation a[35m:f32[][39m = convert_element_type[new_dtype=float32 weak_type=False] b
+    from line C:\Users\31614\Documents\AI_course_stuff\RLForaging Thesis\RLForagingAgents\RL-models\TD3\buffer.py:16:26 (ReplayBuffer.__init__)
+
+  operation a[35m:f32[][39m = convert_element_type[new_dtype=float32 weak_type=False] b
+    from line C:\Users\31614\Documents\AI_course_stuff\RLForaging Thesis\RLForagingAgents\RL-models\TD3\buffer.py:17:22 (ReplayBuffer.__init__)
+
+  operation a[35m:f32[][39m = convert_element_type[new_dtype=float32 weak_type=False] b
+    from line C:\Users\31614\Documents\AI_course_stuff\RLForaging Thesis\RLForagingAgents\RL-models\TD3\buffer.py:18:24 (ReplayBuffer.__init__)
+
+  operation a[35m:i32[][39m = convert_element_type[new_dtype=int32 weak_type=False] b
+    from line C:\Users\31614\Documents\AI_course_stuff\RLForaging Thesis\RLForagingAgents\RL-models\TD3\model.py:21:26 (TD3.__init__)
+
+  operation a[35m:u32[][39m = convert_element_type[new_dtype=uint32 weak_type=False] b
+    from line C:\Users\31614\Documents\AI_course_stuff\RLForaging Thesis\RLForagingAgents\RL-models\TD3\model.py:21:26 (TD3.__init__)
+
+(Additional originating lines are not shown.)
+
+See https://jax.readthedocs.io/en/latest/errors.html#jax.errors.ConcretizationTypeError

@@ -1,0 +1,1 @@
+{"Actor average loss":3.095165627797445,"Epoch":200,"_timestamp":1.7295492937213454e+09,"Highest reward":-2.340686691669639,"Average return":-6.276448938660789,"_wandb":{"runtime":1375},"Qnet2 average loss":0.022477629110217095,"Qnet1 average loss":0.022773728395501774,"_step":199,"_runtime":1374.8805014}

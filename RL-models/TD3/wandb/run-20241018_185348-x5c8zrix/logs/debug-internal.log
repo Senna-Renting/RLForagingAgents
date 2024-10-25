@@ -1,0 +1,18 @@
+{"time":"2024-10-18T18:53:48.1148336+02:00","level":"INFO","msg":"using version","core version":"0.18.3"}
+{"time":"2024-10-18T18:53:48.1148336+02:00","level":"INFO","msg":"created symlink","path":"C:\\Users\\31614\\Documents\\AI_course_stuff\\RLForaging Thesis\\RLForagingAgents\\RL-models\\TD3\\wandb\\run-20241018_185348-x5c8zrix\\logs\\debug-core.log"}
+{"time":"2024-10-18T18:53:48.1371998+02:00","level":"ERROR","msg":"dialing: google: could not find default credentials. See https://cloud.google.com/docs/authentication/external/set-up-adc for more information"}
+{"time":"2024-10-18T18:53:48.1483347+02:00","level":"INFO","msg":"created new stream","id":"x5c8zrix"}
+{"time":"2024-10-18T18:53:48.1483347+02:00","level":"INFO","msg":"stream: started","id":"x5c8zrix"}
+{"time":"2024-10-18T18:53:48.1483347+02:00","level":"INFO","msg":"handler: started","stream_id":{"value":"x5c8zrix"}}
+{"time":"2024-10-18T18:53:48.1489384+02:00","level":"INFO","msg":"sender: started","stream_id":{"value":"x5c8zrix"}}
+{"time":"2024-10-18T18:53:48.1483347+02:00","level":"INFO","msg":"writer: Do: started","stream_id":{"value":"x5c8zrix"}}
+{"time":"2024-10-18T18:53:49.6623696+02:00","level":"INFO","msg":"wandb-core","!BADKEY":null}
+{"time":"2024-10-18T18:53:49.6683169+02:00","level":"INFO","msg":"Starting system monitor"}
+{"time":"2024-10-18T19:05:32.9519861+02:00","level":"INFO","msg":"Stopping system monitor"}
+{"time":"2024-10-18T19:05:32.9519861+02:00","level":"INFO","msg":"Stopped system monitor"}
+{"time":"2024-10-18T19:05:34.0272786+02:00","level":"INFO","msg":"fileTransfer: Close: file transfer manager closed"}
+{"time":"2024-10-18T19:05:35.2823793+02:00","level":"INFO","msg":"stream: closing","id":"x5c8zrix"}
+{"time":"2024-10-18T19:05:35.2823793+02:00","level":"INFO","msg":"handler: closed","stream_id":{"value":"x5c8zrix"}}
+{"time":"2024-10-18T19:05:35.2823793+02:00","level":"INFO","msg":"sender: closed","stream_id":{"value":"x5c8zrix"}}
+{"time":"2024-10-18T19:05:35.2823793+02:00","level":"INFO","msg":"writer: Close: closed","stream_id":{"value":"x5c8zrix"}}
+{"time":"2024-10-18T19:05:35.2823793+02:00","level":"INFO","msg":"stream: closed","id":"x5c8zrix"}

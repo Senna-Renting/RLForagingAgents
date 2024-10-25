@@ -1,0 +1,34 @@
+2024-10-22 19:23:31,311 INFO    Thread-16 (_run_job):26352 [wandb_setup.py:_flush():79] Current SDK version is 0.18.3
+2024-10-22 19:23:31,311 INFO    Thread-16 (_run_job):26352 [wandb_setup.py:_flush():79] Configure stats pid to 26352
+2024-10-22 19:23:31,312 INFO    Thread-16 (_run_job):26352 [wandb_setup.py:_flush():79] Loading settings from C:\Users\31614\.config\wandb\settings
+2024-10-22 19:23:31,312 INFO    Thread-16 (_run_job):26352 [wandb_setup.py:_flush():79] Loading settings from C:\Users\31614\Documents\AI_course_stuff\RLForaging Thesis\RLForagingAgents\RL-models\TD3\wandb\settings
+2024-10-22 19:23:31,312 INFO    Thread-16 (_run_job):26352 [wandb_setup.py:_flush():79] Loading settings from environment variables: {'project': 'Pendulum-TD3', 'entity': 'senna-renting-radboud-university', 'root_dir': 'C:\\Users\\31614\\Documents\\AI_course_stuff\\RLForaging Thesis\\RLForagingAgents\\RL-models\\TD3', 'run_id': 'j73dnqwg', 'sweep_param_path': 'C:\\Users\\31614\\Documents\\AI_course_stuff\\RLForaging Thesis\\RLForagingAgents\\RL-models\\TD3\\wandb\\sweep-v237miuw\\config-j73dnqwg.yaml', 'sweep_id': 'v237miuw'}
+2024-10-22 19:23:31,318 INFO    Thread-16 (_run_job):26352 [wandb_setup.py:_flush():79] Applying setup settings: {'mode': None, '_disable_service': None}
+2024-10-22 19:23:31,318 INFO    Thread-16 (_run_job):26352 [wandb_setup.py:_flush():79] Inferring run settings from compute environment: {'program': '<python with no main file>'}
+2024-10-22 19:23:31,318 INFO    Thread-16 (_run_job):26352 [wandb_setup.py:_flush():79] Applying login settings: {}
+2024-10-22 19:23:31,320 INFO    Thread-16 (_run_job):26352 [wandb_init.py:_log_setup():532] Logging user logs to C:\Users\31614\Documents\AI_course_stuff\RLForaging Thesis\RLForagingAgents\RL-models\TD3\wandb\run-20241022_192331-j73dnqwg\logs\debug.log
+2024-10-22 19:23:31,320 INFO    Thread-16 (_run_job):26352 [wandb_init.py:_log_setup():533] Logging internal logs to C:\Users\31614\Documents\AI_course_stuff\RLForaging Thesis\RLForagingAgents\RL-models\TD3\wandb\run-20241022_192331-j73dnqwg\logs\debug-internal.log
+2024-10-22 19:23:31,321 INFO    Thread-16 (_run_job):26352 [wandb_init.py:_jupyter_setup():478] configuring jupyter hooks <wandb.sdk.wandb_init._WandbInit object at 0x000001ADE3A881A0>
+2024-10-22 19:23:31,321 INFO    Thread-16 (_run_job):26352 [wandb_init.py:init():617] calling init triggers
+2024-10-22 19:23:31,321 INFO    Thread-16 (_run_job):26352 [wandb_init.py:init():624] wandb.init called with sweep_config: {'batch_size': 500, 'buffer_size': 50000, 'gamma': 0.99, 'lr_actor': 4.504110663873992e-06, 'lr_critic': 0.00017015933729039477, 'max_length_episode': 75, 'noise_clip': 0.16485639564847837, 'num_episodes': 200, 'policy_interval': 2, 'sigma': 1.1311217684872736, 'sigma_explore': 0.9383018939075508, 'tau': 0.05764766887867854, 'update_interval': 1}
+config: {}
+2024-10-22 19:23:31,321 INFO    Thread-16 (_run_job):26352 [wandb_init.py:init():667] starting backend
+2024-10-22 19:23:31,321 INFO    Thread-16 (_run_job):26352 [wandb_init.py:init():671] sending inform_init request
+2024-10-22 19:23:31,331 INFO    Thread-16 (_run_job):26352 [backend.py:_multiprocessing_setup():104] multiprocessing start_methods=spawn, using: spawn
+2024-10-22 19:23:31,332 INFO    Thread-16 (_run_job):26352 [wandb_init.py:init():684] backend started and connected
+2024-10-22 19:23:31,353 INFO    Thread-16 (_run_job):26352 [wandb_run.py:_config_callback():1394] config_cb None None {'batch_size': 500, 'buffer_size': 50000, 'gamma': 0.99, 'lr_actor': 4.504110663873992e-06, 'lr_critic': 0.00017015933729039477, 'max_length_episode': 75, 'noise_clip': 0.16485639564847837, 'num_episodes': 200, 'policy_interval': 2, 'sigma': 1.1311217684872736, 'sigma_explore': 0.9383018939075508, 'tau': 0.05764766887867854, 'update_interval': 1}
+2024-10-22 19:23:31,355 INFO    Thread-16 (_run_job):26352 [wandb_run.py:_label_probe_notebook():1346] probe notebook
+2024-10-22 19:23:31,355 INFO    Thread-16 (_run_job):26352 [wandb_run.py:_label_probe_notebook():1356] Unable to probe notebook: 'NoneType' object has no attribute 'get'
+2024-10-22 19:23:31,355 INFO    Thread-16 (_run_job):26352 [wandb_init.py:init():779] updated telemetry
+2024-10-22 19:23:31,403 INFO    Thread-16 (_run_job):26352 [wandb_init.py:init():812] communicating run to backend with 90.0 second timeout
+2024-10-22 19:23:31,838 INFO    Thread-16 (_run_job):26352 [wandb_init.py:init():863] starting run threads in backend
+2024-10-22 19:23:32,595 INFO    Thread-16 (_run_job):26352 [wandb_run.py:_console_start():2465] atexit reg
+2024-10-22 19:23:32,596 INFO    Thread-16 (_run_job):26352 [wandb_run.py:_redirect():2313] redirect: wrap_raw
+2024-10-22 19:23:32,596 INFO    Thread-16 (_run_job):26352 [wandb_run.py:_redirect():2378] Wrapping output streams.
+2024-10-22 19:23:32,596 INFO    Thread-16 (_run_job):26352 [wandb_run.py:_redirect():2403] Redirects installed.
+2024-10-22 19:23:32,596 INFO    Thread-16 (_run_job):26352 [wandb_init.py:init():907] run started, returning control to user process
+2024-10-22 19:30:56,792 WARNING MsgRouterThr:26352 [router.py:message_loop():77] message_loop has been closed
+2024-10-22 19:30:58,285 INFO    Thread-16 (_run_job):26352 [wandb_run.py:_finish():2164] finishing run senna-renting-radboud-university/Pendulum-TD3/j73dnqwg
+2024-10-22 19:30:58,285 INFO    Thread-16 (_run_job):26352 [wandb_run.py:_finish():2164] finishing run senna-renting-radboud-university/Pendulum-TD3/j73dnqwg
+2024-10-22 19:30:58,810 INFO    MainThread:26352 [jupyter.py:save_ipynb():387] not saving jupyter notebook
+2024-10-22 19:30:58,810 INFO    MainThread:26352 [wandb_init.py:_pause_backend():443] pausing backend

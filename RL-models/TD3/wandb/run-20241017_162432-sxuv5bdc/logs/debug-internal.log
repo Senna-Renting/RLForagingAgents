@@ -1,0 +1,19 @@
+{"time":"2024-10-17T16:24:32.0986472+02:00","level":"INFO","msg":"using version","core version":"0.18.3"}
+{"time":"2024-10-17T16:24:32.0986472+02:00","level":"INFO","msg":"created symlink","path":"C:\\Users\\31614\\Documents\\AI_course_stuff\\RLForaging Thesis\\RLForagingAgents\\RL-models\\TD3\\wandb\\run-20241017_162432-sxuv5bdc\\logs\\debug-core.log"}
+{"time":"2024-10-17T16:24:32.1121808+02:00","level":"ERROR","msg":"dialing: google: could not find default credentials. See https://cloud.google.com/docs/authentication/external/set-up-adc for more information"}
+{"time":"2024-10-17T16:24:32.1200097+02:00","level":"INFO","msg":"created new stream","id":"sxuv5bdc"}
+{"time":"2024-10-17T16:24:32.1200097+02:00","level":"INFO","msg":"stream: started","id":"sxuv5bdc"}
+{"time":"2024-10-17T16:24:32.1200097+02:00","level":"INFO","msg":"writer: Do: started","stream_id":{"value":"sxuv5bdc"}}
+{"time":"2024-10-17T16:24:32.1200097+02:00","level":"INFO","msg":"handler: started","stream_id":{"value":"sxuv5bdc"}}
+{"time":"2024-10-17T16:24:32.1200097+02:00","level":"INFO","msg":"sender: started","stream_id":{"value":"sxuv5bdc"}}
+{"time":"2024-10-17T16:24:32.3772507+02:00","level":"INFO","msg":"wandb-core","!BADKEY":null}
+{"time":"2024-10-17T16:24:32.3788971+02:00","level":"INFO","msg":"Starting system monitor"}
+{"time":"2024-10-17T16:26:32.9791148+02:00","level":"INFO","msg":"api: retrying HTTP error","status":502,"url":"https://api.wandb.ai/files/senna-renting-radboud-university/Pendulum-TD3/sxuv5bdc/file_stream"}
+{"time":"2024-10-17T16:35:38.1361805+02:00","level":"INFO","msg":"Stopping system monitor"}
+{"time":"2024-10-17T16:35:38.136263+02:00","level":"INFO","msg":"Stopped system monitor"}
+{"time":"2024-10-17T16:35:39.1558041+02:00","level":"INFO","msg":"fileTransfer: Close: file transfer manager closed"}
+{"time":"2024-10-17T16:35:40.4028688+02:00","level":"INFO","msg":"stream: closing","id":"sxuv5bdc"}
+{"time":"2024-10-17T16:35:40.4028688+02:00","level":"INFO","msg":"handler: closed","stream_id":{"value":"sxuv5bdc"}}
+{"time":"2024-10-17T16:35:40.4028688+02:00","level":"INFO","msg":"sender: closed","stream_id":{"value":"sxuv5bdc"}}
+{"time":"2024-10-17T16:35:40.4028688+02:00","level":"INFO","msg":"writer: Close: closed","stream_id":{"value":"sxuv5bdc"}}
+{"time":"2024-10-17T16:35:40.4028688+02:00","level":"INFO","msg":"stream: closed","id":"sxuv5bdc"}

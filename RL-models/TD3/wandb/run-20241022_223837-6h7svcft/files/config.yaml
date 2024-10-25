@@ -1,0 +1,54 @@
+_wandb:
+    value:
+        cli_version: 0.18.3
+        m: []
+        python_version: 3.12.4
+        t:
+            "1":
+                - 12
+                - 45
+                - 54
+                - 55
+            "2":
+                - 12
+                - 45
+                - 54
+                - 55
+            "3":
+                - 2
+                - 23
+                - 55
+            "4": 3.12.4
+            "5": 0.18.3
+            "8":
+                - 1
+                - 3
+                - 5
+            "12": 0.18.3
+            "13": windows-amd64
+batch_size:
+    value: 500
+buffer_size:
+    value: 50000
+gamma:
+    value: 0.99
+lr_actor:
+    value: 0.0004698546520041604
+lr_critic:
+    value: 0.0006895026925847585
+max_length_episode:
+    value: 75
+noise_clip:
+    value: 1.6788567903109444
+num_episodes:
+    value: 800
+policy_interval:
+    value: 2
+sigma:
+    value: 0.6211866358957453
+sigma_explore:
+    value: 0.5862423303127454
+tau:
+    value: 0.2906846776038896
+update_interval:
+    value: 4

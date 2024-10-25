@@ -1,0 +1,20 @@
+{"time":"2024-10-17T22:19:40.3474842+02:00","level":"INFO","msg":"using version","core version":"0.18.3"}
+{"time":"2024-10-17T22:19:40.3474842+02:00","level":"INFO","msg":"created symlink","path":"C:\\Users\\31614\\Documents\\AI_course_stuff\\RLForaging Thesis\\RLForagingAgents\\RL-models\\TD3\\wandb\\run-20241017_221940-ucdseqno\\logs\\debug-core.log"}
+{"time":"2024-10-17T22:19:40.360247+02:00","level":"ERROR","msg":"dialing: google: could not find default credentials. See https://cloud.google.com/docs/authentication/external/set-up-adc for more information"}
+{"time":"2024-10-17T22:19:40.3677619+02:00","level":"INFO","msg":"created new stream","id":"ucdseqno"}
+{"time":"2024-10-17T22:19:40.3677619+02:00","level":"INFO","msg":"stream: started","id":"ucdseqno"}
+{"time":"2024-10-17T22:19:40.3677619+02:00","level":"INFO","msg":"sender: started","stream_id":{"value":"ucdseqno"}}
+{"time":"2024-10-17T22:19:40.3677619+02:00","level":"INFO","msg":"writer: Do: started","stream_id":{"value":"ucdseqno"}}
+{"time":"2024-10-17T22:19:40.3677619+02:00","level":"INFO","msg":"handler: started","stream_id":{"value":"ucdseqno"}}
+{"time":"2024-10-17T22:19:40.6211544+02:00","level":"INFO","msg":"wandb-core","!BADKEY":null}
+{"time":"2024-10-17T22:19:40.6227804+02:00","level":"INFO","msg":"Starting system monitor"}
+{"time":"2024-10-18T16:13:05.9331442+02:00","level":"INFO","msg":"api: retrying error","error":"Post \"https://api.wandb.ai/files/senna-renting-radboud-university/Pendulum-TD3/ucdseqno/file_stream\": dial tcp: lookup api.wandb.ai: no such host"}
+{"time":"2024-10-18T16:13:07.9866699+02:00","level":"INFO","msg":"api: retrying error","error":"Post \"https://api.wandb.ai/files/senna-renting-radboud-university/Pendulum-TD3/ucdseqno/file_stream\": dial tcp: lookup api.wandb.ai: no such host"}
+{"time":"2024-10-18T16:14:02.250144+02:00","level":"INFO","msg":"Stopping system monitor"}
+{"time":"2024-10-18T16:14:02.250144+02:00","level":"INFO","msg":"Stopped system monitor"}
+{"time":"2024-10-18T16:14:03.3658635+02:00","level":"INFO","msg":"fileTransfer: Close: file transfer manager closed"}
+{"time":"2024-10-18T16:14:04.6359263+02:00","level":"INFO","msg":"stream: closing","id":"ucdseqno"}
+{"time":"2024-10-18T16:14:04.6359263+02:00","level":"INFO","msg":"handler: closed","stream_id":{"value":"ucdseqno"}}
+{"time":"2024-10-18T16:14:04.6359263+02:00","level":"INFO","msg":"sender: closed","stream_id":{"value":"ucdseqno"}}
+{"time":"2024-10-18T16:14:04.6359263+02:00","level":"INFO","msg":"writer: Close: closed","stream_id":{"value":"ucdseqno"}}
+{"time":"2024-10-18T16:14:04.6359263+02:00","level":"INFO","msg":"stream: closed","id":"ucdseqno"}

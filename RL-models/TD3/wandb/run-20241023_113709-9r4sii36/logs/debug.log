@@ -1,0 +1,131 @@
+2024-10-23 11:37:09,518 INFO    Thread-11 (_run_job):6224 [wandb_setup.py:_flush():79] Current SDK version is 0.18.3
+2024-10-23 11:37:09,518 INFO    Thread-11 (_run_job):6224 [wandb_setup.py:_flush():79] Configure stats pid to 6224
+2024-10-23 11:37:09,518 INFO    Thread-11 (_run_job):6224 [wandb_setup.py:_flush():79] Loading settings from C:\Users\31614\.config\wandb\settings
+2024-10-23 11:37:09,518 INFO    Thread-11 (_run_job):6224 [wandb_setup.py:_flush():79] Loading settings from C:\Users\31614\Documents\AI_course_stuff\RLForaging Thesis\RLForagingAgents\RL-models\TD3\wandb\settings
+2024-10-23 11:37:09,518 INFO    Thread-11 (_run_job):6224 [wandb_setup.py:_flush():79] Loading settings from environment variables: {'project': 'Pendulum-TD3', 'entity': 'senna-renting-radboud-university', 'root_dir': 'C:\\Users\\31614\\Documents\\AI_course_stuff\\RLForaging Thesis\\RLForagingAgents\\RL-models\\TD3', 'sweep_id': '341zrnmt', 'run_id': '9r4sii36', 'sweep_param_path': 'C:\\Users\\31614\\Documents\\AI_course_stuff\\RLForaging Thesis\\RLForagingAgents\\RL-models\\TD3\\wandb\\sweep-341zrnmt\\config-9r4sii36.yaml'}
+2024-10-23 11:37:09,525 INFO    Thread-11 (_run_job):6224 [wandb_setup.py:_flush():79] Applying setup settings: {'mode': None, '_disable_service': None}
+2024-10-23 11:37:09,525 INFO    Thread-11 (_run_job):6224 [wandb_setup.py:_flush():79] Inferring run settings from compute environment: {'program': '<python with no main file>'}
+2024-10-23 11:37:09,525 INFO    Thread-11 (_run_job):6224 [wandb_setup.py:_flush():79] Applying login settings: {}
+2024-10-23 11:37:09,525 INFO    Thread-11 (_run_job):6224 [wandb_init.py:_log_setup():532] Logging user logs to C:\Users\31614\Documents\AI_course_stuff\RLForaging Thesis\RLForagingAgents\RL-models\TD3\wandb\run-20241023_113709-9r4sii36\logs\debug.log
+2024-10-23 11:37:09,525 INFO    Thread-11 (_run_job):6224 [wandb_init.py:_log_setup():533] Logging internal logs to C:\Users\31614\Documents\AI_course_stuff\RLForaging Thesis\RLForagingAgents\RL-models\TD3\wandb\run-20241023_113709-9r4sii36\logs\debug-internal.log
+2024-10-23 11:37:09,525 INFO    Thread-11 (_run_job):6224 [wandb_init.py:_jupyter_setup():478] configuring jupyter hooks <wandb.sdk.wandb_init._WandbInit object at 0x0000014BA193B710>
+2024-10-23 11:37:09,525 INFO    Thread-11 (_run_job):6224 [wandb_init.py:init():617] calling init triggers
+2024-10-23 11:37:09,525 INFO    Thread-11 (_run_job):6224 [wandb_init.py:init():624] wandb.init called with sweep_config: {'batch_size': 64, 'buffer_size': 50000, 'gamma': 0.99, 'lr_actor': 0.00030206829885776434, 'lr_critic': 0.0005570279049995015, 'max_length_episode': 200, 'noise_clip': 0.6831940876037533, 'num_episodes': 100, 'policy_interval': 2, 'sigma': 0.5824797260649631, 'sigma_explore': 0.5709239631389608, 'tau': 0.10173263736822812, 'warmup_amount': 500}
+config: {}
+2024-10-23 11:37:09,525 INFO    Thread-11 (_run_job):6224 [wandb_init.py:init():667] starting backend
+2024-10-23 11:37:09,525 INFO    Thread-11 (_run_job):6224 [wandb_init.py:init():671] sending inform_init request
+2024-10-23 11:37:09,531 INFO    Thread-11 (_run_job):6224 [backend.py:_multiprocessing_setup():104] multiprocessing start_methods=spawn, using: spawn
+2024-10-23 11:37:09,537 INFO    Thread-11 (_run_job):6224 [wandb_init.py:init():684] backend started and connected
+2024-10-23 11:37:09,560 INFO    Thread-11 (_run_job):6224 [wandb_run.py:_config_callback():1394] config_cb None None {'batch_size': 64, 'buffer_size': 50000, 'gamma': 0.99, 'lr_actor': 0.00030206829885776434, 'lr_critic': 0.0005570279049995015, 'max_length_episode': 200, 'noise_clip': 0.6831940876037533, 'num_episodes': 100, 'policy_interval': 2, 'sigma': 0.5824797260649631, 'sigma_explore': 0.5709239631389608, 'tau': 0.10173263736822812, 'warmup_amount': 500}
+2024-10-23 11:37:09,562 INFO    Thread-11 (_run_job):6224 [wandb_run.py:_label_probe_notebook():1346] probe notebook
+2024-10-23 11:37:09,563 INFO    Thread-11 (_run_job):6224 [wandb_run.py:_label_probe_notebook():1356] Unable to probe notebook: 'NoneType' object has no attribute 'get'
+2024-10-23 11:37:09,563 INFO    Thread-11 (_run_job):6224 [wandb_init.py:init():779] updated telemetry
+2024-10-23 11:37:09,614 INFO    Thread-11 (_run_job):6224 [wandb_init.py:init():812] communicating run to backend with 90.0 second timeout
+2024-10-23 11:37:10,110 INFO    Thread-11 (_run_job):6224 [wandb_init.py:init():863] starting run threads in backend
+2024-10-23 11:37:11,078 INFO    Thread-11 (_run_job):6224 [wandb_run.py:_console_start():2465] atexit reg
+2024-10-23 11:37:11,078 INFO    Thread-11 (_run_job):6224 [wandb_run.py:_redirect():2313] redirect: wrap_raw
+2024-10-23 11:37:11,078 INFO    Thread-11 (_run_job):6224 [wandb_run.py:_redirect():2378] Wrapping output streams.
+2024-10-23 11:37:11,078 INFO    Thread-11 (_run_job):6224 [wandb_run.py:_redirect():2403] Redirects installed.
+2024-10-23 11:37:11,082 INFO    Thread-11 (_run_job):6224 [wandb_init.py:init():907] run started, returning control to user process
+2024-10-23 11:37:12,351 INFO    Thread-11 (_run_job):6224 [wandb_run.py:_finish():2164] finishing run senna-renting-radboud-university/Pendulum-TD3/9r4sii36
+2024-10-23 11:37:12,352 INFO    Thread-11 (_run_job):6224 [jupyter.py:save_history():459] not saving jupyter history
+2024-10-23 11:37:12,352 INFO    Thread-11 (_run_job):6224 [jupyter.py:save_ipynb():387] not saving jupyter notebook
+2024-10-23 11:37:12,352 INFO    Thread-11 (_run_job):6224 [wandb_init.py:_jupyter_teardown():460] cleaning up jupyter logic
+2024-10-23 11:37:12,352 INFO    Thread-11 (_run_job):6224 [wandb_run.py:_atexit_cleanup():2428] got exitcode: 1
+2024-10-23 11:37:12,353 INFO    Thread-11 (_run_job):6224 [wandb_run.py:_restore():2410] restore
+2024-10-23 11:37:12,353 INFO    Thread-11 (_run_job):6224 [wandb_run.py:_restore():2416] restore done
+2024-10-23 11:37:13,224 WARNING MsgRouterThr:6224 [router.py:message_loop():77] message_loop has been closed
+2024-10-23 11:37:13,369 INFO    Thread-11 (_run_job):6224 [wandb_run.py:_restore():2410] restore
+2024-10-23 11:37:13,369 INFO    Thread-11 (_run_job):6224 [wandb_run.py:_restore():2416] restore done
+2024-10-23 11:37:13,369 ERROR   Thread-11 (_run_job):6224 [wandb_run.py:_atexit_cleanup():2449] Problem finishing run
+Traceback (most recent call last):
+  File "C:\Users\31614\anaconda3\Lib\site-packages\jax\_src\core.py", line 824, in __getattr__
+    attr = getattr(self.aval, name)
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'ShapedArray' object has no attribute 'theta'
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\31614\Documents\AI_course_stuff\RLForaging Thesis\RLForagingAgents\RL-models\TD3\train_loops.py", line 103, in wandb_train_td3
+    next_obs, next_state, reward, done, _ = env.step(key_step, obs, actions[i], env_params)
+                                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\31614\anaconda3\Lib\site-packages\jax\_src\traceback_util.py", line 180, in reraise_with_filtered_traceback
+    return fun(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\31614\anaconda3\Lib\site-packages\jax\_src\pjit.py", line 356, in cache_miss
+    outs, out_flat, out_tree, args_flat, jaxpr, attrs_tracked = _python_pjit_helper(
+                                                                ^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\31614\anaconda3\Lib\site-packages\jax\_src\pjit.py", line 179, in _python_pjit_helper
+    p, args_flat = _infer_params(fun, jit_info, args, kwargs)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\31614\anaconda3\Lib\site-packages\jax\_src\pjit.py", line 773, in _infer_params
+    p, args_flat = _infer_params_impl(
+                   ^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\31614\anaconda3\Lib\site-packages\jax\_src\pjit.py", line 670, in _infer_params_impl
+    jaxpr, consts, out_avals, attrs_tracked = _create_pjit_jaxpr(
+                                              ^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\31614\anaconda3\Lib\site-packages\jax\_src\linear_util.py", line 352, in memoized_fun
+    ans = call(fun, *args)
+          ^^^^^^^^^^^^^^^^
+  File "C:\Users\31614\anaconda3\Lib\site-packages\jax\_src\pjit.py", line 1314, in _create_pjit_jaxpr
+    jaxpr, global_out_avals, consts, attrs_tracked = pe.trace_to_jaxpr_dynamic(
+                                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\31614\anaconda3\Lib\site-packages\jax\_src\profiler.py", line 333, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\31614\anaconda3\Lib\site-packages\jax\_src\interpreters\partial_eval.py", line 2278, in trace_to_jaxpr_dynamic
+    jaxpr, out_avals, consts, attrs_tracked = trace_to_subjaxpr_dynamic(
+                                              ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\31614\anaconda3\Lib\site-packages\jax\_src\interpreters\partial_eval.py", line 2301, in trace_to_subjaxpr_dynamic
+    ans = fun.call_wrapped(*in_tracers_)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\31614\anaconda3\Lib\site-packages\jax\_src\linear_util.py", line 193, in call_wrapped
+    ans = self.f(*args, **dict(self.params, **kwargs))
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\31614\anaconda3\Lib\site-packages\gymnax\environments\environment.py", line 45, in step
+    obs_st, state_st, reward, done, info = self.step_env(key, state, action, params)
+                                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\31614\anaconda3\Lib\site-packages\gymnax\environments\classic_control\pendulum.py", line 60, in step_env
+    angle_normalize(state.theta) ** 2
+                    ^^^^^^^^^^^
+  File "C:\Users\31614\anaconda3\Lib\site-packages\jax\_src\core.py", line 826, in __getattr__
+    raise AttributeError(
+AttributeError: DynamicJaxprTracer has no attribute theta
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\31614\anaconda3\Lib\site-packages\wandb\sdk\wandb_run.py", line 2440, in _atexit_cleanup
+    self._on_finish()
+  File "C:\Users\31614\anaconda3\Lib\site-packages\wandb\sdk\wandb_run.py", line 2682, in _on_finish
+    _ = exit_handle.wait(timeout=-1, on_progress=self._on_progress_exit)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\31614\anaconda3\Lib\site-packages\wandb\sdk\lib\mailbox.py", line 298, in wait
+    on_probe(probe_handle)
+  File "C:\Users\31614\anaconda3\Lib\site-packages\wandb\sdk\wandb_run.py", line 2654, in _on_probe_exit
+    handle = self._backend.interface.deliver_poll_exit()
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\31614\anaconda3\Lib\site-packages\wandb\sdk\interface\interface.py", line 948, in deliver_poll_exit
+    return self._deliver_poll_exit(poll_exit)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\31614\anaconda3\Lib\site-packages\wandb\sdk\interface\interface_shared.py", line 483, in _deliver_poll_exit
+    return self._deliver_record(record)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\31614\anaconda3\Lib\site-packages\wandb\sdk\interface\interface_shared.py", line 452, in _deliver_record
+    handle = mailbox._deliver_record(record, interface=self)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\31614\anaconda3\Lib\site-packages\wandb\sdk\lib\mailbox.py", line 455, in _deliver_record
+    interface._publish(record)
+  File "C:\Users\31614\anaconda3\Lib\site-packages\wandb\sdk\interface\interface_sock.py", line 51, in _publish
+    self._sock_client.send_record_publish(record)
+  File "C:\Users\31614\anaconda3\Lib\site-packages\wandb\sdk\lib\sock_client.py", line 225, in send_record_publish
+    self.send_server_request(server_req)
+  File "C:\Users\31614\anaconda3\Lib\site-packages\wandb\sdk\lib\sock_client.py", line 157, in send_server_request
+    self._send_message(msg)
+  File "C:\Users\31614\anaconda3\Lib\site-packages\wandb\sdk\lib\sock_client.py", line 154, in _send_message
+    self._sendall_with_error_handle(header + data)
+  File "C:\Users\31614\anaconda3\Lib\site-packages\wandb\sdk\lib\sock_client.py", line 132, in _sendall_with_error_handle
+    sent = self._sock.send(data)
+           ^^^^^^^^^^^^^^^^^^^^^
+ConnectionResetError: [WinError 10054] An existing connection was forcibly closed by the remote host

@@ -1,0 +1,39 @@
+%%% graceful-sweep-1 tv3pqz6l %%%
+[ 0.85727507 -0.5148587   0.00817394]
+Traceback (most recent call last):
+  File "C:\Users\31614\Documents\AI_course_stuff\RLForaging Thesis\RLForagingAgents\RL-models\TD3\train_loops.py", line 130, in wandb_train_td3
+    ep_loss_Q1, ep_loss_Q2, ep_loss_actor = td3.train(config.batch_size)
+                                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\31614\Documents\AI_course_stuff\RLForaging Thesis\RLForagingAgents\RL-models\TD3\model.py", line 65, in train
+    self.rng, subkey = random.split(self.rng)
+                       ^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\31614\anaconda3\Lib\site-packages\jax\_src\random.py", line 292, in split
+    typed_key, wrapped = _check_prng_key("split", key)
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\31614\anaconda3\Lib\site-packages\jax\_src\random.py", line 79, in _check_prng_key
+    wrapped_key = prng.random_wrap(key, impl=default_prng_impl())
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\31614\anaconda3\Lib\site-packages\jax\_src\prng.py", line 692, in random_wrap
+    return random_wrap_p.bind(base_arr, impl=impl)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\31614\anaconda3\Lib\site-packages\jax\_src\core.py", line 438, in bind
+    return self.bind_with_trace(find_top_trace(args), args, params)
+                                ^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\31614\anaconda3\Lib\site-packages\jax\_src\core.py", line 1384, in find_top_trace
+    top_tracer._assert_live()
+  File "C:\Users\31614\anaconda3\Lib\site-packages\jax\_src\interpreters\partial_eval.py", line 1658, in _assert_live
+    raise core.escaped_tracer_error(self, None)
+jax.errors.UnexpectedTracerError: Encountered an unexpected tracer. A function transformed by JAX had a side effect, allowing for a reference to an intermediate value with type uint32[2] wrapped in a DynamicJaxprTracer to escape the scope of the transformation.
+JAX transformations require that functions explicitly return their outputs, and disallow saving intermediate values to global state.
+The function being traced when the value leaked was sample_action at C:\Users\31614\Documents\AI_course_stuff\RLForaging Thesis\RLForagingAgents\RL-models\TD3\model.py:48 traced for jit.
+------------------------------
+The leaked intermediate value was created on line C:\Users\31614\Documents\AI_course_stuff\RLForaging Thesis\RLForagingAgents\RL-models\TD3\model.py:51:8 (TD3.sample_action).
+------------------------------
+When the value was created, the final 5 stack frames (most recent last) excluding JAX-internal frames were:
+------------------------------
+C:\Users\31614\Documents\AI_course_stuff\RLForaging Thesis\RLForagingAgents\RL-models\TD3\train_loops.py:120:25 (wandb_train_td3)
+C:\Users\31614\Documents\AI_course_stuff\RLForaging Thesis\RLForagingAgents\RL-models\TD3\model.py:51:8 (TD3.sample_action)
+------------------------------
+
+To catch the leak earlier, try setting the environment variable JAX_CHECK_TRACER_LEAKS or using the `jax.checking_leaks` context manager.
+See https://jax.readthedocs.io/en/latest/errors.html#jax.errors.UnexpectedTracerError

@@ -1,0 +1,18 @@
+{"time":"2024-10-17T20:58:17.751724+02:00","level":"INFO","msg":"using version","core version":"0.18.3"}
+{"time":"2024-10-17T20:58:17.751724+02:00","level":"INFO","msg":"created symlink","path":"C:\\Users\\31614\\Documents\\AI_course_stuff\\RLForaging Thesis\\RLForagingAgents\\RL-models\\TD3\\wandb\\run-20241017_205817-m2nmjvcw\\logs\\debug-core.log"}
+{"time":"2024-10-17T20:58:17.7663675+02:00","level":"ERROR","msg":"dialing: google: could not find default credentials. See https://cloud.google.com/docs/authentication/external/set-up-adc for more information"}
+{"time":"2024-10-17T20:58:17.7739885+02:00","level":"INFO","msg":"created new stream","id":"m2nmjvcw"}
+{"time":"2024-10-17T20:58:17.7745128+02:00","level":"INFO","msg":"stream: started","id":"m2nmjvcw"}
+{"time":"2024-10-17T20:58:17.7745128+02:00","level":"INFO","msg":"writer: Do: started","stream_id":{"value":"m2nmjvcw"}}
+{"time":"2024-10-17T20:58:17.7745128+02:00","level":"INFO","msg":"handler: started","stream_id":{"value":"m2nmjvcw"}}
+{"time":"2024-10-17T20:58:17.7745128+02:00","level":"INFO","msg":"sender: started","stream_id":{"value":"m2nmjvcw"}}
+{"time":"2024-10-17T20:58:18.1166461+02:00","level":"INFO","msg":"wandb-core","!BADKEY":null}
+{"time":"2024-10-17T20:58:18.1181823+02:00","level":"INFO","msg":"Starting system monitor"}
+{"time":"2024-10-17T21:09:49.4912454+02:00","level":"INFO","msg":"Stopping system monitor"}
+{"time":"2024-10-17T21:09:49.4912454+02:00","level":"INFO","msg":"Stopped system monitor"}
+{"time":"2024-10-17T21:09:50.3669639+02:00","level":"INFO","msg":"fileTransfer: Close: file transfer manager closed"}
+{"time":"2024-10-17T21:09:51.6358168+02:00","level":"INFO","msg":"stream: closing","id":"m2nmjvcw"}
+{"time":"2024-10-17T21:09:51.6358168+02:00","level":"INFO","msg":"handler: closed","stream_id":{"value":"m2nmjvcw"}}
+{"time":"2024-10-17T21:09:51.6358168+02:00","level":"INFO","msg":"writer: Close: closed","stream_id":{"value":"m2nmjvcw"}}
+{"time":"2024-10-17T21:09:51.6358168+02:00","level":"INFO","msg":"sender: closed","stream_id":{"value":"m2nmjvcw"}}
+{"time":"2024-10-17T21:09:51.6358168+02:00","level":"INFO","msg":"stream: closed","id":"m2nmjvcw"}

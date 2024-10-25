@@ -1,0 +1,35 @@
+%%% blooming-sweep-2 hav1g9sg %%%
+[ 0.85727507 -0.5148587   0.00817394]
+Traceback (most recent call last):
+  File "C:\Users\31614\anaconda3\Lib\site-packages\jax\_src\pjit.py", line 640, in _infer_params_impl
+    avals.append(shaped_abstractify(a))
+                 ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\31614\anaconda3\Lib\site-packages\jax\_src\api_util.py", line 604, in shaped_abstractify
+    return handler(x) if handler is not None else _shaped_abstractify_slow(x)
+                                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\31614\anaconda3\Lib\site-packages\jax\_src\api_util.py", line 596, in _shaped_abstractify_slow
+    raise TypeError(
+TypeError: Cannot interpret value of type <class 'model.TD3'> as an abstract array; it does not have a dtype attribute
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\31614\Documents\AI_course_stuff\RLForaging Thesis\RLForagingAgents\RL-models\TD3\train_loops.py", line 120, in wandb_train_td3
+    action = td3.sample_action(obs)
+             ^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\31614\anaconda3\Lib\site-packages\jax\_src\traceback_util.py", line 180, in reraise_with_filtered_traceback
+    return fun(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\31614\anaconda3\Lib\site-packages\jax\_src\pjit.py", line 356, in cache_miss
+    outs, out_flat, out_tree, args_flat, jaxpr, attrs_tracked = _python_pjit_helper(
+                                                                ^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\31614\anaconda3\Lib\site-packages\jax\_src\pjit.py", line 179, in _python_pjit_helper
+    p, args_flat = _infer_params(fun, jit_info, args, kwargs)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\31614\anaconda3\Lib\site-packages\jax\_src\pjit.py", line 766, in _infer_params
+    p, args_flat = _infer_params_impl(fun, ji, pjit_mesh, resource_env, args,
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\31614\anaconda3\Lib\site-packages\jax\_src\pjit.py", line 651, in _infer_params_impl
+    raise TypeError(
+TypeError: Error interpreting argument to <function TD3.sample_action at 0x00000279FAEE4FE0> as an abstract array. The problematic value is of type <class 'model.TD3'> and was passed to the function at path self.
+This typically means that a jit-wrapped function was called with a non-array argument, and this argument was not marked as static using the static_argnums or static_argnames parameters of jax.jit.

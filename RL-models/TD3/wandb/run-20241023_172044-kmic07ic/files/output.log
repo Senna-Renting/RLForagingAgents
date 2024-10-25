@@ -1,0 +1,37 @@
+%%% atomic-sweep-1 70g2iem7 %%%
+[ 0.85727507 -0.5148587   0.00817394]
+Traceback (most recent call last):
+  File "C:\Users\31614\Documents\AI_course_stuff\RLForaging Thesis\RLForagingAgents\RL-models\TD3\train_loops.py", line 131, in wandb_train_td3
+    avg_loss_actor = jax.lax.cond(ep_loss_actor is not None, lambda avg, ep: avg+ep.item(), lambda avg, ep: avg, avg_loss_actor, ep_loss_actor)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\31614\anaconda3\Lib\site-packages\jax\_src\traceback_util.py", line 180, in reraise_with_filtered_traceback
+    return fun(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\31614\anaconda3\Lib\site-packages\jax\_src\lax\control_flow\conditionals.py", line 297, in cond
+    return _cond(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\31614\anaconda3\Lib\site-packages\jax\_src\lax\control_flow\conditionals.py", line 237, in _cond
+    jaxprs, consts, out_trees = _initial_style_jaxprs_with_common_consts(
+                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\31614\anaconda3\Lib\site-packages\jax\_src\lax\control_flow\common.py", line 88, in _initial_style_jaxprs_with_common_consts
+    jaxpr_data = [_initial_style_open_jaxpr(fn, in_tree, in_avals, primitive_name)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\31614\anaconda3\Lib\site-packages\jax\_src\lax\control_flow\common.py", line 60, in _initial_style_open_jaxpr
+    jaxpr, _, consts, attrs_tracked = pe.trace_to_jaxpr_dynamic(
+                                      ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\31614\anaconda3\Lib\site-packages\jax\_src\profiler.py", line 333, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\31614\anaconda3\Lib\site-packages\jax\_src\interpreters\partial_eval.py", line 2278, in trace_to_jaxpr_dynamic
+    jaxpr, out_avals, consts, attrs_tracked = trace_to_subjaxpr_dynamic(
+                                              ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\31614\anaconda3\Lib\site-packages\jax\_src\interpreters\partial_eval.py", line 2301, in trace_to_subjaxpr_dynamic
+    ans = fun.call_wrapped(*in_tracers_)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\31614\anaconda3\Lib\site-packages\jax\_src\linear_util.py", line 193, in call_wrapped
+    ans = self.f(*args, **dict(self.params, **kwargs))
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\31614\Documents\AI_course_stuff\RLForaging Thesis\RLForagingAgents\RL-models\TD3\train_loops.py", line 131, in <lambda>
+    avg_loss_actor = jax.lax.cond(ep_loss_actor is not None, lambda avg, ep: avg+ep.item(), lambda avg, ep: avg, avg_loss_actor, ep_loss_actor)
+                                                                                 ^^^^^^^
+AttributeError: 'NoneType' object has no attribute 'item'

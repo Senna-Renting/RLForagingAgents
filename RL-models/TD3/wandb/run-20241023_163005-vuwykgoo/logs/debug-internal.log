@@ -1,0 +1,18 @@
+{"time":"2024-10-23T16:30:05.4534022+02:00","level":"INFO","msg":"using version","core version":"0.18.3"}
+{"time":"2024-10-23T16:30:05.4539177+02:00","level":"INFO","msg":"created symlink","path":"C:\\Users\\31614\\Documents\\AI_course_stuff\\RLForaging Thesis\\RLForagingAgents\\RL-models\\TD3\\wandb\\run-20241023_163005-vuwykgoo\\logs\\debug-core.log"}
+{"time":"2024-10-23T16:30:05.468914+02:00","level":"ERROR","msg":"dialing: google: could not find default credentials. See https://cloud.google.com/docs/authentication/external/set-up-adc for more information"}
+{"time":"2024-10-23T16:30:05.4804626+02:00","level":"INFO","msg":"created new stream","id":"vuwykgoo"}
+{"time":"2024-10-23T16:30:05.4821702+02:00","level":"INFO","msg":"stream: started","id":"vuwykgoo"}
+{"time":"2024-10-23T16:30:05.4821702+02:00","level":"INFO","msg":"handler: started","stream_id":{"value":"vuwykgoo"}}
+{"time":"2024-10-23T16:30:05.4821702+02:00","level":"INFO","msg":"sender: started","stream_id":{"value":"vuwykgoo"}}
+{"time":"2024-10-23T16:30:05.4821702+02:00","level":"INFO","msg":"writer: Do: started","stream_id":{"value":"vuwykgoo"}}
+{"time":"2024-10-23T16:30:05.7800322+02:00","level":"INFO","msg":"wandb-core","!BADKEY":null}
+{"time":"2024-10-23T16:30:05.7827555+02:00","level":"INFO","msg":"Starting system monitor"}
+{"time":"2024-10-23T16:30:07.4325645+02:00","level":"INFO","msg":"Stopping system monitor"}
+{"time":"2024-10-23T16:30:07.4325645+02:00","level":"INFO","msg":"Stopped system monitor"}
+{"time":"2024-10-23T16:30:08.4153253+02:00","level":"INFO","msg":"fileTransfer: Close: file transfer manager closed"}
+{"time":"2024-10-23T16:30:09.6357137+02:00","level":"INFO","msg":"stream: closing","id":"vuwykgoo"}
+{"time":"2024-10-23T16:30:09.6357137+02:00","level":"INFO","msg":"handler: closed","stream_id":{"value":"vuwykgoo"}}
+{"time":"2024-10-23T16:30:09.6357137+02:00","level":"INFO","msg":"writer: Close: closed","stream_id":{"value":"vuwykgoo"}}
+{"time":"2024-10-23T16:30:09.6357137+02:00","level":"INFO","msg":"sender: closed","stream_id":{"value":"vuwykgoo"}}
+{"time":"2024-10-23T16:30:09.6357137+02:00","level":"INFO","msg":"stream: closed","id":"vuwykgoo"}
