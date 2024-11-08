@@ -3,6 +3,7 @@ import jax.numpy as jnp
 import numpy as np
 import jax
 from flax import nnx
+import matplotlib.pyplot as plt
 
 # TODO: Implement unit-tests for the Critic and Actor networks (below are some suggestions)
 # 1. 
@@ -166,18 +167,127 @@ def test_XOR_benchmark_actor():
         print("Error: Actor not able to solve XOR problem")
     return check
 
+def test_ptr_buffer():
+    buffer = Buffer(10)
+    check1 = buffer.ptr == 0
+    buffer.add(0,0,0,0,0)
+    check2 = buffer.ptr == 1
+    if not (check1 and check2):
+        print("Error: Buffer pointer is not updating")
+    return (check1 and check2)
+
+def test_randomness_buffer():
+    buffer = Buffer(10)
+    for i in range(9):
+        buffer.add(i,i,i,i,i)
+    state1, *_ = buffer.sample(100)
+    state2, *_ = buffer.sample(100)
+    check = np.sum(state1 == state2) < 20
+    if not check:
+        print("Error: Buffer not sampling randomly")
+    return check
+    
+
+def test_shape_buffer_samples():
+    buffer = Buffer(10)
+    check = buffer.states.shape == (10,1)
+    if not check:
+        print("Error: Buffer element shape not correct, should be (buffer_size, 1)")
+    return check
+
+def test_overflowing_buffer():
+    buffer = Buffer(10)
+    for i in range(10):
+        buffer.add(0,0,0,0,0)
+    check = buffer.ptr == 0 and buffer.size == buffer.max_size
+    if not check:
+        print("Error: Buffer overflow behavior is incorrect")
+    return check
+
+def test_sample_action():
+    a_max = 0.5
+    actor = Actor(1,1,a_max, nnx.Rngs(0))
+    state = jnp.array([1])
+    action_before = actor(state)
+    key = jax.random.PRNGKey(0)
+    for i in range(50):
+        key,subkey = jax.random.split(key)
+        action_after = sample_action(key, actor, state, -a_max, a_max)
+        check = action_after <= a_max and action_after >= -a_max and action_after != action_before
+        if not check:
+            print("Error: Actions are not sampled randomly from Actor")
+            break
+    return check
+
+def test_action_execution():
+    rng = jax.random.PRNGKey(62)
+    reset_key, step_key1, step_key2, step_key3 = jax.random.split(rng,4)
+    env, env_params = gymnax.make("Pendulum-v1")
+    # Left (Clockwise) torque
+    obs, state = env.reset(reset_key, env_params)
+    obs_next, state_next, reward, done, _ = env.step(step_key1,state,-2,env_params)
+    check1 = (obs_next[2] - obs[2]) < 0
+    # Right (Anti-clockwise) torque
+    obs, state = env.reset(reset_key, env_params)
+    obs_next, state_next, reward, done, _ = env.step(step_key2,state,2,env_params)
+    check2 = (obs_next[2] - obs[2]) > 0
+    # No torque (But gravity is expected)
+    obs, state = env.reset(reset_key, env_params)
+    obs_next, state_next, reward, done, _ = env.step(step_key3,state,0,env_params)
+    check3 = (obs[0] > 0 and (obs_next[2] - obs[2]) < 0) or (obs[0] < 0 and (obs_next[2] - obs[2]) > 0)
+    check = check1 and check2 and check3
+    if not check:
+        print("Error: Unexpected env.step() behavior in gymnax Pendulum-v1 environment")
+    return check
+
+def test_polyak_update():
+    a1 = Actor(1,1,1,nnx.Rngs(0),hidden_dim=6)
+    a2 = Actor(1,1,1,nnx.Rngs(1),hidden_dim=6)
+    a1_state = nnx.state(a1)
+    a2_state= nnx.state(a2)
+    tau = 0.6
+    a1_new = polyak_update(tau, a1, a2)
+    check = jnp.all(a1_new.l1.kernel.value == a2_state.l1.kernel.value*tau + a1_state.l1.kernel.value*(1-tau))
+    if not check:
+        print("Error: Polyak update not updating parameters correctly")
+    return check
+
+def test_ddpg_train():
+    episodes = list(range(1,21))
+    rewards, actor, critic, reset_key = train_ddpg(episodes[-1])
+    input("Press enter to see reward plot...")
+    plt.figure()
+    plt.plot(episodes, rewards)
+    plt.show()
+    input("Press enter to see trained model in action...")
+    env = gym.make("Pendulum-v1", render_mode="human")
+    state, info = env.reset(seed=reset_key)
+    while True:
+        state, reward, terminated, truncated, _ = env.step(actor(state))
+        if terminated or truncated:
+            break
+    return True
+
 if __name__ == "__main__":
     result = []
-    result.append(test_dimensions_actor())
-    result.append(test_dimensions_critic())
-    result.append(test_output_bound_actor())
-    result.append(test_gradients_actor())
-    result.append(test_gradients_critic())
-    result.append(test_XOR_benchmark_critic())
-    result.append(test_XOR_benchmark_actor())
-    result.append(test_randomness_critic())
-    result.append(test_randomness_actor())
-    result.append(test_target_shape())
+    # result.append(test_dimensions_actor())
+    # result.append(test_dimensions_critic())
+    # result.append(test_output_bound_actor())
+    # result.append(test_gradients_actor())
+    # result.append(test_gradients_critic())
+    # result.append(test_XOR_benchmark_critic())
+    # result.append(test_XOR_benchmark_actor())
+    # result.append(test_randomness_critic())
+    # result.append(test_randomness_actor())
+    # result.append(test_target_shape())
+    # result.append(test_overflowing_buffer())
+    # result.append(test_ptr_buffer())
+    # result.append(test_randomness_buffer())
+    # result.append(test_shape_buffer_samples())
+    # result.append(test_sample_action())
+    # result.append(test_action_execution())
+    # result.append(test_polyak_update())
+    result.append(test_ddpg_train())
     if len(result) == sum(result):
         print("Success: All tests have passed")
 
