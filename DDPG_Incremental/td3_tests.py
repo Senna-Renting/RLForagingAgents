@@ -168,7 +168,7 @@ def test_XOR_benchmark_actor():
     return check
 
 def test_ptr_buffer():
-    buffer = Buffer(10)
+    buffer = Buffer(10, 1, 1)
     check1 = buffer.ptr == 0
     buffer.add(0,0,0,0,0)
     check2 = buffer.ptr == 1
@@ -177,7 +177,7 @@ def test_ptr_buffer():
     return (check1 and check2)
 
 def test_randomness_buffer():
-    buffer = Buffer(10)
+    buffer = Buffer(10, 1, 1)
     for i in range(9):
         buffer.add(i,i,i,i,i)
     state1, *_ = buffer.sample(100)
@@ -189,14 +189,14 @@ def test_randomness_buffer():
     
 
 def test_shape_buffer_samples():
-    buffer = Buffer(10)
+    buffer = Buffer(10, 1, 1)
     check = buffer.states.shape == (10,1)
     if not check:
         print("Error: Buffer element shape not correct, should be (buffer_size, 1)")
     return check
 
 def test_overflowing_buffer():
-    buffer = Buffer(10)
+    buffer = Buffer(10, 1, 1)
     for i in range(10):
         buffer.add(0,0,0,0,0)
     check = buffer.ptr == 0 and buffer.size == buffer.max_size
@@ -247,7 +247,9 @@ def test_polyak_update():
     a2_state= nnx.state(a2)
     tau = 0.6
     a1_new = polyak_update(tau, a1, a2)
-    check = jnp.all(a1_new.l1.kernel.value == a2_state.l1.kernel.value*tau + a1_state.l1.kernel.value*(1-tau))
+    a1_manual = a2_state.l1.kernel.value*tau + a1_state.l1.kernel.value*(1-tau)
+    filter = a1_new.l1.kernel.value - a1_manual < 0.0000001 # Apparently JAX sometimes has very little numerical instabilities
+    check = jnp.all(filter)
     if not check:
         print("Error: Polyak update not updating parameters correctly")
     return check
@@ -270,23 +272,23 @@ def test_ddpg_train():
 
 if __name__ == "__main__":
     result = []
-    # result.append(test_dimensions_actor())
-    # result.append(test_dimensions_critic())
-    # result.append(test_output_bound_actor())
-    # result.append(test_gradients_actor())
-    # result.append(test_gradients_critic())
-    # result.append(test_XOR_benchmark_critic())
-    # result.append(test_XOR_benchmark_actor())
-    # result.append(test_randomness_critic())
-    # result.append(test_randomness_actor())
-    # result.append(test_target_shape())
-    # result.append(test_overflowing_buffer())
-    # result.append(test_ptr_buffer())
-    # result.append(test_randomness_buffer())
-    # result.append(test_shape_buffer_samples())
-    # result.append(test_sample_action())
-    # result.append(test_action_execution())
-    # result.append(test_polyak_update())
+    result.append(test_dimensions_actor())
+    result.append(test_dimensions_critic())
+    result.append(test_output_bound_actor())
+    result.append(test_gradients_actor())
+    result.append(test_gradients_critic())
+    result.append(test_XOR_benchmark_critic())
+    result.append(test_XOR_benchmark_actor())
+    result.append(test_randomness_critic())
+    result.append(test_randomness_actor())
+    result.append(test_target_shape())
+    result.append(test_overflowing_buffer())
+    result.append(test_ptr_buffer())
+    result.append(test_randomness_buffer())
+    result.append(test_shape_buffer_samples())
+    result.append(test_sample_action())
+    result.append(test_action_execution())
+    result.append(test_polyak_update())
     result.append(test_ddpg_train())
     if len(result) == sum(result):
         print("Success: All tests have passed")
