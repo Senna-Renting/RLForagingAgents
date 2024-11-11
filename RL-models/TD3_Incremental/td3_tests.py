@@ -253,7 +253,7 @@ def test_polyak_update():
     return check
 
 def test_ddpg_train():
-    episodes = list(range(1,21))
+    episodes = list(range(1,16))
     rewards, actor, critic, reset_key = train_ddpg(episodes[-1])
     input("Press enter to see reward plot...")
     plt.figure()

@@ -1,6 +1,7 @@
 from flax import nnx
 import jax.numpy as jnp
 import jax
+from functools import partial
 import gymnax
 import gymnasium as gym
 import numpy as np
@@ -16,12 +17,14 @@ class Critic(nnx.Module):
         x = jnp.concatenate([state, action], axis=-1)
         return self.l3(nnx.relu(self.l2(nnx.relu(self.l1(x)))))
 
+@nnx.jit
 def MSE_optimize_critic(optimizer: nnx.Optimizer, critic: nnx.Module, states: jnp.array, actions: jnp.array, ys: jnp.array):
     loss_fn = lambda critic: ((critic(states, actions) - ys) ** 2).mean()
     loss, grads = nnx.value_and_grad(loss_fn)(critic)
     optimizer.update(grads)
     return loss, grads
 
+@nnx.jit
 def compute_targets(critic: nnx.Module, actor: nnx.Module, rs: jnp.array, states: jnp.array, done: jnp.array, gamma: float):
     return rs + gamma*(1-done)*(critic(states, actor(states)))
 
@@ -36,6 +39,7 @@ class Actor(nnx.Module):
         x = self.l3(nnx.relu(self.l2(nnx.relu(self.l1(state)))))
         return self.a_max * nnx.tanh(x)
 
+@nnx.jit
 def mean_optimize_actor(optimizer: nnx.Optimizer, actor: nnx.Module, critic: nnx.Module, states: jnp.array):
     loss_fn = lambda actor: -1*critic(states, actor(states)).mean()
     loss, grads = nnx.value_and_grad(loss_fn)(actor)
@@ -47,6 +51,7 @@ def sample_action(rng, actor, state, action_min, action_max):
     eps = jax.random.normal(rng, (1,))
     return jnp.clip(mu_action + eps, action_min, action_max)
 
+@nnx.jit
 def polyak_update(tau: float, net_target: nnx.Module, net_normal: nnx.Module):
     params_t = nnx.state(net_target)
     params_n = nnx.state(net_normal)
@@ -89,16 +94,16 @@ class Buffer:
         ) 
 
 ## Train loop of DDPG algorithm
-def train_ddpg(num_episodes, tau=0.05, gamma=0.99, batch_size=64, buffer_size=10000, lr=3e-4, seed=0):
+def train_ddpg(num_episodes, tau=0.05, gamma=0.99, batch_size=256, buffer_size=10000, lr=1e-3, seed=0):
     # Initialize neural networks
     action_max = 2
     state_dim = 3
     action_dim = 1
     reset_key = 43
-    actor = Actor(state_dim,action_dim,action_max,nnx.Rngs(0),hidden_dim=12)
-    actor_t = Actor(state_dim,action_dim,action_max,nnx.Rngs(0),hidden_dim=12)
-    critic = Critic(state_dim + action_dim, nnx.Rngs(1),hidden_dim=12)
-    critic_t = Critic(state_dim + action_dim, nnx.Rngs(1),hidden_dim=12)
+    actor = Actor(state_dim,action_dim,action_max,nnx.Rngs(0),hidden_dim=32)
+    actor_t = Actor(state_dim,action_dim,action_max,nnx.Rngs(0),hidden_dim=32)
+    critic = Critic(state_dim + action_dim, nnx.Rngs(1),hidden_dim=32)
+    critic_t = Critic(state_dim + action_dim, nnx.Rngs(1),hidden_dim=32)
     optim_actor = nnx.Optimizer(actor, optax.adam(lr))
     optim_critic = nnx.Optimizer(critic, optax.adam(lr))
     # Add buffer
