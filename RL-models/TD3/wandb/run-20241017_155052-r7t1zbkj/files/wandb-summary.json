@@ -1,1 +1,0 @@
-{"_timestamp":1.7291737175903537e+09,"_step":49,"Qnet1 average loss":0.0015596589418419172,"_runtime":665.1808341,"_wandb":{"runtime":665},"Qnet2 average loss":0.0013970775387133472,"Actor average loss":3.0595492720603943,"Average return":-5.7288183776766495,"Epoch":50}

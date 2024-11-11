@@ -1,8 +1,0 @@
-{"time":"2024-10-23T10:39:57.1258196+02:00","level":"INFO","msg":"using version","core version":"0.18.3"}
-{"time":"2024-10-23T10:39:57.1258196+02:00","level":"INFO","msg":"created symlink","path":"C:\\Users\\31614\\Documents\\AI_course_stuff\\RLForaging Thesis\\RLForagingAgents\\RL-models\\TD3\\wandb\\run-20241023_103957-29rfdqv1\\logs\\debug-core.log"}
-{"time":"2024-10-23T10:39:57.1380128+02:00","level":"ERROR","msg":"dialing: google: could not find default credentials. See https://cloud.google.com/docs/authentication/external/set-up-adc for more information"}
-{"time":"2024-10-23T10:39:57.146512+02:00","level":"INFO","msg":"created new stream","id":"29rfdqv1"}
-{"time":"2024-10-23T10:39:57.146512+02:00","level":"INFO","msg":"stream: started","id":"29rfdqv1"}
-{"time":"2024-10-23T10:39:57.146512+02:00","level":"INFO","msg":"writer: Do: started","stream_id":{"value":"29rfdqv1"}}
-{"time":"2024-10-23T10:39:57.146512+02:00","level":"INFO","msg":"handler: started","stream_id":{"value":"29rfdqv1"}}
-{"time":"2024-10-23T10:39:57.146512+02:00","level":"INFO","msg":"sender: started","stream_id":{"value":"29rfdqv1"}}

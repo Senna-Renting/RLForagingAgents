@@ -1,6 +1,0 @@
-%%% chocolate-sweep-2 9p3ghbjs %%%
-Traceback (most recent call last):
-  File "C:\Users\31614\Documents\AI_course_stuff\RLForaging Thesis\RLForagingAgents\RL-models\TD3\train_loops.py", line 98, in wandb_train_td3
-    next_state, reward, terminated, truncated, info = env.step(action)
-                                                               ^^^^^^
-UnboundLocalError: cannot access local variable 'action' where it is not associated with a value

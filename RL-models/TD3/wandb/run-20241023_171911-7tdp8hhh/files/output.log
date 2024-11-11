@@ -1,7 +1,0 @@
-%%% dark-sweep-1 awrk4qvl %%%
-[ 0.85727507 -0.5148587   0.00817394]
-Traceback (most recent call last):
-  File "C:\Users\31614\Documents\AI_course_stuff\RLForaging Thesis\RLForagingAgents\RL-models\TD3\train_loops.py", line 131, in wandb_train_td3
-    avg_loss_actor = jax.lax.cond(ep_loss_actor is not None, lambda avg, ep: avg+ep, lambda avg, ep: avg, avg_loss_actor, ep_loss_actor.item())
-                                                                                                                          ^^^^^^^^^^^^^^^^^^
-AttributeError: 'NoneType' object has no attribute 'item'

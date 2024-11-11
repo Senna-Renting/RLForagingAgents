@@ -1,6 +1,0 @@
-%%% curious-sweep-1 nvyixc5g %%%
-Traceback (most recent call last):
-  File "C:\Users\31614\Documents\AI_course_stuff\RLForaging Thesis\RLForagingAgents\RL-models\TD3\train_loops.py", line 87, in wandb_train_td3
-    state_dim = env.observation_space.shape[0]
-                ^^^^^^^^^^^^^^^^^^^^^^^^^^^
-AttributeError: 'function' object has no attribute 'shape'

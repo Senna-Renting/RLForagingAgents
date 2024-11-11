@@ -1,8 +1,0 @@
-%%% sparkling-sweep-1 7clo2s9v %%%
-[ 0.85727507 -0.5148587   0.00817394]
-Traceback (most recent call last):
-  File "C:\Users\31614\Documents\AI_course_stuff\RLForaging Thesis\RLForagingAgents\RL-models\TD3\train_loops.py", line 121, in wandb_train_td3
-    action = td3.sample_action(key_action, obs)
-             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-ValueError: Non-hashable static arguments are not supported. An error occurred while trying to hash an object of type <class 'jaxlib.xla_extension.ArrayImpl'>, [3619118048 2124972072]. The error was:
-TypeError: unhashable type: 'jaxlib.xla_extension.ArrayImpl'

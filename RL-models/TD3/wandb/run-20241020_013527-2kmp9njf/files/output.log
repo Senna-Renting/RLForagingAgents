@@ -1,6 +1,0 @@
-%%% tough-sweep-1 q40e2gi5 %%%
-Traceback (most recent call last):
-  File "C:\Users\31614\Documents\AI_course_stuff\RLForaging Thesis\RLForagingAgents\RL-models\TD3\train_loops.py", line 123, in wandb_train_td3
-    best_policy = td3.get_policy()
-                  ^^^^^^^^^^^^^^
-AttributeError: 'TD3' object has no attribute 'get_policy'

@@ -1,8 +1,0 @@
-%%% dark-sweep-1 wuzauis6 %%%
-Traceback (most recent call last):
-  File "C:\Users\31614\Documents\AI_course_stuff\RLForaging Thesis\RLForagingAgents\RL-models\TD3\train_loops.py", line 103, in wandb_train_td3
-    td3.buffer.add(state, actions[i], next_state, reward, int(done))
-  File "C:\Users\31614\Documents\AI_course_stuff\RLForaging Thesis\RLForagingAgents\RL-models\TD3\buffer.py", line 26, in add
-    self.state[self.ptr] = flat_state
-    ~~~~~~~~~~^^^^^^^^^^
-ValueError: could not broadcast input array from shape (4,) into shape (3,)

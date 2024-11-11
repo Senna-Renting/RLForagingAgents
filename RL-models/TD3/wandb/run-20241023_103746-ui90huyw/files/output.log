@@ -1,6 +1,0 @@
-%%% lyric-sweep-2 dayu773b %%%
-Traceback (most recent call last):
-  File "C:\Users\31614\Documents\AI_course_stuff\RLForaging Thesis\RLForagingAgents\RL-models\TD3\train_loops.py", line 89, in wandb_train_td3
-    action_max = env.action_space(env_params).high[0] # Might need to refine this to generalize better
-                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^
-TypeError: 'float' object is not subscriptable
