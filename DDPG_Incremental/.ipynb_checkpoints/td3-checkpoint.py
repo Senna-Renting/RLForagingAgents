@@ -9,7 +9,7 @@ import optax
 
 ## Critic network and it's complementary functions
 class Critic(nnx.Module):
-    def __init__(self, in_dim, rngs: nnx.Rngs, hidden_dim=256):
+    def __init__(self, in_dim, rngs: nnx.Rngs, hidden_dim=32):
         self.l1 = nnx.Linear(in_dim, hidden_dim, rngs=rngs)
         self.l2 = nnx.Linear(hidden_dim, hidden_dim, rngs=rngs)
         self.l3 = nnx.Linear(hidden_dim, 1, rngs=rngs)
@@ -30,7 +30,7 @@ def compute_targets(critic: nnx.Module, actor: nnx.Module, rs: jnp.array, states
 
 ## Actor network and it's complementary functions
 class Actor(nnx.Module):
-    def __init__(self, in_dim, out_dim, action_max, rngs: nnx.Rngs, hidden_dim=256):
+    def __init__(self, in_dim, out_dim, action_max, rngs: nnx.Rngs, hidden_dim=32):
         self.a_max = action_max
         self.l1 = nnx.Linear(in_dim, hidden_dim, rngs=rngs)
         self.l2 = nnx.Linear(hidden_dim, hidden_dim, rngs=rngs)
@@ -94,7 +94,7 @@ class Buffer:
         ) 
 
 ## Train loop of DDPG algorithm
-def train_ddpg(num_episodes, tau=0.05, gamma=0.99, batch_size=256, buffer_size=10000, lr=1e-3, seed=0):
+def train_ddpg(num_episodes, tau=0.05, gamma=0.99, batch_size=64, buffer_size=10000, lr=1e-3, seed=0):
     # Initialize neural networks
     action_max = 2
     state_dim = 3
