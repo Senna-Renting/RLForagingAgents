@@ -1,7 +1,6 @@
 from flax import nnx
 import jax.numpy as jnp
 import jax
-from functools import partial
 import gymnax
 import gymnasium as gym
 import numpy as np
@@ -94,12 +93,8 @@ class Buffer:
         ) 
 
 ## Train loop of DDPG algorithm
-def train_ddpg(num_episodes, tau=0.05, gamma=0.99, batch_size=64, buffer_size=10000, lr=1e-3, seed=0):
+def train_ddpg(env, num_episodes, tau=0.05, gamma=0.99, batch_size=64, buffer_size=10000, lr=1e-3, seed=0, reset_seed=43, action_dim=1, state_dim=3, action_max=2):
     # Initialize neural networks
-    action_max = 2
-    state_dim = 3
-    action_dim = 1
-    reset_key = 43
     actor = Actor(state_dim,action_dim,action_max,nnx.Rngs(0),hidden_dim=32)
     actor_t = Actor(state_dim,action_dim,action_max,nnx.Rngs(0),hidden_dim=32)
     critic = Critic(state_dim + action_dim, nnx.Rngs(1),hidden_dim=32)
@@ -110,17 +105,17 @@ def train_ddpg(num_episodes, tau=0.05, gamma=0.99, batch_size=64, buffer_size=10
     buffer = Buffer(buffer_size, state_dim, action_dim)
     # Initialize environment
     key = jax.random.PRNGKey(40)
-    env = gym.make("Pendulum-v1")
     # Keep track of accumulated rewards
     returns = np.zeros(num_episodes)
     for i in range(num_episodes):
         done = False
-        state, info = env.reset(seed=reset_key)
+        state, info = env.reset(seed=reset_seed)
         while not done:
             # Sample action, execute it, and add to buffer
             action_key, key = jax.random.split(key)
             action = sample_action(action_key, actor, state, -action_max, action_max)
             next_state, reward, terminated, truncated, _ = env.step(action)
+            #print(next_state)
             returns[i] += reward
             done = truncated or terminated
             buffer.add(state, action, reward, next_state, terminated)
@@ -137,5 +132,5 @@ def train_ddpg(num_episodes, tau=0.05, gamma=0.99, batch_size=64, buffer_size=10
             nnx.update(actor_t, polyak_update(tau, actor_t, actor))
         print(f"Episode {i} done")
         print(f"Accumulated rewards: {returns[i]}")
-    return returns, actor_t, critic_t, reset_key
+    return returns, actor_t, critic_t, reset_seed
             

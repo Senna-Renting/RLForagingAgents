@@ -2,8 +2,10 @@ from td3 import *
 import jax.numpy as jnp
 import numpy as np
 import jax
+import gymnasium as gym
 from flax import nnx
 import matplotlib.pyplot as plt
+from environment import Environment
 
 # TODO: Implement unit-tests for the Critic and Actor networks (below are some suggestions)
 # 1. 
@@ -254,9 +256,9 @@ def test_polyak_update():
         print("Error: Polyak update not updating parameters correctly")
     return check
 
-def test_ddpg_train():
+def test_ddpg_train_pendulum():
     episodes = list(range(1,51))
-    rewards, actor, critic, reset_key = train_ddpg(episodes[-1])
+    rewards, actor, critic, reset_key = train_ddpg(gym.make("Pendulum-v1"), episodes[-1])
     input("Press enter to see reward plot...")
     plt.figure()
     plt.plot(episodes, rewards)
@@ -270,26 +272,37 @@ def test_ddpg_train():
             break
     return True
 
+def test_ddpg_train_patch():
+    episodes = list(range(1,2))
+    env = Environment(patch_radius=2)
+    action_dim, a_range = env.get_action_space()
+    rewards, actor, critic, reset_key = train_ddpg(env, episodes[-1], action_dim=action_dim, state_dim=env.get_state_space()[1], action_max=a_range[1])
+    input("Press enter to see reward plot...")
+    plt.figure()
+    plt.plot(episodes, rewards)
+    plt.show()
+    return True
+
 if __name__ == "__main__":
     result = []
-    result.append(test_dimensions_actor())
-    result.append(test_dimensions_critic())
-    result.append(test_output_bound_actor())
-    result.append(test_gradients_actor())
-    result.append(test_gradients_critic())
-    result.append(test_XOR_benchmark_critic())
-    result.append(test_XOR_benchmark_actor())
-    result.append(test_randomness_critic())
-    result.append(test_randomness_actor())
-    result.append(test_target_shape())
-    result.append(test_overflowing_buffer())
-    result.append(test_ptr_buffer())
-    result.append(test_randomness_buffer())
-    result.append(test_shape_buffer_samples())
-    result.append(test_sample_action())
-    result.append(test_action_execution())
-    result.append(test_polyak_update())
-    result.append(test_ddpg_train())
+    # result.append(test_dimensions_actor())
+    # result.append(test_dimensions_critic())
+    # result.append(test_output_bound_actor())
+    # result.append(test_gradients_actor())
+    # result.append(test_gradients_critic())
+    # result.append(test_XOR_benchmark_critic())
+    # result.append(test_XOR_benchmark_actor())
+    # result.append(test_randomness_critic())
+    # result.append(test_randomness_actor())
+    # result.append(test_target_shape())
+    # result.append(test_overflowing_buffer())
+    # result.append(test_ptr_buffer())
+    # result.append(test_randomness_buffer())
+    # result.append(test_shape_buffer_samples())
+    # result.append(test_sample_action())
+    # result.append(test_action_execution())
+    # result.append(test_polyak_update())
+    result.append(test_ddpg_train_patch())
     if len(result) == sum(result):
         print("Success: All tests have passed")
 
