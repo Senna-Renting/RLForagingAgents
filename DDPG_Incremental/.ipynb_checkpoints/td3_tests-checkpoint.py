@@ -5,7 +5,8 @@ import jax
 import gymnasium as gym
 from flax import nnx
 import matplotlib.pyplot as plt
-from environment import Environment
+from environment import *
+from time import sleep
 
 # TODO: Implement unit-tests for the Critic and Actor networks (below are some suggestions)
 # 1. 
@@ -273,14 +274,22 @@ def test_ddpg_train_pendulum():
     return True
 
 def test_ddpg_train_patch():
-    episodes = list(range(1,2))
-    env = Environment(patch_radius=2)
+    episodes = list(range(1,201))
+    env = Environment(patch_radius=1)
     action_dim, a_range = env.get_action_space()
-    rewards, actor, critic, reset_key = train_ddpg(env, episodes[-1], action_dim=action_dim, state_dim=env.get_state_space()[1], action_max=a_range[1])
+    rewards, actor, critic, reset_key = train_ddpg(env, episodes[-1], lr=1e-3, tau=0.01, action_dim=action_dim, state_dim=env.get_state_space()[1], action_max=a_range[1], hidden_dim=36, batch_size=32)
     input("Press enter to see reward plot...")
     plt.figure()
     plt.plot(episodes, rewards)
     plt.show()
+    input("Press enter to see trained model in action...")
+    env = RenderEnvironment(env)
+    state, info = env.reset(seed=reset_key)
+    while True:
+        state, reward, terminated, truncated, _ = env.step(actor(state))
+        if terminated or truncated:
+            break
+    env.render()
     return True
 
 if __name__ == "__main__":

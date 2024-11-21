@@ -36,7 +36,7 @@ def test_step_patch():
     env.step(jnp.array([0]))
     check1 = env.s_patch - 10 < 1e-5 # Correction for floating point instability
     # Test collapse of resource amount
-    env = Environment(agent_step=0, s_init=10, eta=11, gamma=1.2, beta=0)
+    env = Environment(agent_step=0, s_init=10, eta=11, gamma=1.2, )
     env.reset()
     env.step(jnp.array([0]))
     check2 = env.s_patch - 10 < 0

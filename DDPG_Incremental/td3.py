@@ -45,9 +45,10 @@ def mean_optimize_actor(optimizer: nnx.Optimizer, actor: nnx.Module, critic: nnx
     optimizer.update(grads)
     return loss, grads
 
-def sample_action(rng, actor, state, action_min, action_max):
+def sample_action(rng, actor, state, action_min, action_max, action_dim):
     mu_action = actor(state)
-    eps = jax.random.normal(rng, (1,))
+    eps = jax.random.normal(rng, (action_dim,))
+    #print("Action (no noise): ", mu_action, "; Action (w/ noise): ", mu_action + eps)
     return jnp.clip(mu_action + eps, action_min, action_max)
 
 @nnx.jit
@@ -93,18 +94,18 @@ class Buffer:
         ) 
 
 ## Train loop of DDPG algorithm
-def train_ddpg(env, num_episodes, tau=0.05, gamma=0.99, batch_size=64, buffer_size=10000, lr=1e-3, seed=0, reset_seed=43, action_dim=1, state_dim=3, action_max=2):
+def train_ddpg(env, num_episodes, tau=0.05, gamma=0.99, batch_size=64, buffer_size=10000, lr=1e-3, seed=0, reset_seed=43, action_dim=1, state_dim=3, action_max=2, hidden_dim=256):
     # Initialize neural networks
-    actor = Actor(state_dim,action_dim,action_max,nnx.Rngs(0),hidden_dim=32)
-    actor_t = Actor(state_dim,action_dim,action_max,nnx.Rngs(0),hidden_dim=32)
-    critic = Critic(state_dim + action_dim, nnx.Rngs(1),hidden_dim=32)
-    critic_t = Critic(state_dim + action_dim, nnx.Rngs(1),hidden_dim=32)
+    actor = Actor(state_dim,action_dim,action_max,nnx.Rngs(seed),hidden_dim=hidden_dim)
+    actor_t = Actor(state_dim,action_dim,action_max,nnx.Rngs(seed),hidden_dim=hidden_dim)
+    critic = Critic(state_dim + action_dim, nnx.Rngs(seed+1),hidden_dim=hidden_dim)
+    critic_t = Critic(state_dim + action_dim, nnx.Rngs(seed+1),hidden_dim=hidden_dim)
     optim_actor = nnx.Optimizer(actor, optax.adam(lr))
     optim_critic = nnx.Optimizer(critic, optax.adam(lr))
     # Add buffer
     buffer = Buffer(buffer_size, state_dim, action_dim)
     # Initialize environment
-    key = jax.random.PRNGKey(40)
+    key = jax.random.PRNGKey(seed)
     # Keep track of accumulated rewards
     returns = np.zeros(num_episodes)
     for i in range(num_episodes):
@@ -113,9 +114,10 @@ def train_ddpg(env, num_episodes, tau=0.05, gamma=0.99, batch_size=64, buffer_si
         while not done:
             # Sample action, execute it, and add to buffer
             action_key, key = jax.random.split(key)
-            action = sample_action(action_key, actor, state, -action_max, action_max)
+            action = sample_action(action_key, actor, state, -action_max, action_max, action_dim)
             next_state, reward, terminated, truncated, _ = env.step(action)
-            #print(next_state)
+            #print("Action: ", action)
+            #print("State: ", next_state)
             returns[i] += reward
             done = truncated or terminated
             buffer.add(state, action, reward, next_state, terminated)
