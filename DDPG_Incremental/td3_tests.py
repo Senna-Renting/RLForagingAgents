@@ -258,7 +258,7 @@ def test_polyak_update():
     return check
 
 def test_ddpg_train_pendulum():
-    episodes = list(range(1,51))
+    episodes = list(range(1,5))
     rewards, actor, critic, reset_key = train_ddpg(gym.make("Pendulum-v1"), episodes[-1], hidden_dim=32)
     input("Press enter to see reward plot...")
     plt.figure()

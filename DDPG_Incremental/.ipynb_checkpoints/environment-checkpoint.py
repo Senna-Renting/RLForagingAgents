@@ -6,46 +6,33 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 class Environment:
-    def __init__(self, seed=0, patch_radius=2, s_init=4, e_init=1, eta=0.1, beta=0.25, alpha=0.4, gamma=0.01, step_max=400, x_max=5, y_max=5, v_max=0.1):
-        self.e_agent = jnp.array(e_init, dtype=jnp.float32)
-        self.agent_pos = jnp.array([x_max/2, y_max/2, 0, 0]) # Just a dummy position as it will be modified by reset function
-        # TODO: Rewrite agent's actions in environment as polar coördinate updates
-        self.agent_v = 0
-        self.agent_v_dot = 0
-        self.agent_theta = 0
-        self.agent_theta_dot = 0
-        self.patch_pos = jnp.array([x_max/2, y_max/2])
-        self.patch_radius = patch_radius 
-        self.s_init = s_init
-        self.e_init = e_init
-        self.s_patch = jnp.array(s_init, dtype=jnp.float32) # start amount of resources in patch
-        self.beta = beta # energy uptake regularizer based on resource amount for agent
-        self.eta = eta # growth rate
-        self.gamma = gamma # decay rate
-        self.alpha = alpha # energy decay of agent
-        self.step_idx = 0
-        self.step_max = step_max
+    def __init__(self, seed=0, patch_radius=2, s_init=4, e_init=1, eta=0.1, beta=0.25, alpha=0.01, gamma=0.01, step_max=400, x_max=5, y_max=5, v_max=0.1):
+        self.patch = Patch(x_max/2, y_max/2, patch_radius, s_init, eta=eta, gamma=gamma)
+        self.agent = Agent(0,0,x_max,y_max,e_init,v_max, alpha=alpha, beta=beta)
         self.x_max = x_max
         self.y_max = y_max
         self.v_max = v_max
+        # Eta and gamma are used for computing the rendering (don't remove them!!)
+        self.eta = eta
+        self.gamma = gamma
+        self.step_max = step_max
+        self.step_idx = 0
     
     def reset(self, seed=0):
         # Put the agent randomly somewhere outside the patch in the environment (uniform rejection sampling)
         x_key, y_key = jax.random.split(jax.random.PRNGKey(seed))
-        self.agent_pos = jnp.array([jax.random.uniform(x_key, minval=0,maxval=self.x_max), jax.random.uniform(y_key, minval=0,maxval=self.y_max),0,0])
-        while not self._dist_to_patch() > self.patch_radius:
+        x = jax.random.uniform(x_key, minval=0,maxval=self.x_max)
+        y = jax.random.uniform(y_key, minval=0,maxval=self.y_max)
+        self.agent.reset(x,y)
+        while self.agent.is_in_patch(self.patch):
             x_key, y_key = jax.random.split(x_key)
-            self.agent_pos = jnp.array([jax.random.uniform(x_key, minval=0,maxval=self.x_max), jax.random.uniform(y_key, minval=0,maxval=self.y_max),0,0])
-        v_key, theta_key = jax.random.split(x_key)
-        self.agent_v = jax.random.uniform(v_key, minval=-self.v_max, maxval=self.v_max)
-        self.agent_v_dot = 0
-        self.agent_theta = jax.random.uniform(theta_key, minval=-jnp.pi, maxval=jnp.pi)
-        self.agent_theta_dot = 0
+            x = jax.random.uniform(x_key, minval=0,maxval=self.x_max)
+            y = jax.random.uniform(y_key, minval=0,maxval=self.y_max)
+            self.agent.reset(x,y)
         # Reset counter
         self.step_idx = 0
         # Reset the states
-        self.e_agent = jnp.array(self.e_init, dtype=jnp.float32)
-        self.s_patch = jnp.array(self.s_init, dtype=jnp.float32)
+        self.patch.reset()
         # Return the state
         state = self._get_state()
         return state, None # None is to conform with the output of the gym API
@@ -56,7 +43,7 @@ class Environment:
         return action_dim, action_range
 
     def _get_state(self):
-        state = jnp.concatenate([self.agent_pos, jnp.array([self.s_patch, self.e_agent])])
+        state = jnp.concatenate([self.agent.get_position(), jnp.array([self.patch.get_resources(), self.agent.get_energy()])])
         #state = self.agent_pos
         state = jnp.expand_dims(state, 0) # Ensure correct vector shape
         return state
@@ -68,63 +55,111 @@ class Environment:
 
     def render_info(self):
         # Return all info useful for rendering
-        return self.x_max, self.y_max, self.agent_pos, self.patch_pos, self.patch_radius, self.e_agent, self.s_patch
-    
-    def _dist_to_patch(self):
-        x_diff = self.agent_pos.at[0].get() - self.patch_pos.at[0].get()
-        y_diff = self.agent_pos.at[1].get() - self.patch_pos.at[1].get()
-        return jnp.sqrt(x_diff**2 + y_diff**2)
-
-    def term(self, h=0.1):
-        dist = self._dist_to_patch()
-        # Compute patch resource change
-        s_eaten = (dist <= self.patch_radius).astype(int)*self.beta*self.s_patch.item()
-        s_growth = jnp.multiply(self.eta,self.s_patch)
-        s_decay = jnp.multiply(self.gamma,jnp.power(self.s_patch,2))
-        ds = h*(s_growth - s_decay - s_eaten)
-        # Compute agent energy change
-        v_max_norm = jnp.sqrt(self.v_max**2 + self.v_max**2)
-        v_norm = jnp.linalg.norm(jnp.array([self.agent_pos.at[2].get(), self.agent_pos.at[3].get()]))
-        v_norm /= v_max_norm
-        de = h*(s_eaten - self.alpha*v_norm) 
-        return (ds, de)
-
+        return self.x_max, self.y_max, self.agent.get_position(), self.patch.get_position(), self.patch.get_radius(), self.agent.get_energy(), self.patch.get_resources()
     
     # TODO: Implement the action as a 2D acceleration term
     def step(self, action, h=0.1):
         # Flatten array if needed
         action = action.flatten()
-        # Update velocity of agent (bounded by v_max)
-        theta_max = jnp.pi/10
-        theta_bounded = lambda theta: max(min(theta, theta_max), -theta_max)
-        v_bounded = lambda v: max(min(v, self.v_max), -self.v_max)
-        # Update action params
-        damping = 0.95
-        self.agent_v = v_bounded(damping*self.agent_v + h*action.at[1].get())
-        self.agent_theta = theta_bounded(self.agent_theta + h*action.at[0].get())
-        #print(self.agent_v, self.agent_theta)
-        # Update location agent
-        x_dot = self.agent_v*np.cos(self.agent_theta)
-        y_dot = self.agent_v*np.sin(self.agent_theta)
-        #print(self.agent_pos, self.agent_pos.shape)
-        x = (self.agent_pos.at[0].get() + x_dot) % self.x_max
-        y = (self.agent_pos.at[1].get() + y_dot) % self.y_max
-        self.agent_pos = jnp.array([x,y,x_dot,y_dot])
-        #print(self.agent_pos)
-        (ds, de) = self.term()
-        # Update patch and agent state
-        self.s_patch = self.s_patch + ds
-        self.e_agent = jnp.array(max(0.001,(self.e_agent + de).item()))
+        # Update agent position
+        agent_pos = self.agent.update_position(action)
+        # Update dynamical system of allocating resources
+        reward, s_eaten = self.agent.update_energy(self.patch)
+        patch_resources = self.patch.update_resources(s_eaten)
         # Update counter
         self.step_idx += 1
         # Return the values needed for RL similar to the OpenAI gym implementation (next_state, reward, terminated, truncated)
         next_state = self._get_state()
-        reward = de 
-        terminated = self.e_agent.item() == 0
+        terminated = self.agent.get_energy().item() == 0
         truncated = self.step_idx >= self.step_max
         return next_state, reward, terminated, truncated, None # None is to have similar output shape as gym API
 
-# TODO: Create a render class that decorates the environment, by generating a visual display at each step 
+# TODO: create an agent class that interacts with the environment and stores information specific to an agent
+class Agent:
+    def __init__(self,x,y,x_max,y_max,e_init,v_max, alpha=0.1, beta=0.25):
+        # Hyperparameters of dynamical system
+        self.alpha = alpha # penalizing coëfficient for movement
+        self.beta = beta # amount of eating per timestep
+        # General variables
+        self.agent_pos = jnp.array([x,y,0,0]) # Structure: [x,y,x_dot,y_dot]
+        self.agent_theta = 0 # angle of agent
+        self.agent_v = 0 # speed of movement (negative means backward movement)
+        self.v_max = v_max
+        self.x_max = x_max
+        self.y_max = y_max
+        self.e_init = e_init
+        self.e_agent = jnp.array(self.e_init, dtype=jnp.float32) # resources/energy inside the agent 
+
+    def reset(self,x,y,seed=0):
+        v_key, theta_key = jax.random.split(jax.random.PRNGKey(seed))
+        self.agent_pos = jnp.array([x,y,0,0])
+        self.agent_v = jax.random.uniform(v_key, minval=-self.v_max, maxval=self.v_max)
+        self.agent_theta = jax.random.uniform(theta_key, minval=-jnp.pi, maxval=jnp.pi)
+        self.e_agent = jnp.array(self.e_init, dtype=jnp.float32)
+    
+    def get_energy(self):
+        return self.e_agent
+    
+    def is_in_patch(self,patch):
+        patch_pos = patch.get_position()
+        x_diff = self.agent_pos.at[0].get() - patch_pos.at[0].get()
+        y_diff = self.agent_pos.at[1].get() - patch_pos.at[1].get()
+        dist = jnp.sqrt(x_diff**2 + y_diff**2)
+        return dist <= patch.get_radius()
+    
+    def update_energy(self,patch, dt=0.02):
+        s_eaten = (self.is_in_patch(patch)).astype(int)*self.beta*patch.get_resources().item()
+        v_norm = jnp.abs(self.agent_v) / self.v_max
+        de = dt*(s_eaten - self.alpha*v_norm) 
+        self.e_agent = jnp.array(self.e_agent.item() + de, dtype=jnp.float32)
+        return de, s_eaten # reward and amount of resource eaten respectively
+
+    def get_position(self):
+        return self.agent_pos
+        
+    def update_position(self,action, dt=0.1):
+        # Functions needed to bound the allowed actions
+        theta_max = jnp.pi/10
+        theta_bounded = lambda theta: max(min(theta, theta_max), -theta_max)
+        v_bounded = lambda v: max(min(v, self.v_max), -self.v_max)
+        # Compute action values
+        damping = 0.95 # Adds friction to the movement of the agent (slows down over time)
+        self.agent_v = v_bounded(damping*self.agent_v + dt*action.at[1].get())
+        self.agent_theta = theta_bounded(self.agent_theta + dt*action.at[0].get())
+        # Update position
+        x_dot = self.agent_v*np.cos(self.agent_theta)
+        y_dot = self.agent_v*np.sin(self.agent_theta)
+        x = (self.agent_pos.at[0].get() + x_dot) % self.x_max
+        y = (self.agent_pos.at[1].get() + y_dot) % self.y_max
+        self.agent_pos = jnp.array([x,y,x_dot,y_dot])
+        return self.agent_pos
+
+# TODO: put relevant code for patch here
+class Patch:
+    def __init__(self, x,y,radius,s_init, eta=0.1, gamma=0.01):
+        # Hyperparameters of dynamical system
+        self.eta = eta # regeneration rate of resources
+        self.gamma = gamma # decay rate of resources
+        # General variables
+        self.pos = jnp.array([x,y])
+        self.radius = radius
+        self.s_init = s_init
+        self.resources = jnp.array(self.s_init, dtype=jnp.float32)
+    def get_resources(self):
+        return self.resources
+    def get_position(self):
+        return self.pos
+    def get_radius(self):
+        return self.radius
+    def update_resources(self, eaten, dt=0.02):
+        s_growth = jnp.multiply(self.eta,self.resources)
+        s_decay = jnp.multiply(self.gamma,jnp.power(self.resources,2))
+        ds = dt*(s_growth - s_decay - eaten)
+        self.resources = jnp.array(self.resources.item() + ds, dtype=jnp.float32)
+        return self.resources
+    def reset(self):
+        self.resources = jnp.array(self.s_init, dtype=jnp.float32)
+
 class RenderEnvironment:
     def __init__(self, env):
         self.env = env
@@ -144,14 +179,13 @@ class RenderEnvironment:
     
     def step(self, action):
         #print(f"Action: {action}")
-        results = self.env.step(action)
+        (next_s, reward, terminated, truncated, info) = self.env.step(action)
         size_x, size_y, agent_pos, patch_pos, patch_radius, e_agent, s_patch = self.env.render_info()
-        _, reward = self.env.term()
         self.agent_poss[self.env.step_idx-1] = [agent_pos.at[0].get(), agent_pos.at[1].get()]
         self.ss_patch[self.env.step_idx-1] = s_patch.item()
         self.es_agent[self.env.step_idx-1] = e_agent.item()
         self.rewards[self.env.step_idx-1] = reward.item()
-        return results
+        return (next_s, reward, terminated, truncated, info)
 
     def render(self):
         # Pygame screen init
