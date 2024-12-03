@@ -8,10 +8,10 @@ import optax
 
 ## Critic network and it's complementary functions
 class Critic(nnx.Module):
-    def __init__(self, in_dim, rngs: nnx.Rngs, hidden_dim=32):
-        self.l1 = nnx.Linear(in_dim, hidden_dim, rngs=rngs)
-        self.l2 = nnx.Linear(hidden_dim, hidden_dim, rngs=rngs)
-        self.l3 = nnx.Linear(hidden_dim, 1, rngs=rngs)
+    def __init__(self, in_dim, seed, hidden_dim=32):
+        self.l1 = nnx.Linear(in_dim, hidden_dim, rngs=nnx.Rngs(seed))
+        self.l2 = nnx.Linear(hidden_dim, hidden_dim, rngs=nnx.Rngs(seed+1))
+        self.l3 = nnx.Linear(hidden_dim, 1, rngs=nnx.Rngs(seed+2))
     def __call__(self, state, action):
         x = jnp.concatenate([state, action], axis=-1)
         return self.l3(nnx.relu(self.l2(nnx.relu(self.l1(x)))))
@@ -29,11 +29,11 @@ def compute_targets(critic: nnx.Module, actor: nnx.Module, rs: jnp.array, states
 
 ## Actor network and it's complementary functions
 class Actor(nnx.Module):
-    def __init__(self, in_dim, out_dim, action_max, rngs: nnx.Rngs, hidden_dim=32):
+    def __init__(self, in_dim, out_dim, action_max, seed, hidden_dim=32):
         self.a_max = action_max
-        self.l1 = nnx.Linear(in_dim, hidden_dim, rngs=rngs)
-        self.l2 = nnx.Linear(hidden_dim, hidden_dim, rngs=rngs)
-        self.l3 = nnx.Linear(hidden_dim, out_dim, rngs=rngs)
+        self.l1 = nnx.Linear(in_dim, hidden_dim, rngs=nnx.Rngs(seed))
+        self.l2 = nnx.Linear(hidden_dim, hidden_dim, rngs=nnx.Rngs(seed+1))
+        self.l3 = nnx.Linear(hidden_dim, out_dim, rngs=nnx.Rngs(seed+2))
     def __call__(self, state):
         x = self.l3(nnx.relu(self.l2(nnx.relu(self.l1(state)))))
         return self.a_max * nnx.tanh(x)
@@ -94,12 +94,12 @@ class Buffer:
         ) 
 
 ## Train loop of DDPG algorithm
-def train_ddpg(env, num_episodes, tau=0.05, gamma=0.99, batch_size=64, buffer_size=10000, lr=1e-3, seed=0, reset_seed=43, action_dim=1, state_dim=3, action_max=2, hidden_dim=256):
+def train_ddpg(env, num_episodes, tau=0.05, gamma=0.99, batch_size=64, buffer_size=40000, lr=1e-3, seed=0, reset_seed=43, action_dim=1, state_dim=3, action_max=2, hidden_dim=256, warmup_steps=200):
     # Initialize neural networks
-    actor = Actor(state_dim,action_dim,action_max,nnx.Rngs(seed),hidden_dim=hidden_dim)
-    actor_t = Actor(state_dim,action_dim,action_max,nnx.Rngs(seed),hidden_dim=hidden_dim)
-    critic = Critic(state_dim + action_dim, nnx.Rngs(seed+1),hidden_dim=hidden_dim)
-    critic_t = Critic(state_dim + action_dim, nnx.Rngs(seed+1),hidden_dim=hidden_dim)
+    actor = Actor(state_dim,action_dim,action_max,seed,hidden_dim=hidden_dim)
+    actor_t = Actor(state_dim,action_dim,action_max,seed,hidden_dim=hidden_dim)
+    critic = Critic(state_dim + action_dim,seed,hidden_dim=hidden_dim)
+    critic_t = Critic(state_dim + action_dim,seed,hidden_dim=hidden_dim)
     optim_actor = nnx.Optimizer(actor, optax.adam(lr))
     optim_critic = nnx.Optimizer(critic, optax.adam(lr))
     # Add buffer
@@ -108,6 +108,16 @@ def train_ddpg(env, num_episodes, tau=0.05, gamma=0.99, batch_size=64, buffer_si
     key = jax.random.PRNGKey(seed)
     # Keep track of accumulated rewards
     returns = np.zeros(num_episodes)
+    # Warm-up the buffer
+    np.random.seed(reset_seed)
+    rand_actions = np.random.uniform(low=-action_max, high=action_max, size=(warmup_steps,action_dim))
+    state, info = env.reset(seed=reset_seed)
+    for i in range(rand_actions.shape[0]):
+        action = rand_actions[i]
+        next_state, reward, terminated, truncated, _ = env.step(jnp.array(action))
+        buffer.add(state, action, reward, next_state, terminated)
+        state = next_state
+    # Train 
     for i in range(num_episodes):
         done = False
         state, info = env.reset(seed=reset_seed)
@@ -115,7 +125,7 @@ def train_ddpg(env, num_episodes, tau=0.05, gamma=0.99, batch_size=64, buffer_si
             # Sample action, execute it, and add to buffer
             action_key, key = jax.random.split(key)
             action = sample_action(action_key, actor, state, -action_max, action_max, action_dim)
-            next_state, reward, terminated, truncated, _ = env.step(action)
+            next_state, reward, terminated, truncated, _ = env.step(jnp.array(action))
             #print("Action: ", action)
             #print("State: ", next_state)
             returns[i] += reward
