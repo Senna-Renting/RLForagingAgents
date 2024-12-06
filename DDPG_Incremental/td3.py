@@ -94,7 +94,7 @@ class Buffer:
         ) 
 
 ## Train loop of DDPG algorithm
-def train_ddpg(env, num_episodes, tau=0.05, gamma=0.99, batch_size=64, buffer_size=40000, lr=1e-3, seed=0, reset_seed=43, action_dim=1, state_dim=3, action_max=2, hidden_dim=256, warmup_steps=200):
+def train_ddpg(env, num_episodes, tau=0.05, gamma=0.99, batch_size=64, buffer_size=40000, lr=1e-3, seed=0, reset_seed=43, action_dim=1, state_dim=3, action_max=2, hidden_dim=256, warmup_steps=800):
     # Initialize neural networks
     actor = Actor(state_dim,action_dim,action_max,seed,hidden_dim=hidden_dim)
     actor_t = Actor(state_dim,action_dim,action_max,seed,hidden_dim=hidden_dim)
@@ -117,10 +117,11 @@ def train_ddpg(env, num_episodes, tau=0.05, gamma=0.99, batch_size=64, buffer_si
         next_state, reward, terminated, truncated, _ = env.step(jnp.array(action))
         buffer.add(state, action, reward, next_state, terminated)
         state = next_state
-    # Train 
+    # Run episodes
     for i in range(num_episodes):
         done = False
         state, info = env.reset(seed=reset_seed)
+        # Train agent
         while not done:
             # Sample action, execute it, and add to buffer
             action_key, key = jax.random.split(key)
@@ -128,7 +129,6 @@ def train_ddpg(env, num_episodes, tau=0.05, gamma=0.99, batch_size=64, buffer_si
             next_state, reward, terminated, truncated, _ = env.step(jnp.array(action))
             #print("Action: ", action)
             #print("State: ", next_state)
-            returns[i] += reward
             done = truncated or terminated
             buffer.add(state, action, reward, next_state, terminated)
             state = next_state
@@ -142,6 +142,15 @@ def train_ddpg(env, num_episodes, tau=0.05, gamma=0.99, batch_size=64, buffer_si
             # Update targets (critic and policy)
             nnx.update(critic_t, polyak_update(tau, critic_t, critic))
             nnx.update(actor_t, polyak_update(tau, actor_t, actor))
+        # Test agent
+        done = False
+        state, info = env.reset(seed=reset_seed)
+        while not done:
+            action = actor_t(state)
+            next_state, reward, terminated, truncated, _ = env.step(jnp.array(action))
+            state = next_state
+            done = terminated or truncated
+            returns[i] += reward
         print(f"Episode {i} done")
         print(f"Accumulated rewards: {returns[i]}")
     return returns, actor_t, critic_t, reset_seed

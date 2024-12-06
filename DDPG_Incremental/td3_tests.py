@@ -275,9 +275,9 @@ def test_ddpg_train_pendulum():
 
 def test_ddpg_train_patch():
     episodes = list(range(1,11))
-    env = Environment(patch_radius=1, step_max=800)
+    env = Environment(patch_radius=1, step_max=800, alpha=0)
     action_dim, a_range = env.get_action_space()
-    rewards, actor, critic, reset_key = train_ddpg(env, episodes[-1], lr=2e-4, tau=0.05, action_dim=action_dim, state_dim=env.get_state_space()[1], action_max=a_range[1], hidden_dim=32, batch_size=64, seed=0)
+    rewards, actor, critic, reset_key = train_ddpg(env, episodes[-1], lr=3e-4, tau=0.05, action_dim=action_dim, state_dim=env.get_state_space()[1], action_max=a_range[1], hidden_dim=16, batch_size=30, seed=1)
     input("Press enter to see trained model in action...")
     env = RenderEnvironment(env)
     state, info = env.reset(seed=reset_key)

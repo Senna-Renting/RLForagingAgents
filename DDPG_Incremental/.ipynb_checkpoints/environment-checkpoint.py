@@ -6,7 +6,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 class Environment:
-    def __init__(self, seed=0, patch_radius=2, s_init=4, e_init=1, eta=0.1, beta=0.25, alpha=0.01, gamma=0.01, step_max=400, x_max=5, y_max=5, v_max=0.1):
+    def __init__(self, seed=0, patch_radius=2, s_init=10, e_init=1, eta=0.1, beta=0.2, alpha=0.1, gamma=0.01, step_max=400, x_max=5, y_max=5, v_max=0.1):
         self.patch = Patch(x_max/2, y_max/2, patch_radius, s_init, eta=eta, gamma=gamma)
         self.agent = Agent(0,0,x_max,y_max,e_init,v_max, alpha=alpha, beta=beta)
         self.x_max = x_max
@@ -39,10 +39,11 @@ class Environment:
 
     def get_action_space(self):
         action_dim = 2 # We use two acceleration terms (one for x and one for y)
-        action_range = [jnp.pi/10, self.v_max]
+        action_range = [self.v_max, self.v_max]
         return action_dim, action_range
 
     def _get_state(self):
+        # Select first agent for now
         state = jnp.concatenate([self.agent.get_position(), jnp.array([self.patch.get_resources(), self.agent.get_energy()])])
         #state = self.agent_pos
         state = jnp.expand_dims(state, 0) # Ensure correct vector shape
@@ -55,9 +56,10 @@ class Environment:
 
     def render_info(self):
         # Return all info useful for rendering
-        return self.x_max, self.y_max, self.agent.get_position(), self.patch.get_position(), self.patch.get_radius(), self.agent.get_energy(), self.patch.get_resources()
+        agent_energy = self.agent.get_energy()
+        agent_position = self.agent.get_position()
+        return self.x_max, self.y_max, agent_position, self.patch.get_position(), self.patch.get_radius(), agent_energy, self.patch.get_resources()
     
-    # TODO: Implement the action as a 2D acceleration term
     def step(self, action, h=0.1):
         # Flatten array if needed
         action = action.flatten()
@@ -74,7 +76,6 @@ class Environment:
         truncated = self.step_idx >= self.step_max
         return next_state, reward, terminated, truncated, None # None is to have similar output shape as gym API
 
-# TODO: create an agent class that interacts with the environment and stores information specific to an agent
 class Agent:
     def __init__(self,x,y,x_max,y_max,e_init,v_max, alpha=0.1, beta=0.25):
         # Hyperparameters of dynamical system
@@ -82,8 +83,8 @@ class Agent:
         self.beta = beta # amount of eating per timestep
         # General variables
         self.agent_pos = jnp.array([x,y,0,0]) # Structure: [x,y,x_dot,y_dot]
-        self.agent_theta = 0 # angle of agent
-        self.agent_v = 0 # speed of movement (negative means backward movement)
+        self.agent_x_dot = 0 # velocity on x-axis
+        self.agent_y_dot = 0 # velocity on y-axis
         self.v_max = v_max
         self.x_max = x_max
         self.y_max = y_max
@@ -93,8 +94,8 @@ class Agent:
     def reset(self,x,y,seed=0):
         v_key, theta_key = jax.random.split(jax.random.PRNGKey(seed))
         self.agent_pos = jnp.array([x,y,0,0])
-        self.agent_v = jax.random.uniform(v_key, minval=-self.v_max, maxval=self.v_max)
-        self.agent_theta = jax.random.uniform(theta_key, minval=-jnp.pi, maxval=jnp.pi)
+        self.agent_x_dot = jax.random.uniform(v_key, minval=-self.v_max, maxval=self.v_max)
+        self.agent_y_dot = jax.random.uniform(v_key, minval=-self.v_max, maxval=self.v_max)
         self.e_agent = jnp.array(self.e_init, dtype=jnp.float32)
     
     def get_energy(self):
@@ -107,9 +108,10 @@ class Agent:
         dist = jnp.sqrt(x_diff**2 + y_diff**2)
         return dist <= patch.get_radius()
     
-    def update_energy(self,patch, dt=0.02):
+    def update_energy(self,patch, dt=0.1):
         s_eaten = (self.is_in_patch(patch)).astype(int)*self.beta*patch.get_resources().item()
-        v_norm = jnp.abs(self.agent_v) / self.v_max
+        v_norm = jnp.sqrt(self.agent_x_dot**2+self.agent_y_dot**2)
+        v_norm = v_norm / jnp.sqrt(2*self.v_max**2)
         de = dt*(s_eaten - self.alpha*v_norm) 
         self.e_agent = jnp.array(self.e_agent.item() + de, dtype=jnp.float32)
         return de, s_eaten # reward and amount of resource eaten respectively
@@ -117,24 +119,20 @@ class Agent:
     def get_position(self):
         return self.agent_pos
         
-    def update_position(self,action, dt=0.1):
+    def update_position(self,action, dt=1/4):
         # Functions needed to bound the allowed actions
-        theta_max = jnp.pi/10
-        theta_bounded = lambda theta: max(min(theta, theta_max), -theta_max)
         v_bounded = lambda v: max(min(v, self.v_max), -self.v_max)
         # Compute action values
-        damping = 0.95 # Adds friction to the movement of the agent (slows down over time)
-        self.agent_v = v_bounded(damping*self.agent_v + dt*action.at[1].get())
-        self.agent_theta = theta_bounded(self.agent_theta + dt*action.at[0].get())
+        damping = 0.9 # Adds friction to the movement of the agent (slows down over time)
+        self.agent_x_dot = v_bounded(damping*self.agent_x_dot + dt*action.at[0].get())
+        self.agent_y_dot = v_bounded(damping*self.agent_y_dot + dt*action.at[1].get())
         # Update position
-        x_dot = self.agent_v*np.cos(self.agent_theta)
-        y_dot = self.agent_v*np.sin(self.agent_theta)
-        x = (self.agent_pos.at[0].get() + x_dot) % self.x_max
-        y = (self.agent_pos.at[1].get() + y_dot) % self.y_max
-        self.agent_pos = jnp.array([x,y,x_dot,y_dot])
+        x = (self.agent_pos.at[0].get() + self.agent_x_dot) % self.x_max
+        y = (self.agent_pos.at[1].get() + self.agent_y_dot) % self.y_max
+        self.agent_pos = jnp.array([x,y,self.agent_x_dot,self.agent_y_dot])
+        #print(self.agent_pos)
         return self.agent_pos
 
-# TODO: put relevant code for patch here
 class Patch:
     def __init__(self, x,y,radius,s_init, eta=0.1, gamma=0.01):
         # Hyperparameters of dynamical system
@@ -151,7 +149,7 @@ class Patch:
         return self.pos
     def get_radius(self):
         return self.radius
-    def update_resources(self, eaten, dt=0.02):
+    def update_resources(self, eaten, dt=0.1):
         s_growth = jnp.multiply(self.eta,self.resources)
         s_decay = jnp.multiply(self.gamma,jnp.power(self.resources,2))
         ds = dt*(s_growth - s_decay - eaten)
