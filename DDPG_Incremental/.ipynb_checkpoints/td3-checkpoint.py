@@ -5,6 +5,9 @@ import gymnax
 import gymnasium as gym
 import numpy as np
 import optax
+import wandb
+from environment import *
+from save_utils import save_policy
 
 ## Critic network and it's complementary functions
 class Critic(nnx.Module):
@@ -93,16 +96,40 @@ class Buffer:
             jax.device_put(self.dones[ind]),
         ) 
 
+# Below I build a curried function designed to work with wandb
+def wandb_train_ddpg(env):
+    def do_wandb(config=None):
+        with wandb.init(config=config) as run:
+            config = wandb.config
+            returns, actor_t, *_ = train_ddpg(env, log_fun=wandb_log_ddpg, **config)
+            # Save policy of ddpg algorithm
+            path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "policies", run.sweep_id, run.name)
+            save_policy(actor_t, path)
+    return do_wandb
+
+def print_log_ddpg(epoch, critic_loss, actor_loss, returns):
+    print(f"Episode {epoch} done")
+    print(f"Critic loss: {critic_loss}")
+    print(f"Actor loss: {actor_loss}")
+    print(f"Return: {returns}")
+
+def wandb_log_ddpg(epoch, critic_loss, actor_loss, returns):
+    wandb.log({"Epoch":epoch,
+               "Critic loss":critic_loss,
+               "Actor loss":actor_loss,
+               "Return":returns})
+
 ## Train loop of DDPG algorithm
-def train_ddpg(env, num_episodes, tau=0.05, gamma=0.99, batch_size=64, buffer_size=40000, lr=1e-3, seed=0, reset_seed=43, action_dim=1, state_dim=3, action_max=2, hidden_dim=256, warmup_steps=800):
+def train_ddpg(env, num_episodes, tau=0.05, gamma=0.99, batch_size=64, lr_a=1e-4, lr_c=3e-4, seed=0, reset_seed=43, action_dim=1, state_dim=3, action_max=2, hidden_dim=256, warmup_steps=800, log_fun=print_log_ddpg):
     # Initialize neural networks
     actor = Actor(state_dim,action_dim,action_max,seed,hidden_dim=hidden_dim)
     actor_t = Actor(state_dim,action_dim,action_max,seed,hidden_dim=hidden_dim)
     critic = Critic(state_dim + action_dim,seed,hidden_dim=hidden_dim)
     critic_t = Critic(state_dim + action_dim,seed,hidden_dim=hidden_dim)
-    optim_actor = nnx.Optimizer(actor, optax.adam(lr))
-    optim_critic = nnx.Optimizer(critic, optax.adam(lr))
+    optim_actor = nnx.Optimizer(actor, optax.adam(lr_a))
+    optim_critic = nnx.Optimizer(critic, optax.adam(lr_c))
     # Add buffer
+    buffer_size = num_episodes*env.step_max+warmup_steps # Ensure every step is kept in the replay buffer
     buffer = Buffer(buffer_size, state_dim, action_dim)
     # Initialize environment
     key = jax.random.PRNGKey(seed)
@@ -151,7 +178,7 @@ def train_ddpg(env, num_episodes, tau=0.05, gamma=0.99, batch_size=64, buffer_si
             state = next_state
             done = terminated or truncated
             returns[i] += reward
-        print(f"Episode {i} done")
-        print(f"Accumulated rewards: {returns[i]}")
+        # Log the important variables to some logger
+        log_fun(i, c_loss, a_loss, returns[i])
     return returns, actor_t, critic_t, reset_seed
             

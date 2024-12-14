@@ -4,9 +4,11 @@ import pygame
 from pygame.locals import *
 import numpy as np
 import matplotlib.pyplot as plt
+from pygame_recorder import PygameRecord
+import os
 
 class Environment:
-    def __init__(self, seed=0, patch_radius=2, s_init=10, e_init=1, eta=0.1, beta=0.2, alpha=0.1, gamma=0.01, step_max=400, x_max=5, y_max=5, v_max=0.1):
+    def __init__(self, seed=0, patch_radius=2, s_init=10, e_init=1, eta=0.1, beta=0.5, alpha=0.1, gamma=0.01, step_max=400, x_max=5, y_max=5, v_max=0.1):
         self.patch = Patch(x_max/2, y_max/2, patch_radius, s_init, eta=eta, gamma=gamma)
         self.agent = Agent(0,0,x_max,y_max,e_init,v_max, alpha=alpha, beta=beta)
         self.x_max = x_max
@@ -39,12 +41,12 @@ class Environment:
 
     def get_action_space(self):
         action_dim = 2 # We use two acceleration terms (one for x and one for y)
-        action_range = [self.v_max, self.v_max]
+        action_range = [2*self.v_max, 2*self.v_max]
         return action_dim, action_range
 
     def _get_state(self):
         # Select first agent for now
-        state = jnp.concatenate([self.agent.get_position(), jnp.array([self.patch.get_resources(), self.agent.get_energy()])])
+        state = jnp.concatenate([self.agent.get_position(), self.patch.get_position(), jnp.array([self.patch.get_resources(), self.agent.get_energy()])])
         #state = self.agent_pos
         state = jnp.expand_dims(state, 0) # Ensure correct vector shape
         return state
@@ -77,7 +79,7 @@ class Environment:
         return next_state, reward, terminated, truncated, None # None is to have similar output shape as gym API
 
 class Agent:
-    def __init__(self,x,y,x_max,y_max,e_init,v_max, alpha=0.1, beta=0.25):
+    def __init__(self,x,y,x_max,y_max,e_init,v_max, alpha=0.4, beta=0.25):
         # Hyperparameters of dynamical system
         self.alpha = alpha # penalizing coëfficient for movement
         self.beta = beta # amount of eating per timestep
@@ -85,6 +87,7 @@ class Agent:
         self.agent_pos = jnp.array([x,y,0,0]) # Structure: [x,y,x_dot,y_dot]
         self.agent_x_dot = 0 # velocity on x-axis
         self.agent_y_dot = 0 # velocity on y-axis
+        self.action = jnp.array([0,0])
         self.v_max = v_max
         self.x_max = x_max
         self.y_max = y_max
@@ -110,22 +113,23 @@ class Agent:
     
     def update_energy(self,patch, dt=0.1):
         s_eaten = (self.is_in_patch(patch)).astype(int)*self.beta*patch.get_resources().item()
-        v_norm = jnp.sqrt(self.agent_x_dot**2+self.agent_y_dot**2)
-        v_norm = v_norm / jnp.sqrt(2*self.v_max**2)
-        de = dt*(s_eaten - self.alpha*v_norm) 
+        action_penalty = jnp.linalg.norm(self.action)
+        de = dt*(s_eaten - self.alpha*action_penalty)
         self.e_agent = jnp.array(self.e_agent.item() + de, dtype=jnp.float32)
         return de, s_eaten # reward and amount of resource eaten respectively
 
     def get_position(self):
         return self.agent_pos
         
-    def update_position(self,action, dt=1/4):
+    def update_position(self,action):
+        # Update current action stored by agent
+        self.action = action
         # Functions needed to bound the allowed actions
         v_bounded = lambda v: max(min(v, self.v_max), -self.v_max)
         # Compute action values
-        damping = 0.9 # Adds friction to the movement of the agent (slows down over time)
-        self.agent_x_dot = v_bounded(damping*self.agent_x_dot + dt*action.at[0].get())
-        self.agent_y_dot = v_bounded(damping*self.agent_y_dot + dt*action.at[1].get())
+        damping = 1 # Adds friction to the movement of the agent (slows down over time)
+        self.agent_x_dot = v_bounded(damping*self.agent_x_dot + action.at[0].get())
+        self.agent_y_dot = v_bounded(damping*self.agent_y_dot + action.at[1].get())
         # Update position
         x = (self.agent_pos.at[0].get() + self.agent_x_dot) % self.x_max
         y = (self.agent_pos.at[1].get() + self.agent_y_dot) % self.y_max
@@ -185,44 +189,55 @@ class RenderEnvironment:
         self.rewards[self.env.step_idx-1] = reward.item()
         return (next_s, reward, terminated, truncated, info)
 
-    def render(self):
-        # Pygame screen init
-        pygame.init()
-        clock = pygame.time.Clock()
-        # Get render info
-        size_x, size_y, *_ = self.env.render_info()
-        scale = 100
-        screen_x = scale*size_x
-        screen_y = scale*size_y
-        screen = pygame.display.set_mode((screen_x, screen_y))
-        red_color = pygame.Color(255, 0, 0)
-        white_color = pygame.Color(255,255,255)
-        # Select used segments of tracking arrays
-        self.agent_poss = self.agent_poss[:self.env.step_idx - 1]
-        self.ss_patch = self.ss_patch[:self.env.step_idx - 1]
-        self.es_agent = self.es_agent[:self.env.step_idx - 1]
-        self.rewards = self.rewards[:self.env.step_idx - 1]
-        # Render on initialization
-        for i in range(self.env.step_idx - 2):
-            for event in pygame.event.get():
-                if event.type == QUIT:
-                    return
-            clock.tick(20)
+    def render(self, save=True):
+        FPS = 20
+        fname = "one_agent_one_patch.gif"
+        i = 0
+        while os.path.isfile(fname):
+            i += 1
+            fname = f"one_agent_one_patch-{i}.gif"
+        with PygameRecord(fname, FPS) as recorder:
+            # Pygame screen init
+            pygame.init()
+            clock = pygame.time.Clock()
             # Get render info
-            size_x, size_y, agent_pos, patch_pos, patch_radius, e_agent, s_patch = self.env.render_info()
-            #print(self.agent_poss[i])
-            max_ratio_patch = self.ss_patch[i]/(self.env.eta/self.env.gamma)
-            patch_color = pygame.Color(0, max(50,int(max_ratio_patch*255)), 0)
-            agent_pos = [scale*self.agent_poss[i, 0], scale*self.agent_poss[i, 1]]
-            patch_pos = [scale*patch_pos.at[0].get().item(), scale*patch_pos.at[1].get().item()]
-            # Draw information on screen
-            screen.fill(white_color)
-            pygame.draw.circle(screen, patch_color, patch_pos, scale*patch_radius)
-            pygame.draw.circle(screen, red_color, agent_pos, scale*(patch_radius/25))
-            # Update screen
-            pygame.display.update()
-        # Close the screen
-        pygame.quit()
+            size_x, size_y, *_ = self.env.render_info()
+            scale = 100
+            agent_size = size_x/scale
+            screen_x = scale*size_x
+            screen_y = scale*size_y
+            screen = pygame.display.set_mode((screen_x, screen_y))
+            red_color = pygame.Color(255, 0, 0)
+            white_color = pygame.Color(255,255,255)
+            # Select used segments of tracking arrays
+            self.agent_poss = self.agent_poss[:self.env.step_idx - 1]
+            self.ss_patch = self.ss_patch[:self.env.step_idx - 1]
+            self.es_agent = self.es_agent[:self.env.step_idx - 1]
+            self.rewards = self.rewards[:self.env.step_idx - 1]
+            # Render on initialization
+            for i in range(self.env.step_idx - 2):
+                for event in pygame.event.get():
+                    if event.type == QUIT:
+                        return
+                clock.tick(FPS)
+                # Get render info
+                size_x, size_y, agent_pos, patch_pos, patch_radius, e_agent, s_patch = self.env.render_info()
+                #print(self.agent_poss[i])
+                max_ratio_patch = self.ss_patch[i]/(self.env.eta/self.env.gamma)
+                patch_color = pygame.Color(0, max(50,int(max_ratio_patch*255)), 0)
+                agent_pos = [scale*self.agent_poss[i, 0], scale*self.agent_poss[i, 1]]
+                patch_pos = [scale*patch_pos.at[0].get().item(), scale*patch_pos.at[1].get().item()]
+                # Draw information on screen
+                screen.fill(white_color)
+                pygame.draw.circle(screen, patch_color, patch_pos, scale*patch_radius)
+                pygame.draw.circle(screen, red_color, agent_pos, scale*agent_size)
+                # Update screen
+                pygame.display.update()
+                recorder.add_frame()
+            # Close the screen
+            pygame.quit()
+            if save:
+                recorder.save()
         # Show the plots for the agent and the patch resources
         fig, (ax1, ax2, ax3) = plt.subplots(3)
         ax1.set_title("Energy of agent")
