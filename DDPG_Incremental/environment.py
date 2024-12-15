@@ -41,7 +41,7 @@ class Environment:
 
     def get_action_space(self):
         action_dim = 2 # We use two acceleration terms (one for x and one for y)
-        action_range = [2*self.v_max, 2*self.v_max]
+        action_range = [-2*self.v_max, 2*self.v_max]
         return action_dim, action_range
 
     def _get_state(self):

@@ -101,6 +101,7 @@ def wandb_train_ddpg(env):
     def do_wandb(config=None):
         with wandb.init(config=config) as run:
             config = wandb.config
+            print(config)
             returns, actor_t, *_ = train_ddpg(env, log_fun=wandb_log_ddpg, **config)
             # Save policy of ddpg algorithm
             path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "policies", run.sweep_id, run.name)
@@ -139,8 +140,8 @@ def train_ddpg(env, num_episodes, tau=0.05, gamma=0.99, batch_size=64, lr_a=1e-4
     np.random.seed(reset_seed)
     rand_actions = np.random.uniform(low=-action_max, high=action_max, size=(warmup_steps,action_dim))
     state, info = env.reset(seed=reset_seed)
-    for i in range(rand_actions.shape[0]):
-        action = rand_actions[i]
+    for j in range(rand_actions.shape[0]):
+        action = rand_actions[j]
         next_state, reward, terminated, truncated, _ = env.step(jnp.array(action))
         buffer.add(state, action, reward, next_state, terminated)
         state = next_state
@@ -155,6 +156,7 @@ def train_ddpg(env, num_episodes, tau=0.05, gamma=0.99, batch_size=64, lr_a=1e-4
             action = sample_action(action_key, actor, state, -action_max, action_max, action_dim)
             next_state, reward, terminated, truncated, _ = env.step(jnp.array(action))
             #print("Action: ", action)
+            #print(reward)
             #print("State: ", next_state)
             done = truncated or terminated
             buffer.add(state, action, reward, next_state, terminated)
