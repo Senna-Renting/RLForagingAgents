@@ -6,11 +6,11 @@ import numpy as np
 import matplotlib.pyplot as plt
 from pygame_recorder import PygameRecord
 import os
+from abc import ABC, abstractmethod
 
-class Environment:
+# TODO: create an abstract class for the environment from which the specific experiments then can be build
+class Environment(ABC):
     def __init__(self, seed=0, patch_radius=2, s_init=10, e_init=1, eta=0.1, beta=0.5, alpha=0.1, gamma=0.01, step_max=400, x_max=5, y_max=5, v_max=0.1):
-        self.patch = Patch(x_max/2, y_max/2, patch_radius, s_init, eta=eta, gamma=gamma)
-        self.agent = Agent(0,0,x_max,y_max,e_init,v_max, alpha=alpha, beta=beta)
         self.x_max = x_max
         self.y_max = y_max
         self.v_max = v_max
@@ -19,18 +19,45 @@ class Environment:
         self.gamma = gamma
         self.step_max = step_max
         self.step_idx = 0
+        self.patch = Patch(x_max/2, y_max/2, patch_radius, s_init, eta=eta, gamma=gamma)
+
+    def get_action_space(self):
+        action_dim = 2 # We use two acceleration terms (one for x and one for y)
+        action_range = [-2*self.v_max, 2*self.v_max]
+        return action_dim, action_range
+
+    @abstractmethod
+    def step(self, action):
+        ...
+    @abstractmethod
+    def reset(self, seed=0):
+        ...
+    @abstractmethod
+    def _get_state(self):
+        ...
+    @abstractmethod
+    def get_action_space(self):
+        ...
+    @abstractmethod
+    def get_state_space(self):
+        ...
+    
+
+class OneAgentEnv(Environment):
+    def __init__(self, seed=0, patch_radius=2, s_init=10, e_init=1, eta=0.1, beta=0.5, alpha=0.1, gamma=0.01, step_max=400, x_max=5, y_max=5, v_max=0.1):
+        super().__init__(seed=seed, patch_radius=patch_radius, s_init=s_init, e_init=e_init, eta=eta, beta=beta, alpha=alpha, gamma=gamma, step_max=step_max, x_max=x_max, y_max=y_max, v_max=v_max)
+        self.agent = Agent(0,0,x_max,y_max,e_init,v_max, alpha=alpha, beta=beta)
     
     def reset(self, seed=0):
         # Put the agent randomly somewhere outside the patch in the environment (uniform rejection sampling)
         x_key, y_key = jax.random.split(jax.random.PRNGKey(seed))
         x = jax.random.uniform(x_key, minval=0,maxval=self.x_max)
         y = jax.random.uniform(y_key, minval=0,maxval=self.y_max)
-        self.agent.reset(x,y)
         while self.agent.is_in_patch(self.patch):
             x_key, y_key = jax.random.split(x_key)
             x = jax.random.uniform(x_key, minval=0,maxval=self.x_max)
             y = jax.random.uniform(y_key, minval=0,maxval=self.y_max)
-            self.agent.reset(x,y)
+        self.agent.reset(x,y)
         # Reset counter
         self.step_idx = 0
         # Reset the states
@@ -39,30 +66,13 @@ class Environment:
         state = self._get_state()
         return state, None # None is to conform with the output of the gym API
 
-    def get_action_space(self):
-        action_dim = 2 # We use two acceleration terms (one for x and one for y)
-        action_range = [-2*self.v_max, 2*self.v_max]
-        return action_dim, action_range
-
     def _get_state(self):
         # Select first agent for now
         state = jnp.concatenate([self.agent.get_position(), self.patch.get_position(), jnp.array([self.patch.get_resources(), self.agent.get_energy()])])
-        #state = self.agent_pos
         state = jnp.expand_dims(state, 0) # Ensure correct vector shape
         return state
     
-    def get_state_space(self):
-        state = self._get_state()
-        #print(state.shape)
-        return state.shape
-
-    def render_info(self):
-        # Return all info useful for rendering
-        agent_energy = self.agent.get_energy()
-        agent_position = self.agent.get_position()
-        return self.x_max, self.y_max, agent_position, self.patch.get_position(), self.patch.get_radius(), agent_energy, self.patch.get_resources()
-    
-    def step(self, action, h=0.1):
+    def step(self, action):
         # Flatten array if needed
         action = action.flatten()
         # Update agent position
@@ -74,9 +84,80 @@ class Environment:
         self.step_idx += 1
         # Return the values needed for RL similar to the OpenAI gym implementation (next_state, reward, terminated, truncated)
         next_state = self._get_state()
-        terminated = self.agent.get_energy().item() == 0
+        # Termination is not really needed atm
+        terminated = False
+        #terminated = self.agent.get_energy().item() == 0
         truncated = self.step_idx >= self.step_max
         return next_state, reward, terminated, truncated, None # None is to have similar output shape as gym API
+
+# TODO: make a two (or N-) agent version of the single-patch foraging environment
+class NAgentsEnv(Environment):
+    def __init__(self, seed=0, patch_radius=2, s_init=10, e_init=1, eta=0.1, beta=0.5, alpha=0.1, gamma=0.01, step_max=400, x_max=5, y_max=5, v_max=0.1, n_agents=2):
+        super().__init__(seed=seed, patch_radius=patch_radius, s_init=s_init, e_init=e_init, eta=eta, beta=beta, alpha=alpha, gamma=gamma, step_max=step_max, x_max=x_max, y_max=y_max, v_max=v_max)
+        self.agents = [Agent(0,0,x_max,y_max,e_init,v_max, alpha=alpha, beta=beta) for i in range(n_agents)]
+        self.n_agents = n_agents
+    
+    def get_num_agents(self):
+        return self.n_agents
+    
+    def get_state_space(self):
+        state = self._get_state(0)
+        return state.shape
+
+    def render_info(self):
+        # Return all info useful for rendering
+        agent_energies = [agent.get_energy() for agent in self.agents]
+        agent_positions = [agent.get_position() for agent in self.agents]
+        return self.x_max, self.y_max, agent_positions, self.patch.get_position(), self.patch.get_radius(), agent_energies, self.patch.get_resources()
+    
+    # Select state of agent by index
+    def _get_state(self, i):
+        # Select first agent for now
+        state = jnp.concatenate([self.agents[i].get_position(), self.patch.get_position(), jnp.array([self.patch.get_resources(), self.agents[i].get_energy()])])
+        state = jnp.expand_dims(state, 0) # Ensure correct vector shape
+        return state
+    
+    def reset(self, seed=0):
+        # Put the agent randomly somewhere outside the patch in the environment (uniform rejection sampling)
+        x_key, y_key = jax.random.split(jax.random.PRNGKey(seed))
+        x = jax.random.uniform(x_key, minval=0,maxval=self.x_max)
+        y = jax.random.uniform(y_key, minval=0,maxval=self.y_max)
+        for agent in self.agents:
+            while agent.is_in_patch(self.patch):
+                x_key, y_key = jax.random.split(x_key)
+                x = jax.random.uniform(x_key, minval=0,maxval=self.x_max)
+                y = jax.random.uniform(y_key, minval=0,maxval=self.y_max)
+            agent.reset(x,y)
+        # Reset counter
+        self.step_idx = 0
+        # Reset the states
+        self.patch.reset()
+        # Return the state
+        states = [self._get_state(i) for i in range(len(self.agents))] 
+        return states, None # None is to conform with the output of the gym API
+
+    def step(self, *actions):
+        next_states = []
+        rewards = []
+        for i,action in enumerate(actions):
+            # Flatten array if needed
+            action = action.flatten()
+            # Update agent position
+            agent_pos = self.agents[i].update_position(action)
+            # Update dynamical system of allocating resources
+            reward, s_eaten = self.agents[i].update_energy(self.patch)
+            self.patch.update_resources(s_eaten)
+            rewards.append(reward)
+            # Update counter
+            self.step_idx += 1
+            next_states.append(self._get_state())
+        # Termination is not really needed atm
+        terminated = False
+        #terminated = self.agent.get_energy().item() == 0
+        truncated = self.step_idx >= self.step_max
+        return next_states, rewards, terminated, truncated, None # None is to have similar output shape as gym API
+
+
 
 class Agent:
     def __init__(self,x,y,x_max,y_max,e_init,v_max, alpha=0.4, beta=0.25):
@@ -162,7 +243,8 @@ class Patch:
     def reset(self):
         self.resources = jnp.array(self.s_init, dtype=jnp.float32)
 
-class RenderEnvironment:
+# TODO: make general for N-agent environments
+class RenderOneAgentEnvironment:
     def __init__(self, env):
         self.env = env
         self.closed = False
@@ -180,7 +262,6 @@ class RenderEnvironment:
         return results
     
     def step(self, action):
-        #print(f"Action: {action}")
         (next_s, reward, terminated, truncated, info) = self.env.step(action)
         size_x, size_y, agent_pos, patch_pos, patch_radius, e_agent, s_patch = self.env.render_info()
         self.agent_poss[self.env.step_idx-1] = [agent_pos.at[0].get(), agent_pos.at[1].get()]
@@ -191,11 +272,13 @@ class RenderEnvironment:
 
     def render(self, save=True):
         FPS = 20
+        # Generate unique GIF filename
         fname = "one_agent_one_patch.gif"
         i = 0
         while os.path.isfile(fname):
             i += 1
             fname = f"one_agent_one_patch-{i}.gif"
+        # Render game and simultaneously save it as a gif
         with PygameRecord(fname, FPS) as recorder:
             # Pygame screen init
             pygame.init()
@@ -231,6 +314,100 @@ class RenderEnvironment:
                 screen.fill(white_color)
                 pygame.draw.circle(screen, patch_color, patch_pos, scale*patch_radius)
                 pygame.draw.circle(screen, red_color, agent_pos, scale*agent_size)
+                # Update screen
+                pygame.display.update()
+                recorder.add_frame()
+            # Close the screen
+            pygame.quit()
+            if save:
+                recorder.save()
+        # Show the plots for the agent and the patch resources
+        fig, (ax1, ax2, ax3) = plt.subplots(3)
+        ax1.set_title("Energy of agent")
+        ax1.set_xlabel("Timestep")
+        ax1.set_ylabel("Energy")
+        ax1.plot(self.es_agent)
+        ax2.set_title("Resources in patch")
+        ax2.set_xlabel("Timestep")
+        ax2.set_ylabel("Resources")
+        ax2.plot(self.ss_patch)
+        ax3.set_title("Rewards collected at timesteps")
+        ax3.set_xlabel("Timestep")
+        ax3.set_ylabel("Reward value")
+        ax3.plot(self.rewards)
+        plt.tight_layout()
+        plt.show()
+
+class RenderNAgentsEnvironment:
+    def __init__(self, env):
+        self.env = env
+        self.closed = False
+        # Tracking arrays
+        n_agents = self.env.get_num_agents()
+        self.agent_poss = np.empty((self.env.step_max, n_agents, 2))
+        self.ss_patch = np.empty((self.env.step_max, n_agents))
+        self.es_agent = np.empty((self.env.step_max, n_agents))
+        self.rewards = np.empty((self.env.step_max, n_agents))
+    
+    def reset(self, seed=0):
+        results = self.env.reset(seed=seed)
+        size_x, size_y, agents_pos, patch_pos, patch_radius, e_agents, s_patch = self.env.render_info()
+        self.agent_poss[self.env.step_idx-1] = np.array([[agent_pos.at[0].get(), agent_pos.at[1].get()] for agent_pos in agents_pos])
+        self.ss_patch[self.env.step_idx-1] = s_patch.item()
+        return results
+    
+    def step(self, *actions):
+        (next_ss, rewards, terminated, truncated, info) = self.env.step(*actions)
+        size_x, size_y, agents_pos, patch_pos, patch_radius, e_agents, s_patch = self.env.render_info()
+        self.agent_poss[self.env.step_idx-1] = np.array([[agent_pos.at[0].get(), agent_pos.at[1].get()] for agent_pos in agents_pos])
+        self.ss_patch[self.env.step_idx-1] = s_patch.item()
+        self.es_agent[self.env.step_idx-1] = np.array([e_agent.item() for e_agent in e_agents])
+        self.rewards[self.env.step_idx-1] = np.array([reward.item() for reward in rewards])
+        return (next_ss, rewards, terminated, truncated, info)
+
+    def render(self, save=True):
+        FPS = 20
+        # Generate unique GIF filename
+        fname = "one_agent_one_patch.gif"
+        i = 0
+        while os.path.isfile(fname):
+            i += 1
+            fname = f"one_agent_one_patch-{i}.gif"
+        # Render game and simultaneously save it as a gif
+        with PygameRecord(fname, FPS) as recorder:
+            # Pygame screen init
+            pygame.init()
+            clock = pygame.time.Clock()
+            # Get render info
+            size_x, size_y, *_ = self.env.render_info()
+            scale = 100
+            agent_size = size_x/scale
+            screen_x = scale*size_x
+            screen_y = scale*size_y
+            screen = pygame.display.set_mode((screen_x, screen_y))
+            red_color = pygame.Color(255, 0, 0)
+            white_color = pygame.Color(255,255,255)
+            # Select used segments of tracking arrays
+            self.agent_poss = self.agent_poss[:self.env.step_idx - 1]
+            self.ss_patch = self.ss_patch[:self.env.step_idx - 1]
+            self.es_agent = self.es_agent[:self.env.step_idx - 1]
+            self.rewards = self.rewards[:self.env.step_idx - 1]
+            # Render on initialization
+            for i in range(self.env.step_idx - 2):
+                for event in pygame.event.get():
+                    if event.type == QUIT:
+                        return
+                clock.tick(FPS)
+                # Get render info
+                size_x, size_y, agents_pos, patch_pos, patch_radius, e_agents, s_patch = self.env.render_info()
+                max_ratio_patch = self.ss_patch[i]/(self.env.eta/self.env.gamma)
+                patch_color = pygame.Color(0, max(50,int(max_ratio_patch*255)), 0)
+                agents_pos = scale*self.agent_poss[i]
+                patch_pos = [scale*patch_pos.at[0].get().item(), scale*patch_pos.at[1].get().item()]
+                # Draw information on screen
+                screen.fill(white_color)
+                pygame.draw.circle(screen, patch_color, patch_pos, scale*patch_radius)
+                [pygame.draw.circle(screen, red_color, agent_pos, scale*agent_size) for agent_pos in agents_pos]
                 # Update screen
                 pygame.display.update()
                 recorder.add_frame()

@@ -51,7 +51,6 @@ def mean_optimize_actor(optimizer: nnx.Optimizer, actor: nnx.Module, critic: nnx
 def sample_action(rng, actor, state, action_min, action_max, action_dim):
     mu_action = actor(state)
     eps = jax.random.normal(rng, (action_dim,))
-    #print("Action (no noise): ", mu_action, "; Action (w/ noise): ", mu_action + eps)
     return jnp.clip(mu_action + eps, action_min, action_max)
 
 @nnx.jit
@@ -155,9 +154,6 @@ def train_ddpg(env, num_episodes, tau=0.05, gamma=0.99, batch_size=64, lr_a=1e-4
             action_key, key = jax.random.split(key)
             action = sample_action(action_key, actor, state, -action_max, action_max, action_dim)
             next_state, reward, terminated, truncated, _ = env.step(jnp.array(action))
-            #print("Action: ", action)
-            #print(reward)
-            #print("State: ", next_state)
             done = truncated or terminated
             buffer.add(state, action, reward, next_state, terminated)
             state = next_state
@@ -183,4 +179,8 @@ def train_ddpg(env, num_episodes, tau=0.05, gamma=0.99, batch_size=64, lr_a=1e-4
         # Log the important variables to some logger
         log_fun(i, c_loss, a_loss, returns[i])
     return returns, actor_t, critic_t, reset_seed
+
+# TODO: Create a two agent ddpg training function CTDE idea
+def two_agents_train_ddpg(env, num_episodes, tau=0.05, gamma=0.99, batch_size=64, lr_a=1e-4, lr_c=3e-4, seed=0, reset_seed=43, action_dim=1, state_dim=3, action_max=2, hidden_dim=256, warmup_steps=800, log_fun=print_log_ddpg):
+    pass
             

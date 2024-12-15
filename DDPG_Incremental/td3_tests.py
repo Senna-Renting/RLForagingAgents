@@ -8,9 +8,6 @@ import matplotlib.pyplot as plt
 from environment import *
 from time import sleep
 
-# TODO: Implement unit-tests for the Critic and Actor networks (below are some suggestions)
-# 1. 
-
 # Variables with tables for XOR problem
 XOR_X = np.array([[1,1,1,0],
                [1,1,1,1],
@@ -275,7 +272,7 @@ def test_ddpg_train_pendulum():
 
 def test_ddpg_train_patch():
     episodes = list(range(1,11))
-    env = Environment(patch_radius=0.5, step_max=400, alpha=2)
+    env = OneAgentEnv(patch_radius=0.5, step_max=400, alpha=2)
     action_dim, a_range = env.get_action_space()
     rewards, actor, critic, reset_key = train_ddpg(env, episodes[-1], lr_c=1e-3, lr_a=3e-4, tau=0.1, action_dim=action_dim, state_dim=env.get_state_space()[1], action_max=a_range[1], hidden_dim=32, batch_size=100, seed=0)
     input("Press enter to see trained model in action...")
