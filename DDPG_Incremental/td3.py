@@ -113,6 +113,10 @@ def print_log_ddpg(epoch, critic_loss, actor_loss, returns):
     print(f"Actor loss: {actor_loss}")
     print(f"Return: {returns}")
 
+def print_log_ddpg_n_agents(epoch, returns):
+    print(f"Episode {epoch} done")
+    [print(f"Agent {i}'s return: {returns[i]}") for i in range(returns.shape[0])]
+
 def wandb_log_ddpg(epoch, critic_loss, actor_loss, returns):
     wandb.log({"Epoch":epoch,
                "Critic loss":critic_loss,
@@ -180,7 +184,67 @@ def train_ddpg(env, num_episodes, tau=0.05, gamma=0.99, batch_size=64, lr_a=1e-4
         log_fun(i, c_loss, a_loss, returns[i])
     return returns, actor_t, critic_t, reset_seed
 
-# TODO: Create a two agent ddpg training function CTDE idea
-def two_agents_train_ddpg(env, num_episodes, tau=0.05, gamma=0.99, batch_size=64, lr_a=1e-4, lr_c=3e-4, seed=0, reset_seed=43, action_dim=1, state_dim=3, action_max=2, hidden_dim=256, warmup_steps=800, log_fun=print_log_ddpg):
-    pass
+# TODO: Create an n-agent ddpg training function
+def n_agents_train_ddpg(env, num_episodes, tau=0.05, gamma=0.99, batch_size=64, lr_a=1e-4, lr_c=3e-4, seed=0, reset_seed=43, action_dim=1, state_dim=3, action_max=2, hidden_dim=256, warmup_steps=800, log_fun=print_log_ddpg_n_agents):
+    # Initialize neural networks
+    n_agents = env.get_num_agents()
+    actors = [Actor(state_dim,action_dim,action_max,seed+i,hidden_dim=hidden_dim) for i in range(n_agents)]
+    actors_t = [Actor(state_dim,action_dim,action_max,seed+i,hidden_dim=hidden_dim) for i in range(n_agents)]
+    critics = [Critic(state_dim + action_dim,seed+i,hidden_dim=hidden_dim) for i in range(n_agents)]
+    critics_t = [Critic(state_dim + action_dim,seed+i,hidden_dim=hidden_dim) for i in range(n_agents)]
+    optim_actors = [nnx.Optimizer(actors[i], optax.adam(lr_a)) for i in range(n_agents)]
+    optim_critics = [nnx.Optimizer(critics[i], optax.adam(lr_c)) for i in range(n_agents)]
+    # Add buffer(s) (for now we make one for each agent seperately)
+    buffer_size = num_episodes*env.step_max+warmup_steps # Ensure every step is kept in the replay buffer
+    buffers = [Buffer(buffer_size, state_dim, action_dim) for i in range(n_agents)]
+    # Initialize environment
+    key = jax.random.PRNGKey(seed)
+    # Keep track of accumulated rewards
+    returns = np.zeros((num_episodes, n_agents))
+    # Warm-up the buffer
+    np.random.seed(reset_seed)
+    rand_actions = np.random.uniform(low=-action_max, high=action_max, size=(warmup_steps,action_dim))
+    states, info = env.reset(seed=reset_seed)
+    for j in range(rand_actions.shape[0]):
+        actions = [jnp.array(rand_actions[j]) for i in range(n_agents)]
+        next_states, rewards, terminated, truncated, _ = env.step(*actions)
+        [buffer.add(states[i], actions[i], rewards[i], next_states[i], terminated) for i,buffer in enumerate(buffers)]
+        states = next_states
+    # Run episodes
+    for i in range(num_episodes):
+        done = False
+        states, info = env.reset(seed=reset_seed)
+        # Train agent
+        while not done:
+            # Sample action, execute it, and add to buffer
+            action_key, key = jax.random.split(key)
+            actions = [jnp.array(sample_action(action_key, actor, states[i], -action_max, action_max, action_dim)) for i,actor in enumerate(actors)]
+            next_states, rewards, terminated, truncated, _ = env.step(*actions)
+            done = truncated or terminated
+            for i_a in range(n_agents):
+                buffers[i_a].add(states[i_a], actions[i_a], rewards[i_a], next_states[i_a], terminated)
+                # Sample batch from buffer
+                b_states, b_actions, b_rewards, b_next_states, b_dones = buffers[i_a].sample(batch_size)
+                # Update critic
+                ys = compute_targets(critics_t[i_a], actors[i_a], b_rewards, b_next_states, b_dones, gamma)
+                c_loss, grads = MSE_optimize_critic(optim_critics[i_a], critics[i_a], b_states, b_actions, ys)
+                # Update policy
+                a_loss, grads = mean_optimize_actor(optim_actors[i_a], actors[i_a], critics[i_a], b_states)
+                # Update targets (critic and policy)
+                nnx.update(critics_t[i_a], polyak_update(tau, critics_t[i_a], critics[i_a]))
+                nnx.update(actors_t[i_a], polyak_update(tau, actors_t[i_a], actors[i_a]))
+            # Update state of agents
+            states = next_states
+        # Test agent
+        done = False
+        states, info = env.reset(seed=reset_seed)
+        while not done:
+            actions = [jnp.array(actors_t[i](states[i])) for i in range(n_agents)]
+            next_states, rewards, terminated, truncated, _ = env.step(*actions)
+            states = next_states
+            done = terminated or truncated
+            returns[i,:] += np.array(rewards)
+        # Log the important variables to some logger
+        log_fun(i, returns[i])
+    return returns, actors_t, critics_t, reset_seed
             

@@ -36,9 +36,6 @@ class Environment(ABC):
     def _get_state(self):
         ...
     @abstractmethod
-    def get_action_space(self):
-        ...
-    @abstractmethod
     def get_state_space(self):
         ...
     
@@ -71,6 +68,10 @@ class OneAgentEnv(Environment):
         state = jnp.concatenate([self.agent.get_position(), self.patch.get_position(), jnp.array([self.patch.get_resources(), self.agent.get_energy()])])
         state = jnp.expand_dims(state, 0) # Ensure correct vector shape
         return state
+
+    def get_state_space(self):
+        state = self._get_state()
+        return state.shape
     
     def step(self, action):
         # Flatten array if needed
@@ -89,6 +90,12 @@ class OneAgentEnv(Environment):
         #terminated = self.agent.get_energy().item() == 0
         truncated = self.step_idx >= self.step_max
         return next_state, reward, terminated, truncated, None # None is to have similar output shape as gym API
+
+    def render_info(self):
+        # Return all info useful for rendering
+        agent_e = self.agent.get_energy()
+        agent_pos = self.agent.get_position()
+        return self.x_max, self.y_max, agent_pos, self.patch.get_position(), self.patch.get_radius(), agent_e, self.patch.get_resources()
 
 # TODO: make a two (or N-) agent version of the single-patch foraging environment
 class NAgentsEnv(Environment):
@@ -120,20 +127,22 @@ class NAgentsEnv(Environment):
     def reset(self, seed=0):
         # Put the agent randomly somewhere outside the patch in the environment (uniform rejection sampling)
         x_key, y_key = jax.random.split(jax.random.PRNGKey(seed))
-        x = jax.random.uniform(x_key, minval=0,maxval=self.x_max)
-        y = jax.random.uniform(y_key, minval=0,maxval=self.y_max)
         for agent in self.agents:
+            x_key, y_key = jax.random.split(x_key)
+            x = jax.random.uniform(x_key, minval=0,maxval=self.x_max)
+            y = jax.random.uniform(y_key, minval=0,maxval=self.y_max)
+            agent.reset(x,y)
             while agent.is_in_patch(self.patch):
                 x_key, y_key = jax.random.split(x_key)
                 x = jax.random.uniform(x_key, minval=0,maxval=self.x_max)
                 y = jax.random.uniform(y_key, minval=0,maxval=self.y_max)
-            agent.reset(x,y)
+                agent.reset(x,y)
         # Reset counter
         self.step_idx = 0
         # Reset the states
         self.patch.reset()
         # Return the state
-        states = [self._get_state(i) for i in range(len(self.agents))] 
+        states = [self._get_state(i) for i in range(self.n_agents)] 
         return states, None # None is to conform with the output of the gym API
 
     def step(self, *actions):
@@ -146,11 +155,12 @@ class NAgentsEnv(Environment):
             agent_pos = self.agents[i].update_position(action)
             # Update dynamical system of allocating resources
             reward, s_eaten = self.agents[i].update_energy(self.patch)
-            self.patch.update_resources(s_eaten)
+            self.patch.update_resources(s_eaten, dt=0.1/self.n_agents)
             rewards.append(reward)
-            # Update counter
-            self.step_idx += 1
-            next_states.append(self._get_state())
+        # Update counter
+        self.step_idx += 1
+        # Update states AFTER dynamical system updates of each agent have been made
+        next_states = [self._get_state(i) for i in range(self.n_agents)]
         # Termination is not really needed atm
         terminated = False
         #terminated = self.agent.get_energy().item() == 0
@@ -238,7 +248,7 @@ class Patch:
         s_growth = jnp.multiply(self.eta,self.resources)
         s_decay = jnp.multiply(self.gamma,jnp.power(self.resources,2))
         ds = dt*(s_growth - s_decay - eaten)
-        self.resources = jnp.array(self.resources.item() + ds, dtype=jnp.float32)
+        self.resources = jnp.array(max(0,self.resources.item() + ds), dtype=jnp.float32)
         return self.resources
     def reset(self):
         self.resources = jnp.array(self.s_init, dtype=jnp.float32)
@@ -345,9 +355,9 @@ class RenderNAgentsEnvironment:
         # Tracking arrays
         n_agents = self.env.get_num_agents()
         self.agent_poss = np.empty((self.env.step_max, n_agents, 2))
-        self.ss_patch = np.empty((self.env.step_max, n_agents))
         self.es_agent = np.empty((self.env.step_max, n_agents))
         self.rewards = np.empty((self.env.step_max, n_agents))
+        self.ss_patch = np.empty(self.env.step_max)
     
     def reset(self, seed=0):
         results = self.env.reset(seed=seed)
@@ -368,11 +378,12 @@ class RenderNAgentsEnvironment:
     def render(self, save=True):
         FPS = 20
         # Generate unique GIF filename
-        fname = "one_agent_one_patch.gif"
+        n_agents = self.env.get_num_agents()
+        fname = f"{n_agents}_agents_one_patch.gif"
         i = 0
         while os.path.isfile(fname):
             i += 1
-            fname = f"one_agent_one_patch-{i}.gif"
+            fname = f"{n_agents}_agent_one_patch-{i}.gif"
         # Render game and simultaneously save it as a gif
         with PygameRecord(fname, FPS) as recorder:
             # Pygame screen init
@@ -401,6 +412,7 @@ class RenderNAgentsEnvironment:
                 # Get render info
                 size_x, size_y, agents_pos, patch_pos, patch_radius, e_agents, s_patch = self.env.render_info()
                 max_ratio_patch = self.ss_patch[i]/(self.env.eta/self.env.gamma)
+                print("Patch color ratio: ",max_ratio_patch)
                 patch_color = pygame.Color(0, max(50,int(max_ratio_patch*255)), 0)
                 agents_pos = scale*self.agent_poss[i]
                 patch_pos = [scale*patch_pos.at[0].get().item(), scale*patch_pos.at[1].get().item()]
