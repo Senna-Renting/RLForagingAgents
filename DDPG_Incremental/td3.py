@@ -185,7 +185,7 @@ def train_ddpg(env, num_episodes, tau=0.05, gamma=0.99, batch_size=64, lr_a=1e-4
     return returns, actor_t, critic_t, reset_seed
 
 # TODO: Create an n-agent ddpg training function
-def n_agents_train_ddpg(env, num_episodes, tau=0.05, gamma=0.99, batch_size=64, lr_a=1e-4, lr_c=3e-4, seed=0, reset_seed=43, action_dim=1, state_dim=3, action_max=2, hidden_dim=256, warmup_steps=800, log_fun=print_log_ddpg_n_agents):
+def n_agents_train_ddpg(env, num_episodes, tau=0.05, gamma=0.99, batch_size=200, lr_a=2e-4, lr_c=1e-3, seed=0, reset_seed=43, action_dim=1, state_dim=3, action_max=2, hidden_dim=128, warmup_steps=800, log_fun=print_log_ddpg_n_agents):
     # Initialize neural networks
     n_agents = env.get_num_agents()
     actors = [Actor(state_dim,action_dim,action_max,seed+i,hidden_dim=hidden_dim) for i in range(n_agents)]
@@ -194,22 +194,13 @@ def n_agents_train_ddpg(env, num_episodes, tau=0.05, gamma=0.99, batch_size=64, 
     critics_t = [Critic(state_dim + action_dim,seed+i,hidden_dim=hidden_dim) for i in range(n_agents)]
     optim_actors = [nnx.Optimizer(actors[i], optax.adam(lr_a)) for i in range(n_agents)]
     optim_critics = [nnx.Optimizer(critics[i], optax.adam(lr_c)) for i in range(n_agents)]
-    # Add buffer(s) (for now we make one for each agent seperately)
+    # Add seperate experience replay buffer for each agent 
     buffer_size = num_episodes*env.step_max+warmup_steps # Ensure every step is kept in the replay buffer
     buffers = [Buffer(buffer_size, state_dim, action_dim) for i in range(n_agents)]
     # Initialize environment
     key = jax.random.PRNGKey(seed)
     # Keep track of accumulated rewards
     returns = np.zeros((num_episodes, n_agents))
-    # Warm-up the buffer
-    np.random.seed(reset_seed)
-    rand_actions = np.random.uniform(low=-action_max, high=action_max, size=(warmup_steps,action_dim))
-    states, info = env.reset(seed=reset_seed)
-    for j in range(rand_actions.shape[0]):
-        actions = [jnp.array(rand_actions[j]) for i in range(n_agents)]
-        next_states, rewards, terminated, truncated, _ = env.step(*actions)
-        [buffer.add(states[i], actions[i], rewards[i], next_states[i], terminated) for i,buffer in enumerate(buffers)]
-        states = next_states
     # Run episodes
     for i in range(num_episodes):
         done = False

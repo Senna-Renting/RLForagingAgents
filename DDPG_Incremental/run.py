@@ -21,7 +21,7 @@ def ddpg_train_patch(env, num_episodes):
 def ddpg_train_patch_n_agents(env, num_episodes):
     episodes = list(range(1,num_episodes+1))
     action_dim, a_range = env.get_action_space()
-    rewards, actors, critics, reset_key = n_agents_train_ddpg(env, episodes[-1], lr_c=1e-3, lr_a=2e-4, tau=0.01, action_dim=action_dim, state_dim=env.get_state_space()[1], action_max=a_range[1], hidden_dim=256, batch_size=200, seed=0, reset_seed=0)
+    rewards, actors, critics, reset_key = n_agents_train_ddpg(env, episodes[-1], lr_c=1e-3, lr_a=3e-4, tau=0.01, action_dim=action_dim, state_dim=env.get_state_space()[1], action_max=a_range[1], hidden_dim=64, batch_size=200, seed=0, reset_seed=0)
     input("Press enter to see trained model in action...")
     n_agents = env.get_num_agents()
     env = RenderNAgentsEnvironment(env)
@@ -106,11 +106,11 @@ def patch_test_saved_policy(env, path, hidden_dim=32):
     env.render()
 
 if __name__ == "__main__":
-    num_episodes = 10
+    num_episodes = 50
     num_runs = 5
     
     # Uncomment the environment needed below
-    env = NAgentsEnv(patch_radius=0.5, step_max=100, alpha=2, n_agents=10)
+    env = NAgentsEnv(patch_radius=0.5, step_max=400, alpha=2, n_agents=2)
     #env = OneAgentEnv(patch_radius=0.5, step_max=400, alpha=2)
     
     # Uncomment the method needed below

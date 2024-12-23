@@ -412,7 +412,7 @@ class RenderNAgentsEnvironment:
                 # Get render info
                 size_x, size_y, agents_pos, patch_pos, patch_radius, e_agents, s_patch = self.env.render_info()
                 max_ratio_patch = self.ss_patch[i]/(self.env.eta/self.env.gamma)
-                print("Patch color ratio: ",max_ratio_patch)
+                #print("Patch color ratio: ",max_ratio_patch)
                 patch_color = pygame.Color(0, max(50,int(max_ratio_patch*255)), 0)
                 agents_pos = scale*self.agent_poss[i]
                 patch_pos = [scale*patch_pos.at[0].get().item(), scale*patch_pos.at[1].get().item()]
