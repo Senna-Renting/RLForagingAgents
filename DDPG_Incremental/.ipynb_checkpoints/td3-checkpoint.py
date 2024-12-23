@@ -115,7 +115,7 @@ def print_log_ddpg(epoch, critic_loss, actor_loss, returns):
 
 def print_log_ddpg_n_agents(epoch, returns):
     print(f"Episode {epoch} done")
-    [print(f"Agent {i}'s return: {returns[i]}") for i in range(returns.shape[0])]
+    [print(f"Agent {i+1}'s energy: {returns[i]}") for i in range(returns.shape[0])]
 
 def wandb_log_ddpg(epoch, critic_loss, actor_loss, returns):
     wandb.log({"Epoch":epoch,
@@ -179,7 +179,7 @@ def train_ddpg(env, num_episodes, tau=0.05, gamma=0.99, batch_size=64, lr_a=1e-4
             next_state, reward, terminated, truncated, _ = env.step(jnp.array(action))
             state = next_state
             done = terminated or truncated
-            returns[i] += reward
+        returns[i] = env.agent.get_energy()
         # Log the important variables to some logger
         log_fun(i, c_loss, a_loss, returns[i])
     return returns, actor_t, critic_t, reset_seed
@@ -212,18 +212,19 @@ def n_agents_train_ddpg(env, num_episodes, tau=0.05, gamma=0.99, batch_size=200,
             actions = [jnp.array(sample_action(action_key, actor, states[i], -action_max, action_max, action_dim)) for i,actor in enumerate(actors)]
             next_states, rewards, terminated, truncated, _ = env.step(*actions)
             done = truncated or terminated
-            for i_a in range(n_agents):
-                buffers[i_a].add(states[i_a], actions[i_a], rewards[i_a], next_states[i_a], terminated)
-                # Sample batch from buffer
-                b_states, b_actions, b_rewards, b_next_states, b_dones = buffers[i_a].sample(batch_size)
-                # Update critic
-                ys = compute_targets(critics_t[i_a], actors[i_a], b_rewards, b_next_states, b_dones, gamma)
-                c_loss, grads = MSE_optimize_critic(optim_critics[i_a], critics[i_a], b_states, b_actions, ys)
-                # Update policy
-                a_loss, grads = mean_optimize_actor(optim_actors[i_a], actors[i_a], critics[i_a], b_states)
-                # Update targets (critic and policy)
-                nnx.update(critics_t[i_a], polyak_update(tau, critics_t[i_a], critics[i_a]))
-                nnx.update(actors_t[i_a], polyak_update(tau, actors_t[i_a], actors[i_a]))
+            if not terminated:
+                for i_a in range(n_agents):
+                    buffers[i_a].add(states[i_a], actions[i_a], rewards[i_a], next_states[i_a], terminated)
+                    # Sample batch from buffer
+                    b_states, b_actions, b_rewards, b_next_states, b_dones = buffers[i_a].sample(batch_size)
+                    # Update critic
+                    ys = compute_targets(critics_t[i_a], actors[i_a], b_rewards, b_next_states, b_dones, gamma)
+                    c_loss, grads = MSE_optimize_critic(optim_critics[i_a], critics[i_a], b_states, b_actions, ys)
+                    # Update policy
+                    a_loss, grads = mean_optimize_actor(optim_actors[i_a], actors[i_a], critics[i_a], b_states)
+                    # Update targets (critic and policy)
+                    nnx.update(critics_t[i_a], polyak_update(tau, critics_t[i_a], critics[i_a]))
+                    nnx.update(actors_t[i_a], polyak_update(tau, actors_t[i_a], actors[i_a]))
             # Update state of agents
             states = next_states
         # Test agent
@@ -234,7 +235,7 @@ def n_agents_train_ddpg(env, num_episodes, tau=0.05, gamma=0.99, batch_size=200,
             next_states, rewards, terminated, truncated, _ = env.step(*actions)
             states = next_states
             done = terminated or truncated
-            returns[i,:] += np.array(rewards)
+        returns[i,:] = [env.agents[i_a].get_energy() for i_a in range(n_agents)]
         # Log the important variables to some logger
         log_fun(i, returns[i])
     return returns, actors_t, critics_t, reset_seed

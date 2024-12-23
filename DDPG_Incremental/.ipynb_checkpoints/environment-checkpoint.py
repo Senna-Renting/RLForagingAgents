@@ -86,8 +86,7 @@ class OneAgentEnv(Environment):
         # Return the values needed for RL similar to the OpenAI gym implementation (next_state, reward, terminated, truncated)
         next_state = self._get_state()
         # Termination is not really needed atm
-        terminated = False
-        #terminated = self.agent.get_energy().item() == 0
+        terminated = self.agent.get_energy().item() == 0
         truncated = self.step_idx >= self.step_max
         return next_state, reward, terminated, truncated, None # None is to have similar output shape as gym API
 
@@ -161,9 +160,8 @@ class NAgentsEnv(Environment):
         self.step_idx += 1
         # Update states AFTER dynamical system updates of each agent have been made
         next_states = [self._get_state(i) for i in range(self.n_agents)]
-        # Termination is not really needed atm
-        terminated = False
-        #terminated = self.agent.get_energy().item() == 0
+        # When any of the agents dies, the environment is terminated 
+        terminated = np.any([self.agents[i].get_energy().item() == 0 for i in range(self.n_agents)])
         truncated = self.step_idx >= self.step_max
         return next_states, rewards, terminated, truncated, None # None is to have similar output shape as gym API
 
@@ -206,7 +204,12 @@ class Agent:
         s_eaten = (self.is_in_patch(patch)).astype(int)*self.beta*patch.get_resources().item()
         action_penalty = jnp.linalg.norm(self.action)
         de = dt*(s_eaten - self.alpha*action_penalty)
-        self.e_agent = jnp.array(self.e_agent.item() + de, dtype=jnp.float32)
+        # If agent has negative or zero energy, put the energy value at zero
+        if self.e_agent.item() + de > 0: 
+            self.e_agent = jnp.array(self.e_agent.item() + de, dtype=jnp.float32)
+        else:
+            de = jnp.array(0, dtype=jnp.float32) # when dead reward should be/remain zero
+            self.e_agent = jnp.array(0, dtype=jnp.float32)
         return de, s_eaten # reward and amount of resource eaten respectively
 
     def get_position(self):
@@ -221,10 +224,11 @@ class Agent:
         damping = 1 # Adds friction to the movement of the agent (slows down over time)
         self.agent_x_dot = v_bounded(damping*self.agent_x_dot + action.at[0].get())
         self.agent_y_dot = v_bounded(damping*self.agent_y_dot + action.at[1].get())
-        # Update position
-        x = (self.agent_pos.at[0].get() + self.agent_x_dot) % self.x_max
-        y = (self.agent_pos.at[1].get() + self.agent_y_dot) % self.y_max
-        self.agent_pos = jnp.array([x,y,self.agent_x_dot,self.agent_y_dot])
+        # Update position (only if not dead)
+        if self.e_agent.item() > 0:
+            x = (self.agent_pos.at[0].get() + self.agent_x_dot) % self.x_max
+            y = (self.agent_pos.at[1].get() + self.agent_y_dot) % self.y_max
+            self.agent_pos = jnp.array([x,y,self.agent_x_dot,self.agent_y_dot])
         #print(self.agent_pos)
         return self.agent_pos
 
