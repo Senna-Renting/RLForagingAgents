@@ -5,6 +5,7 @@ from td3 import Actor, wandb_train_ddpg, train_ddpg, n_agents_train_ddpg
 from welfare_functions import *
 import os
 from datetime import datetime
+import matplotlib.pyplot as plt
 
 def create_exp_folder(exp_name):
     timepoint = datetime.now().strftime("%d-%m-%Y %H%M%S")
@@ -13,13 +14,33 @@ def create_exp_folder(exp_name):
         os.makedirs(path)
     return path
 
-# This python file should contain all the high-level training function variations of our environment
+def plot_run_info(path, rewards, social_welfare=None, sw_fun=lambda x:0):
+    plt.figure()
+    plt.title("Return over episodes for each agent")
+    plt.xlabel("Episode")
+    plt.ylabel("Return")
+    [plt.plot(rewards[:,i], label=f"Agent {i+1}") for i in range(rewards.shape[1])]
+    plt.legend()
+    plt.savefig(os.path.join(path, "agent_episodes_return.png"))
+    if sw_fun.__name__ != "<lambda>":
+        plt.figure()
+        plt.title("Return over episodes for each agent")
+        plt.xlabel("Episode")
+        plt.ylabel(f"Social welfare ({sw_fun.__name__})")
+        plt.plot(social_welfare)
+        plt.savefig(os.path.join(path, "episodes_welfare.png"))
+
 def ddpg_train_patch(env, num_episodes):
     path = create_exp_folder("Experiment1")
     episodes = list(range(1,num_episodes+1))
     action_dim, a_range = env.get_action_space()
+    # Train agent
     rewards, actor, critic, reset_key = train_ddpg(env, episodes[-1], lr_c=1e-3, lr_a=3e-4, tau=0.02, action_dim=action_dim, state_dim=env.get_state_space()[1], action_max=a_range[1], hidden_dim=256, batch_size=200, seed=0, reset_seed=0)
-    input("Press enter to see trained model in action...")
+
+    # Plot and save rewards figure to path
+    plot_run_info(path, rewards)
+
+    # Render the obtained final policy from training
     env = RenderOneAgentEnvironment(env)
     state, info = env.reset(seed=reset_key)
     while True:
@@ -33,8 +54,13 @@ def ddpg_train_patch_n_agents(env, num_episodes):
     path = create_exp_folder("Experiment2")
     episodes = list(range(1,num_episodes+1))
     action_dim, a_range = env.get_action_space()
-    rewards, actors, critics, reset_key = n_agents_train_ddpg(env, episodes[-1], lr_c=5e-4, lr_a=1e-4, tau=0.01, action_dim=action_dim, state_dim=env.get_state_space()[1], action_max=a_range[1], hidden_dim=256, batch_size=200, seed=0, reset_seed=0)
-    input("Press enter to see trained model in action...")
+    # Train agent
+    (rewards, social_welfare), actors, critics, reset_key = n_agents_train_ddpg(env, episodes[-1], lr_c=1e-3, lr_a=2e-4, tau=0.02, action_dim=action_dim, state_dim=env.get_state_space()[1], action_max=a_range[1], hidden_dim=256, batch_size=200, seed=0, reset_seed=0)
+    
+    # Plot and save rewards figure to path
+    plot_run_info(path, rewards, social_welfare, env.sw_fun)
+    
+    # Render the obtained final policy from training
     n_agents = env.get_num_agents()
     env = RenderNAgentsEnvironment(env)
     states, info = env.reset(seed=reset_key)
@@ -118,11 +144,11 @@ def patch_test_saved_policy(env, path, hidden_dim=32):
     env.render()
 
 if __name__ == "__main__":
-    num_episodes = 1
+    num_episodes = 50
     num_runs = 5
     
     # Uncomment the environment needed below
-    env = NAgentsEnv(patch_radius=0.5, step_max=400, alpha=2, beta=0.5, e_init=10, n_agents=2, sw_fun=nash_sw)
+    env = NAgentsEnv(patch_radius=0.5, step_max=400, alpha=2, beta=0.5, e_init=10, n_agents=2)
     #env = OneAgentEnv(patch_radius=0.5, step_max=400, alpha=2)
     
     # Uncomment the method needed below

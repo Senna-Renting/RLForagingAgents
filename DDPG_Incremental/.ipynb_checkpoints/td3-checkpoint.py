@@ -202,6 +202,7 @@ def n_agents_train_ddpg(env, num_episodes, tau=0.05, gamma=0.99, batch_size=200,
     key = jax.random.PRNGKey(seed)
     # Keep track of accumulated rewards
     returns = np.zeros((num_episodes, n_agents))
+    welfare_returns = np.zeros((num_episodes))
     # Run episodes
     for i in range(num_episodes):
         done = False
@@ -209,9 +210,11 @@ def n_agents_train_ddpg(env, num_episodes, tau=0.05, gamma=0.99, batch_size=200,
         # Train agent
         while not done:
             # Sample action, execute it, and add to buffer
-            action_key, key = jax.random.split(key)
-            actions = [jnp.array(sample_action(action_key, actor, states[i], -action_max, action_max, action_dim)) for i,actor in enumerate(actors)]
-            next_states, rewards, terminated, truncated, _ = env.step(*actions)
+            actions = list(range(n_agents))
+            for i_a,actor in enumerate(actors):
+                action_key, key = jax.random.split(key)
+                actions[i_a] = jnp.array(sample_action(action_key, actor, states[i_a], -action_max, action_max, action_dim)) 
+            next_states, (rewards, social_welfare), terminated, truncated, _ = env.step(*actions)
             done = truncated or terminated
             if not terminated:
                 for i_a in range(n_agents):
@@ -232,13 +235,14 @@ def n_agents_train_ddpg(env, num_episodes, tau=0.05, gamma=0.99, batch_size=200,
         done = False
         states, info = env.reset(seed=reset_seed)
         while not done:
-            actions = [jnp.array(actors_t[i](states[i])) for i in range(n_agents)]
-            next_states, rewards, terminated, truncated, _ = env.step(*actions)
+            actions = [jnp.array(actors_t[i_a](states[i_a])) for i_a in range(n_agents)]
+            next_states, (rewards,social_welfare) , terminated, truncated, _ = env.step(*actions)
             states = next_states
             done = terminated or truncated
             returns[i,:] += rewards 
+            welfare_returns[i] += social_welfare
         # Log the important variables to some logger
         end_energy = [env.agents[i_a].get_energy() for i_a in range(n_agents)]
         log_fun(i, returns[i], end_energy)
-    return returns, actors_t, critics_t, reset_seed
+    return (returns, welfare_returns), actors_t, critics_t, reset_seed
             

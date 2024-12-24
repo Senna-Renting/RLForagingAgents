@@ -172,7 +172,7 @@ class NAgentsEnv(Environment):
         # When any of the agents dies, the environment is terminated 
         terminated = np.any([self.agents[i].get_energy().item() == 0 for i in range(self.n_agents)])
         truncated = self.step_idx >= self.step_max
-        return next_states, rewards, terminated, truncated, None # None is to have similar output shape as gym API
+        return next_states, (rewards, social_welfare), terminated, truncated, None # None is to have similar output shape as gym API
 
 
 
@@ -230,9 +230,8 @@ class Agent:
         # Functions needed to bound the allowed actions
         v_bounded = lambda v: max(min(v, self.v_max), -self.v_max)
         # Compute action values
-        damping = 1 # Adds friction to the movement of the agent (slows down over time)
-        self.agent_x_dot = v_bounded(damping*self.agent_x_dot + action.at[0].get())
-        self.agent_y_dot = v_bounded(damping*self.agent_y_dot + action.at[1].get())
+        self.agent_x_dot = v_bounded(self.agent_x_dot + action.at[0].get())
+        self.agent_y_dot = v_bounded(self.agent_y_dot + action.at[1].get())
         # Update position (only if not dead)
         if self.e_agent.item() > 0:
             x = (self.agent_pos.at[0].get() + self.agent_x_dot) % self.x_max
@@ -293,7 +292,7 @@ class RenderOneAgentEnvironment:
         self.rewards[self.env.step_idx-1] = reward.item()
         return (next_s, reward, terminated, truncated, info)
 
-    def render(self, save=True):
+    def render(self, save=True, path=""):
         FPS = 20
         # Generate unique GIF filename
         fname = "one_agent_one_patch.gif"
@@ -367,6 +366,7 @@ class RenderNAgentsEnvironment:
         self.closed = False
         # Tracking arrays
         n_agents = self.env.get_num_agents()
+        self.n_agents = n_agents
         self.agent_poss = np.empty((self.env.step_max, n_agents, 2))
         self.es_agent = np.empty((self.env.step_max, n_agents))
         self.rewards = np.empty((self.env.step_max, n_agents))
@@ -380,7 +380,7 @@ class RenderNAgentsEnvironment:
         return results
     
     def step(self, *actions):
-        (next_ss, rewards, terminated, truncated, info) = self.env.step(*actions)
+        (next_ss, (rewards, social_welfare), terminated, truncated, info) = self.env.step(*actions)
         size_x, size_y, agents_pos, patch_pos, patch_radius, e_agents, s_patch = self.env.render_info()
         self.agent_poss[self.env.step_idx-1] = np.array([[agent_pos.at[0].get(), agent_pos.at[1].get()] for agent_pos in agents_pos])
         self.ss_patch[self.env.step_idx-1] = s_patch.item()
@@ -443,7 +443,8 @@ class RenderNAgentsEnvironment:
         plt.xlabel("Timestep")
         plt.ylabel("Energy")
         [plt.plot(self.es_agent[:,i], label=f"Agent {i+1}") for i in range(self.es_agent.shape[1])]
-        plt.legend()
+        if self.n_agents > 1:
+            plt.legend()
         plt.savefig(os.path.join(path, "agent_energy.png"))
 
         plt.figure()
@@ -458,7 +459,8 @@ class RenderNAgentsEnvironment:
         plt.xlabel("Timestep")
         plt.ylabel("Reward value")
         [plt.plot(self.rewards[:,i], label=f"Agent {i+1}") for i in range(self.rewards.shape[1])]
-        plt.legend()
+        if self.n_agents > 1:
+            plt.legend()
         plt.savefig(os.path.join(path, "agent_rewards.png"))
         
         
