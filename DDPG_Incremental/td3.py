@@ -113,9 +113,10 @@ def print_log_ddpg(epoch, critic_loss, actor_loss, returns):
     print(f"Actor loss: {actor_loss}")
     print(f"Return: {returns}")
 
-def print_log_ddpg_n_agents(epoch, returns):
+def print_log_ddpg_n_agents(epoch, returns, energies):
     print(f"Episode {epoch} done")
-    [print(f"Agent {i+1}'s energy: {returns[i]}") for i in range(returns.shape[0])]
+    [print(f"Agent {i+1}'s return: {returns[i]}") for i in range(returns.shape[0])]
+    [print(f"Agent {i+1}'s energy: {energy}") for i,energy in enumerate(energies)]
 
 def wandb_log_ddpg(epoch, critic_loss, actor_loss, returns):
     wandb.log({"Epoch":epoch,
@@ -235,8 +236,9 @@ def n_agents_train_ddpg(env, num_episodes, tau=0.05, gamma=0.99, batch_size=200,
             next_states, rewards, terminated, truncated, _ = env.step(*actions)
             states = next_states
             done = terminated or truncated
-        returns[i,:] = [env.agents[i_a].get_energy() for i_a in range(n_agents)]
+            returns[i,:] += rewards 
         # Log the important variables to some logger
-        log_fun(i, returns[i])
+        end_energy = [env.agents[i_a].get_energy() for i_a in range(n_agents)]
+        log_fun(i, returns[i], end_energy)
     return returns, actors_t, critics_t, reset_seed
             

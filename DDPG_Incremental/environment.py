@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 from pygame_recorder import PygameRecord
 import os
 from abc import ABC, abstractmethod
+    
 
 # TODO: create an abstract class for the environment from which the specific experiments then can be build
 class Environment(ABC):
@@ -98,10 +99,13 @@ class OneAgentEnv(Environment):
 
 # TODO: make a two (or N-) agent version of the single-patch foraging environment
 class NAgentsEnv(Environment):
-    def __init__(self, seed=0, patch_radius=2, s_init=10, e_init=1, eta=0.1, beta=0.5, alpha=0.1, gamma=0.01, step_max=400, x_max=5, y_max=5, v_max=0.1, n_agents=2):
+    def __init__(self, seed=0, patch_radius=2, s_init=10, e_init=1, eta=0.1, beta=0.5, alpha=0.1, gamma=0.01, step_max=400, x_max=5, y_max=5, v_max=0.1, n_agents=2, sw_fun=lambda x:0):
         super().__init__(seed=seed, patch_radius=patch_radius, s_init=s_init, e_init=e_init, eta=eta, beta=beta, alpha=alpha, gamma=gamma, step_max=step_max, x_max=x_max, y_max=y_max, v_max=v_max)
         self.agents = [Agent(0,0,x_max,y_max,e_init,v_max, alpha=alpha, beta=beta) for i in range(n_agents)]
         self.n_agents = n_agents
+        self.sw_fun = sw_fun
+        self.alpha = alpha
+        self.e_init = e_init
     
     def get_num_agents(self):
         return self.n_agents
@@ -155,7 +159,12 @@ class NAgentsEnv(Environment):
             # Update dynamical system of allocating resources
             reward, s_eaten = self.agents[i].update_energy(self.patch)
             self.patch.update_resources(s_eaten, dt=0.1/self.n_agents)
-            rewards.append(reward)
+            rewards.append(reward+self.alpha) # Only positive rewards are given this way
+        # Apply social welfare function here
+        rewards = np.array(rewards)
+        #energies = [agent.get_energy() for agent in self.agents]
+        social_welfare = self.sw_fun(rewards)
+        rewards += social_welfare
         # Update counter
         self.step_idx += 1
         # Update states AFTER dynamical system updates of each agent have been made
@@ -204,7 +213,7 @@ class Agent:
         s_eaten = (self.is_in_patch(patch)).astype(int)*self.beta*patch.get_resources().item()
         action_penalty = jnp.linalg.norm(self.action)
         de = dt*(s_eaten - self.alpha*action_penalty)
-        # If agent has negative or zero energy, put the energy value at zero
+        # If agent has negative or zero energy, put the energy value at zero and consider the agent dead
         if self.e_agent.item() + de > 0: 
             self.e_agent = jnp.array(self.e_agent.item() + de, dtype=jnp.float32)
         else:
@@ -379,15 +388,12 @@ class RenderNAgentsEnvironment:
         self.rewards[self.env.step_idx-1] = np.array([reward.item() for reward in rewards])
         return (next_ss, rewards, terminated, truncated, info)
 
-    def render(self, save=True):
+    def render(self, save=True, path=""):
         FPS = 20
-        # Generate unique GIF filename
+        # Generate GIF filename
         n_agents = self.env.get_num_agents()
         fname = f"{n_agents}_agents_one_patch.gif"
-        i = 0
-        while os.path.isfile(fname):
-            i += 1
-            fname = f"{n_agents}_agent_one_patch-{i}.gif"
+        fname = os.path.join(path, fname)
         # Render game and simultaneously save it as a gif
         with PygameRecord(fname, FPS) as recorder:
             # Pygame screen init
@@ -431,22 +437,29 @@ class RenderNAgentsEnvironment:
             pygame.quit()
             if save:
                 recorder.save()
-        # Show the plots for the agent and the patch resources
-        fig, (ax1, ax2, ax3) = plt.subplots(3)
-        ax1.set_title("Energy of agent")
-        ax1.set_xlabel("Timestep")
-        ax1.set_ylabel("Energy")
-        ax1.plot(self.es_agent)
-        ax2.set_title("Resources in patch")
-        ax2.set_xlabel("Timestep")
-        ax2.set_ylabel("Resources")
-        ax2.plot(self.ss_patch)
-        ax3.set_title("Rewards collected at timesteps")
-        ax3.set_xlabel("Timestep")
-        ax3.set_ylabel("Reward value")
-        ax3.plot(self.rewards)
-        plt.tight_layout()
-        plt.show()
+        # Save the plots for the agent and the patch resources
+        plt.figure()
+        plt.title("Energy of agent(s)")
+        plt.xlabel("Timestep")
+        plt.ylabel("Energy")
+        [plt.plot(self.es_agent[:,i], label=f"Agent {i+1}") for i in range(self.es_agent.shape[1])]
+        plt.legend()
+        plt.savefig(os.path.join(path, "agent_energy.png"))
+
+        plt.figure()
+        plt.title("Resources in patch")
+        plt.xlabel("Timestep")
+        plt.ylabel("Resources")
+        plt.plot(self.ss_patch)
+        plt.savefig(os.path.join(path, "patch_resource.png"))
+
+        plt.figure()
+        plt.title("Rewards collected at timesteps")
+        plt.xlabel("Timestep")
+        plt.ylabel("Reward value")
+        [plt.plot(self.rewards[:,i], label=f"Agent {i+1}") for i in range(self.rewards.shape[1])]
+        plt.legend()
+        plt.savefig(os.path.join(path, "agent_rewards.png"))
         
         
 
