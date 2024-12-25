@@ -35,7 +35,7 @@ def ddpg_train_patch(env, num_episodes):
     episodes = list(range(1,num_episodes+1))
     action_dim, a_range = env.get_action_space()
     # Train agent
-    rewards, actor, critic, reset_key = train_ddpg(env, episodes[-1], lr_c=1e-3, lr_a=3e-4, tau=0.02, action_dim=action_dim, state_dim=env.get_state_space()[1], action_max=a_range[1], hidden_dim=256, batch_size=200, seed=0, reset_seed=0)
+    rewards, actor, critic, reset_key = train_ddpg(env, episodes[-1], lr_c=1e-3, lr_a=3e-4, tau=0.01, action_dim=action_dim, state_dim=env.get_state_space()[1], action_max=a_range[1], hidden_dim=64, batch_size=100, seed=0, reset_seed=0)
 
     # Plot and save rewards figure to path
     plot_run_info(path, rewards)
@@ -55,7 +55,7 @@ def ddpg_train_patch_n_agents(env, num_episodes):
     episodes = list(range(1,num_episodes+1))
     action_dim, a_range = env.get_action_space()
     # Train agent
-    (rewards, social_welfare), actors, critics, reset_key = n_agents_train_ddpg(env, episodes[-1], lr_c=1e-3, lr_a=2e-4, tau=0.02, action_dim=action_dim, state_dim=env.get_state_space()[1], action_max=a_range[1], hidden_dim=256, batch_size=200, seed=0, reset_seed=0)
+    (rewards, social_welfare), actors, critics, reset_key = n_agents_train_ddpg(env, episodes[-1], lr_c=1e-3, lr_a=2e-4, tau=0.005, action_dim=action_dim, state_dim=env.get_state_space()[1], action_max=a_range[1], hidden_dim=128, batch_size=128, seed=0, reset_seed=0)
     
     # Plot and save rewards figure to path
     plot_run_info(path, rewards, social_welfare, env.sw_fun)
@@ -143,12 +143,53 @@ def patch_test_saved_policy(env, path, hidden_dim=32):
             break
     env.render()
 
+"""
+For this experiment we test the single-agent one-patch environment
+Later I will extend this to multiple runs and use those to generate statistics for significance testing
+"""
+def experiment1():
+    pass
+
+"""
+For this experiment we test the two-agent one-patch environment
+The agents don't observe each other, and do not communicate.
+Later I will extend this to multiple runs and use those to generate statistics for significance testing
+"""
+def experiment2():
+    pass
+
+"""
+For this experiment we test the two-agent one-patch environment
+The agents observe each other, but do not communicate.
+Later I will extend this to multiple runs and use those to generate statistics for significance testing
+"""
+def experiment3():
+    pass
+
+"""
+For this experiment we test the single-agent one-patch environment
+The agents observe each other, and communicate via a social welfare function provided as a reward signal.
+Later I will extend this to multiple runs and use those to generate statistics for significance testing
+"""
+def experiment4():
+    pass
+
+"""
+For this experiment we test the single-agent one-patch environment
+The agents observe each other, and communicate via by providing a message in addition to an action for their policy.
+We will use the messages as state inputs, to train the critic on
+Later I will extend this to multiple runs and use those to generate statistics for significance testing
+"""
+def experiment4():
+    pass
+
+
 if __name__ == "__main__":
-    num_episodes = 50
+    num_episodes = 100
     num_runs = 5
     
     # Uncomment the environment needed below
-    env = NAgentsEnv(patch_radius=0.5, step_max=400, alpha=2, beta=0.5, e_init=10, n_agents=2)
+    env = NAgentsEnv(patch_radius=1, step_max=400, alpha=0, beta=0.5, e_init=10, n_agents=1, obs_others=False)
     #env = OneAgentEnv(patch_radius=0.5, step_max=400, alpha=2)
     
     # Uncomment the method needed below

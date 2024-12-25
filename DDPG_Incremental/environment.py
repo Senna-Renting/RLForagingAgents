@@ -99,13 +99,14 @@ class OneAgentEnv(Environment):
 
 # TODO: make a two (or N-) agent version of the single-patch foraging environment
 class NAgentsEnv(Environment):
-    def __init__(self, seed=0, patch_radius=2, s_init=10, e_init=1, eta=0.1, beta=0.5, alpha=0.1, gamma=0.01, step_max=400, x_max=5, y_max=5, v_max=0.1, n_agents=2, sw_fun=lambda x:0):
+    def __init__(self, seed=0, patch_radius=2, s_init=10, e_init=1, eta=0.1, beta=0.5, alpha=0.1, gamma=0.01, step_max=400, x_max=5, y_max=5, v_max=0.1, n_agents=2, sw_fun=lambda x:0, obs_others=False):
         super().__init__(seed=seed, patch_radius=patch_radius, s_init=s_init, e_init=e_init, eta=eta, beta=beta, alpha=alpha, gamma=gamma, step_max=step_max, x_max=x_max, y_max=y_max, v_max=v_max)
         self.agents = [Agent(0,0,x_max,y_max,e_init,v_max, alpha=alpha, beta=beta) for i in range(n_agents)]
         self.n_agents = n_agents
         self.sw_fun = sw_fun
         self.alpha = alpha
         self.e_init = e_init
+        self.obs_others = obs_others
     
     def get_num_agents(self):
         return self.n_agents
@@ -123,7 +124,11 @@ class NAgentsEnv(Environment):
     # Select state of agent by index
     def _get_state(self, i):
         # Select first agent for now
-        state = jnp.concatenate([self.agents[i].get_position(), self.patch.get_position(), jnp.array([self.patch.get_resources(), self.agents[i].get_energy()])])
+        state = [self.agents[i].get_position(), self.patch.get_position(), jnp.array([self.patch.get_resources(), self.agents[i].get_energy()])]
+        for j,agent in enumerate(self.agents):
+            if j!=i and self.obs_others:
+                state.append(agent.get_position())
+        state = jnp.concatenate(state)
         state = jnp.expand_dims(state, 0) # Ensure correct vector shape
         return state
     
@@ -157,7 +162,7 @@ class NAgentsEnv(Environment):
             # Update agent position
             agent_pos = self.agents[i].update_position(action)
             # Update dynamical system of allocating resources
-            reward, s_eaten = self.agents[i].update_energy(self.patch)
+            reward, s_eaten = self.agents[i].update_energy(self.patch, dt=0.1/self.n_agents)
             self.patch.update_resources(s_eaten, dt=0.1/self.n_agents)
             rewards.append(reward+self.alpha) # Only positive rewards are given this way
         # Apply social welfare function here
@@ -389,7 +394,7 @@ class RenderNAgentsEnvironment:
         return (next_ss, rewards, terminated, truncated, info)
 
     def render(self, save=True, path=""):
-        FPS = 20
+        FPS = 15
         # Generate GIF filename
         n_agents = self.env.get_num_agents()
         fname = f"{n_agents}_agents_one_patch.gif"
