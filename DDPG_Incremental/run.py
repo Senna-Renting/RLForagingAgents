@@ -14,7 +14,8 @@ def create_exp_folder(exp_name):
         os.makedirs(path)
     return path
 
-def plot_run_info(path, rewards, social_welfare=None, sw_fun=lambda x:0):
+def plot_run_info(path, rewards, critics_loss, actors_loss, social_welfare=None, sw_fun=lambda x:0):
+    # Plot and save return
     plt.figure()
     plt.title("Return over episodes for each agent")
     plt.xlabel("Episode")
@@ -22,6 +23,8 @@ def plot_run_info(path, rewards, social_welfare=None, sw_fun=lambda x:0):
     [plt.plot(rewards[:,i], label=f"Agent {i+1}") for i in range(rewards.shape[1])]
     plt.legend()
     plt.savefig(os.path.join(path, "agent_episodes_return.png"))
+    
+    # Plot and save social welfare
     if sw_fun.__name__ != "<lambda>":
         plt.figure()
         plt.title("Return over episodes for each agent")
@@ -29,6 +32,24 @@ def plot_run_info(path, rewards, social_welfare=None, sw_fun=lambda x:0):
         plt.ylabel(f"Social welfare ({sw_fun.__name__})")
         plt.plot(social_welfare)
         plt.savefig(os.path.join(path, "episodes_welfare.png"))
+    
+    # Plot and save actor loss
+    plt.figure()
+    plt.title("Critic loss per agent")
+    plt.xlabel("Episode")
+    plt.ylabel("Critic loss")
+    [plt.plot(critics_loss[:,i], label=f"Agent {i+1}") for i in range(critics_loss.shape[1])]
+    plt.legend()
+    plt.savefig(os.path.join(path, "critics_loss.png"))
+
+    # Plot and save critic loss
+    plt.figure()
+    plt.title("Actor loss per agent")
+    plt.xlabel("Episode")
+    plt.ylabel("Actor loss")
+    [plt.plot(actors_loss[:,i], label=f"Agent {i+1}") for i in range(actors_loss.shape[1])]
+    plt.legend()
+    plt.savefig(os.path.join(path, "actors_loss.png"))
 
 def ddpg_train_patch(env, num_episodes):
     path = create_exp_folder("Experiment1")
@@ -55,10 +76,10 @@ def ddpg_train_patch_n_agents(env, num_episodes):
     episodes = list(range(1,num_episodes+1))
     action_dim, a_range = env.get_action_space()
     # Train agent
-    (rewards, social_welfare), actors, critics, reset_key = n_agents_train_ddpg(env, episodes[-1], lr_c=1e-3, lr_a=2e-4, tau=0.005, action_dim=action_dim, state_dim=env.get_state_space()[1], action_max=a_range[1], hidden_dim=128, batch_size=128, seed=0, reset_seed=0)
+    (rewards, social_welfare), (actors, critics), (as_loss, cs_loss), reset_key = n_agents_train_ddpg(env, episodes[-1], lr_c=1e-3, lr_a=2e-4, tau=0.03, action_dim=action_dim, state_dim=env.get_state_space()[1], action_max=a_range[1], hidden_dim=128, batch_size=128, seed=0, reset_seed=0)
     
     # Plot and save rewards figure to path
-    plot_run_info(path, rewards, social_welfare, env.sw_fun)
+    plot_run_info(path, rewards, cs_loss, as_loss, social_welfare, env.sw_fun)
     
     # Render the obtained final policy from training
     n_agents = env.get_num_agents()
@@ -185,11 +206,11 @@ def experiment4():
 
 
 if __name__ == "__main__":
-    num_episodes = 100
+    num_episodes = 3
     num_runs = 5
     
     # Uncomment the environment needed below
-    env = NAgentsEnv(patch_radius=1, step_max=400, alpha=0, beta=0.5, e_init=10, n_agents=1, obs_others=False)
+    env = NAgentsEnv(patch_radius=0.5, step_max=400, alpha=0.025, beta=0.5, e_init=1, n_agents=2, obs_others=False)
     #env = OneAgentEnv(patch_radius=0.5, step_max=400, alpha=2)
     
     # Uncomment the method needed below

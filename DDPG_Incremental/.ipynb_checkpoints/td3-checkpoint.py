@@ -186,6 +186,7 @@ def train_ddpg(env, num_episodes, tau=0.05, gamma=0.99, batch_size=64, lr_a=1e-4
     return returns, actor_t, critic_t, reset_seed
 
 # TODO: Create an n-agent ddpg training function
+@nnx.jit
 def n_agents_train_ddpg(env, num_episodes, tau=0.05, gamma=0.99, batch_size=200, lr_a=2e-4, lr_c=1e-3, seed=0, reset_seed=43, action_dim=1, state_dim=3, action_max=2, hidden_dim=128, warmup_steps=800, log_fun=print_log_ddpg_n_agents):
     # Initialize neural networks
     n_agents = env.get_num_agents()
@@ -202,11 +203,13 @@ def n_agents_train_ddpg(env, num_episodes, tau=0.05, gamma=0.99, batch_size=200,
     key = jax.random.PRNGKey(seed)
     # Keep track of accumulated rewards
     returns = np.zeros((num_episodes, n_agents))
+    critics_loss = np.zeros((num_episodes, n_agents))
+    actors_loss = np.zeros((num_episodes, n_agents))
     welfare_returns = np.zeros((num_episodes))
     # Run episodes
     for i in range(num_episodes):
         done = False
-        states, info = env.reset(seed=reset_seed)
+        states, info = env.reset(seed=reset_seed) # add: env_state
         # Train agent
         while not done:
             # Sample action, execute it, and add to buffer
@@ -214,7 +217,7 @@ def n_agents_train_ddpg(env, num_episodes, tau=0.05, gamma=0.99, batch_size=200,
             for i_a,actor in enumerate(actors):
                 action_key, key = jax.random.split(key)
                 actions[i_a] = jnp.array(sample_action(action_key, actor, states[i_a], -action_max, action_max, action_dim)) 
-            next_states, (rewards, social_welfare), terminated, truncated, _ = env.step(*actions)
+            next_states, (rewards, social_welfare), terminated, truncated, _ = env.step(*actions) # add: env_state
             done = truncated or terminated
             if not terminated:
                 for i_a in range(n_agents):
@@ -229,14 +232,17 @@ def n_agents_train_ddpg(env, num_episodes, tau=0.05, gamma=0.99, batch_size=200,
                     # Update targets (critic and policy)
                     nnx.update(critics_t[i_a], polyak_update(tau, critics_t[i_a], critics[i_a]))
                     nnx.update(actors_t[i_a], polyak_update(tau, actors_t[i_a], actors[i_a]))
+                    # Update actor and critic loss (idea: sum of losses for each episode)
+                    actors_loss[i, i_a] += a_loss
+                    critics_loss[i, i_a] += c_loss
             # Update state of agents
             states = next_states
         # Test agent
         done = False
-        states, info = env.reset(seed=reset_seed)
+        states, info = env.reset(seed=reset_seed) # add: env_state
         while not done:
             actions = [jnp.array(actors_t[i_a](states[i_a])) for i_a in range(n_agents)]
-            next_states, (rewards,social_welfare) , terminated, truncated, _ = env.step(*actions)
+            next_states, (rewards,social_welfare) , terminated, truncated, _ = env.step(*actions) # add: env_state
             states = next_states
             done = terminated or truncated
             returns[i,:] += rewards 
@@ -244,5 +250,5 @@ def n_agents_train_ddpg(env, num_episodes, tau=0.05, gamma=0.99, batch_size=200,
         # Log the important variables to some logger
         end_energy = [env.agents[i_a].get_energy() for i_a in range(n_agents)]
         log_fun(i, returns[i], end_energy)
-    return (returns, welfare_returns), actors_t, critics_t, reset_seed
+    return (returns, welfare_returns), (actors_t, critics_t), (actors_loss, critics_loss),  reset_seed
             
