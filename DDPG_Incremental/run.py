@@ -56,7 +56,7 @@ def ddpg_train_patch(env, num_episodes):
     episodes = list(range(1,num_episodes+1))
     action_dim, a_range = env.get_action_space()
     # Train agent
-    rewards, actor, critic, reset_key = train_ddpg(env, episodes[-1], lr_c=1e-3, lr_a=3e-4, tau=0.01, action_dim=action_dim, state_dim=env.get_state_space()[1], action_max=a_range[1], hidden_dim=64, batch_size=100, seed=0, reset_seed=0)
+    rewards, actor, critic, reset_key = train_ddpg(env, episodes[-1], lr_c=1e-3, lr_a=3e-4, tau=0.01, action_dim=action_dim, state_dim=env.get_state_space()[1], action_max=a_range[1], hidden_dim=32, batch_size=50, seed=1, reset_seed=1)
 
     # Plot and save rewards figure to path
     plot_run_info(path, rewards)
@@ -76,18 +76,18 @@ def ddpg_train_patch_n_agents(env, num_episodes):
     episodes = list(range(1,num_episodes+1))
     action_dim, a_range = env.get_action_space()
     # Train agent
-    (rewards, social_welfare), (actors, critics), (as_loss, cs_loss), reset_key = n_agents_train_ddpg(env, episodes[-1], lr_c=1e-3, lr_a=2e-4, tau=0.03, action_dim=action_dim, state_dim=env.get_state_space()[1], action_max=a_range[1], hidden_dim=128, batch_size=128, seed=0, reset_seed=0)
+    (rewards, social_welfare), (actors, critics), (as_loss, cs_loss), reset_key = n_agents_train_ddpg(env, episodes[-1], lr_c=1e-4, lr_a=3e-5, tau=0.1, action_dim=action_dim, state_dim=env.get_state_space(), action_max=a_range[1], hidden_dim=128, batch_size=200, seed=1, reset_seed=1)
     
     # Plot and save rewards figure to path
     plot_run_info(path, rewards, cs_loss, as_loss, social_welfare, env.sw_fun)
     
     # Render the obtained final policy from training
-    n_agents = env.get_num_agents()
+    n_agents = env.n_agents
     env = RenderNAgentsEnvironment(env)
-    states, info = env.reset(seed=reset_key)
+    env_state, states = env.reset(seed=reset_key)
     while True:
         actions = [jnp.array(actors[i](states[i])) for i in range(n_agents)]
-        states, rewards, terminated, truncated, _ = env.step(*actions)
+        env_state, states, rewards, terminated, truncated, _ = env.step(env_state, *actions)
         if np.all(terminated) or truncated:
             break
     env.render(path=path)
@@ -206,11 +206,11 @@ def experiment4():
 
 
 if __name__ == "__main__":
-    num_episodes = 3
+    num_episodes = 10
     num_runs = 5
     
     # Uncomment the environment needed below
-    env = NAgentsEnv(patch_radius=0.5, step_max=400, alpha=0.025, beta=0.5, e_init=1, n_agents=2, obs_others=False)
+    env = NAgentsEnv(patch_radius=0.5, step_max=400, alpha=0.025, beta=0.5, e_init=1, n_agents=1, obs_others=False, seed=1)
     #env = OneAgentEnv(patch_radius=0.5, step_max=400, alpha=2)
     
     # Uncomment the method needed below
