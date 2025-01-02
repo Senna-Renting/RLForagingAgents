@@ -12,14 +12,17 @@ from functools import partial
 
 ## Critic network and it's complementary functions
 class Critic(nnx.Module):
-    def __init__(self, in_dim, seed, hidden_dim=32):
+    def __init__(self, in_dim, seed, hidden_dim=[16,32,16]):
         rngs = nnx.Rngs(seed)
-        self.l1 = nnx.Linear(in_dim, hidden_dim, rngs=rngs)
-        self.l2 = nnx.Linear(hidden_dim, hidden_dim, rngs=rngs)
-        self.l3 = nnx.Linear(hidden_dim, 1, rngs=rngs)
+        self.lin = nnx.Linear(in_dim, hidden_dim[0], rngs=rngs)
+        self.lhs = [nnx.Linear(hidden_dim[i], hidden_dim[i+1], rngs=rngs) for i in range(len(hidden_dim) - 1)]
+        self.lout = nnx.Linear(hidden_dim[-1], 1, rngs=rngs)
     def __call__(self, state, action):
         x = jnp.concatenate([state, action], axis=-1)
-        return self.l3(nnx.relu(self.l2(nnx.relu(self.l1(x)))))
+        x = nnx.relu(self.lin(x))
+        for lh in self.lhs:
+            x = nnx.leaky_relu(lh(x))
+        return self.lout(x)
 
 @nnx.jit
 def MSE_optimize_critic(optimizer: nnx.Optimizer, critic: nnx.Module, states: jnp.array, actions: jnp.array, ys: jnp.array):
@@ -34,14 +37,17 @@ def compute_targets(critic: nnx.Module, actor: nnx.Module, rs: jnp.array, states
 
 ## Actor network and it's complementary functions
 class Actor(nnx.Module):
-    def __init__(self, in_dim, out_dim, action_max, seed, hidden_dim=32):
+    def __init__(self, in_dim, out_dim, action_max, seed, hidden_dim=[16,32,16]):
         self.a_max = action_max
         rngs = nnx.Rngs(seed)
-        self.l1 = nnx.Linear(in_dim, hidden_dim, rngs=rngs)
-        self.l2 = nnx.Linear(hidden_dim, hidden_dim, rngs=rngs)
-        self.l3 = nnx.Linear(hidden_dim, out_dim, rngs=rngs)
+        self.lin = nnx.Linear(in_dim, hidden_dim[0], rngs=rngs)
+        self.lhs = [nnx.Linear(hidden_dim[i], hidden_dim[i+1], rngs=rngs) for i in range(len(hidden_dim) - 1)]
+        self.lout = nnx.Linear(hidden_dim[-1], out_dim, rngs=rngs)
     def __call__(self, state):
-        x = self.l3(nnx.relu(self.l2(nnx.relu(self.l1(state)))))
+        x = nnx.relu(self.lin(state))
+        for lh in self.lhs:
+            x = nnx.leaky_relu(lh(x))
+        x = self.lout(x)
         return self.a_max * nnx.tanh(x)
 
 @nnx.jit
@@ -190,37 +196,48 @@ def train_ddpg(env, num_episodes, tau=0.05, gamma=0.99, batch_size=64, lr_a=1e-4
 
 # TODO: Create an n-agent ddpg training function
 #@partial(nnx.jit, static_argnums=0)
-def n_agents_train_ddpg(env, num_episodes, tau=0.05, gamma=0.99, batch_size=200, lr_a=2e-4, lr_c=1e-3, seed=0, reset_seed=43, action_dim=1, state_dim=3, action_max=2, hidden_dim=128, warmup_steps=800, log_fun=print_log_ddpg_n_agents):
+def n_agents_train_ddpg(env, num_episodes, tau=0.05, gamma=0.99, batch_size=200, lr_a=2e-4, lr_c=1e-3, seed=0, reset_seed=43, action_dim=2, state_dim=3, action_max=0.2, hidden_dim=128, log_fun=print_log_ddpg_n_agents):
     # Initialize neural networks
     n_agents = env.n_agents
-    actors = [Actor(state_dim,action_dim,action_max,seed+i,hidden_dim=hidden_dim) for i in range(n_agents)]
-    actors_t = [Actor(state_dim,action_dim,action_max,seed+i,hidden_dim=hidden_dim) for i in range(n_agents)]
-    critics = [Critic(state_dim + action_dim,seed+i,hidden_dim=hidden_dim) for i in range(n_agents)]
-    critics_t = [Critic(state_dim + action_dim,seed+i,hidden_dim=hidden_dim) for i in range(n_agents)]
+    comm_dim = env.comm_dim
+    step_max = env.step_max
+    
+    actor_dim = action_dim+comm_dim
+    
+    actors = [Actor(state_dim,actor_dim,action_max,seed+i,hidden_dim=hidden_dim) for i in range(n_agents)]
+    actors_t = [Actor(state_dim,actor_dim,action_max,seed+i,hidden_dim=hidden_dim) for i in range(n_agents)]
+    critics = [Critic(state_dim+actor_dim,seed+i,hidden_dim=hidden_dim) for i in range(n_agents)]
+    critics_t = [Critic(state_dim+actor_dim,seed+i,hidden_dim=hidden_dim) for i in range(n_agents)]
+    
     optim_actors = [nnx.Optimizer(actors[i], optax.adam(lr_a)) for i in range(n_agents)]
     optim_critics = [nnx.Optimizer(critics[i], optax.adam(lr_c)) for i in range(n_agents)]
     # Add seperate experience replay buffer for each agent 
-    buffer_size = num_episodes*env.step_max+warmup_steps # Ensure every step is kept in the replay buffer
-    buffers = [Buffer(buffer_size, state_dim, action_dim) for i in range(n_agents)]
+    buffer_size = num_episodes*env.step_max # Ensure every step is kept in the replay buffer
+    buffers = [Buffer(buffer_size, state_dim, actor_dim) for i in range(n_agents)]
     # Initialize environment
     key = jax.random.PRNGKey(seed)
+    # Keep track of important loss variables (3 is for [avg,min,max] stats)
+    critics_loss_stats = np.zeros((num_episodes, 3, n_agents))
+    actors_loss_stats = np.zeros((num_episodes, 3, n_agents))
     # Keep track of accumulated rewards
     returns = np.zeros((num_episodes, n_agents))
-    critics_loss = np.zeros((num_episodes, n_agents))
-    actors_loss = np.zeros((num_episodes, n_agents))
     welfare_returns = np.zeros((num_episodes))
     # Run episodes
     for i in range(num_episodes):
         done = False
         env_state, states = env.reset(seed=reset_seed)
+        # Initialize loss temp variables
+        cs_loss = np.empty((n_agents,step_max))
+        as_loss = np.empty((n_agents,step_max))
         # Train agent
         while not done:
             # Sample action, execute it, and add to buffer
             actions = list(range(n_agents))
             for i_a,actor in enumerate(actors):
                 action_key, key = jax.random.split(key)
-                actions[i_a] = jnp.array(sample_action(action_key, actor, states[i_a], -action_max, action_max, action_dim)) 
+                actions[i_a] = jnp.array(sample_action(action_key, actor, states[i_a], -action_max, action_max, actor_dim)) 
             env_state, next_states, (rewards, social_welfare), terminated, truncated, _ = env.step(env_state, *actions)
+            (agents_state, patch_state, step_idx) = env_state
             done = truncated or terminated
             if not terminated:
                 for i_a in range(n_agents):
@@ -236,10 +253,14 @@ def n_agents_train_ddpg(env, num_episodes, tau=0.05, gamma=0.99, batch_size=200,
                     nnx.update(critics_t[i_a], polyak_update(tau, critics_t[i_a], critics[i_a]))
                     nnx.update(actors_t[i_a], polyak_update(tau, actors_t[i_a], actors[i_a]))
                     # Update actor and critic loss (idea: sum of losses for each episode)
-                    actors_loss[i, i_a] += a_loss
-                    critics_loss[i, i_a] += c_loss
+                    as_loss[i_a,step_idx-1] = a_loss
+                    cs_loss[i_a,step_idx-1] = c_loss
             # Update state of agents
             states = next_states
+        # Save training results
+        step_idx = env_state[2]
+        actors_loss_stats[i,:,:] = [np.mean(as_loss, axis=1), np.min(as_loss, axis=1), np.max(as_loss, axis=1)]
+        critics_loss_stats[i,:,:] = [np.mean(cs_loss, axis=1), np.min(cs_loss, axis=1), np.max(cs_loss, axis=1)]
         # Test agent
         done = False
         env_state, states = env.reset(seed=reset_seed)
@@ -252,7 +273,7 @@ def n_agents_train_ddpg(env, num_episodes, tau=0.05, gamma=0.99, batch_size=200,
             welfare_returns[i] += social_welfare
         # Log the important variables to some logger
         (agents_state, patch_state, step_idx) = env_state
-        end_energy = agents_state[:, -1]
+        end_energy = agents_state[:, -comm_dim-1]
         log_fun(i, returns[i], end_energy)
-    return (returns, welfare_returns), (actors_t, critics_t), (actors_loss, critics_loss),  reset_seed
+    return (returns, welfare_returns), (actors_t, critics_t), (actors_loss_stats, critics_loss_stats),  reset_seed
             

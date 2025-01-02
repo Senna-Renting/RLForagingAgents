@@ -14,31 +14,42 @@ def create_exp_folder(exp_name):
         os.makedirs(path)
     return path
 
-def plot_run_info(path, rewards, critics_loss, actors_loss, social_welfare=None, sw_fun=lambda x:0):
+def plot_run_info(path, rewards, critics_loss_stats, actors_loss_stats, social_welfare=None, sw_fun=lambda x:0):
+    x_range = list(range(rewards.shape[0]))
+    c_range = np.linspace(0.0,1.0,rewards.shape[1])
     # Plot and save return
     plt.figure()
-    plt.title("Return over episodes for each agent")
+    if rewards.shape[1] == 1:
+        plt.title("Return over episodes")
+        plt.ylabel("Return")
+    else:
+        plt.title("Mean return across agents")
+        plt.ylabel("Mean return")
+    plt.fill_between(x_range, np.min(rewards, axis=1), np.max(rewards, axis=1), color='r', alpha=0.1)
+    plt.plot(np.mean(rewards, axis=1), c='r') # Assumes the rewards are positive
     plt.xlabel("Episode")
-    plt.ylabel("Return")
-    [plt.plot(rewards[:,i], label=f"Agent {i+1}") for i in range(rewards.shape[1])]
-    plt.legend()
     plt.savefig(os.path.join(path, "agent_episodes_return.png"))
-    
     # Plot and save social welfare
     if sw_fun.__name__ != "<lambda>":
         plt.figure()
-        plt.title("Return over episodes for each agent")
+        plt.title("Nash social welfare obtained through rewards")
         plt.xlabel("Episode")
         plt.ylabel(f"Social welfare ({sw_fun.__name__})")
         plt.plot(social_welfare)
-        plt.savefig(os.path.join(path, "episodes_welfare.png"))
+        plt.savefig(os.path.join(path, "in_episode_welfare.png"))
+
+    cmap = plt.cm.Set1
+    c_list = [cmap(i) for i in range(cmap.N)]
     
     # Plot and save actor loss
     plt.figure()
     plt.title("Critic loss per agent")
     plt.xlabel("Episode")
     plt.ylabel("Critic loss")
-    [plt.plot(critics_loss[:,i], label=f"Agent {i+1}") for i in range(critics_loss.shape[1])]
+    for i in range(critics_loss_stats.shape[2]):
+        plt.fill_between(x_range, critics_loss_stats[:,1,i], critics_loss_stats[:,2,i], color=c_list[i], alpha=0.1)
+        plt.plot(critics_loss_stats[:,0,i], label=f"Agent {i+1}", c=c_list[i])
+    #plt.ylim([critics_avg_loss.min(), critics_avg_loss.max()])
     plt.legend()
     plt.savefig(os.path.join(path, "critics_loss.png"))
 
@@ -47,36 +58,19 @@ def plot_run_info(path, rewards, critics_loss, actors_loss, social_welfare=None,
     plt.title("Actor loss per agent")
     plt.xlabel("Episode")
     plt.ylabel("Actor loss")
-    [plt.plot(actors_loss[:,i], label=f"Agent {i+1}") for i in range(actors_loss.shape[1])]
+    for i in range(actors_loss_stats.shape[2]):
+        plt.fill_between(x_range, actors_loss_stats[:,1,i], actors_loss_stats[:,2,i], color=c_list[i], alpha=0.1)
+        plt.plot(actors_loss_stats[:,0,i], label=f"Agent {i+1}", c=c_list[i])
+    #plt.ylim([actors_avg_loss.min(), actors_avg_loss.max()])
     plt.legend()
     plt.savefig(os.path.join(path, "actors_loss.png"))
 
-def ddpg_train_patch(env, num_episodes):
-    path = create_exp_folder("Experiment1")
+def ddpg_train_patch_n_agents(env, num_episodes, seed=0, path=""):
+    jax.config.update('jax_threefry_partitionable', True)
     episodes = list(range(1,num_episodes+1))
     action_dim, a_range = env.get_action_space()
     # Train agent
-    rewards, actor, critic, reset_key = train_ddpg(env, episodes[-1], lr_c=1e-3, lr_a=3e-4, tau=0.01, action_dim=action_dim, state_dim=env.get_state_space()[1], action_max=a_range[1], hidden_dim=32, batch_size=50, seed=1, reset_seed=1)
-
-    # Plot and save rewards figure to path
-    plot_run_info(path, rewards)
-
-    # Render the obtained final policy from training
-    env = RenderOneAgentEnvironment(env)
-    state, info = env.reset(seed=reset_key)
-    while True:
-        state, reward, terminated, truncated, _ = env.step(actor(state))
-        if terminated or truncated:
-            break
-    env.render(path)
-
-# TODO: Figure out a way to clearly seperate the structure needed for Experiment 2 (no obs),3 (obs) and 4 (obs and comm via reward)
-def ddpg_train_patch_n_agents(env, num_episodes):
-    path = create_exp_folder("Experiment2")
-    episodes = list(range(1,num_episodes+1))
-    action_dim, a_range = env.get_action_space()
-    # Train agent
-    (rewards, social_welfare), (actors, critics), (as_loss, cs_loss), reset_key = n_agents_train_ddpg(env, episodes[-1], lr_c=1e-4, lr_a=3e-5, tau=0.1, action_dim=action_dim, state_dim=env.get_state_space(), action_max=a_range[1], hidden_dim=128, batch_size=200, seed=1, reset_seed=1)
+    (rewards, social_welfare), (actors, critics), (as_loss, cs_loss), reset_key = n_agents_train_ddpg(env, episodes[-1], lr_c=5e-4, lr_a=1e-4, tau=0.05, action_dim=action_dim, state_dim=env.get_state_space(), action_max=a_range[1], hidden_dim=[256,256], batch_size=256, seed=seed, reset_seed=seed)
     
     # Plot and save rewards figure to path
     plot_run_info(path, rewards, cs_loss, as_loss, social_welfare, env.sw_fun)
@@ -168,32 +162,47 @@ def patch_test_saved_policy(env, path, hidden_dim=32):
 For this experiment we test the single-agent one-patch environment
 Later I will extend this to multiple runs and use those to generate statistics for significance testing
 """
-def experiment1():
-    pass
+def experiment1(num_episodes, num_runs):
+    for i in range(num_runs):
+        path = create_exp_folder("Experiment1")
+        print(f"Run {i+1} has been started")
+        env = NAgentsEnv(n_agents=1, seed=i)
+        ddpg_train_patch_n_agents(env, num_episodes, seed=i, path=path)
 
 """
 For this experiment we test the two-agent one-patch environment
 The agents don't observe each other, and do not communicate.
 Later I will extend this to multiple runs and use those to generate statistics for significance testing
 """
-def experiment2():
-    pass
+def experiment2(num_episodes, num_runs):
+    for i in range(num_runs):
+        path = create_exp_folder("Experiment2")
+        print(f"Run {i+1} has been started")
+        env = NAgentsEnv(n_agents=2, seed=i)
+        ddpg_train_patch_n_agents(env, num_episodes, seed=i, path=path)
 
 """
 For this experiment we test the two-agent one-patch environment
 The agents observe each other, but do not communicate.
 Later I will extend this to multiple runs and use those to generate statistics for significance testing
 """
-def experiment3():
-    pass
+def experiment3(num_episodes, num_runs):
+    for i in range(num_runs):
+        path = create_exp_folder("Experiment3")
+        print(f"Run {i+1} has been started")
+        env = NAgentsEnv(n_agents=2, obs_others=True, seed=i)
+        ddpg_train_patch_n_agents(env, num_episodes, seed=i, path=path)
 
 """
-For this experiment we test the single-agent one-patch environment
+For this experiment we test the two-agent one-patch environment
 The agents observe each other, and communicate via a social welfare function provided as a reward signal.
 Later I will extend this to multiple runs and use those to generate statistics for significance testing
 """
-def experiment4():
-    pass
+def experiment4(num_episodes, num_runs):
+    for i in range(num_runs):
+        path = create_exp_folder("Experiment4")
+        env = NAgentsEnv(n_agents=2, obs_others=True, seed=i, sw_fun=nash_sw)
+        ddpg_train_patch_n_agents(env, num_episodes, seed=i, path=path)
 
 """
 For this experiment we test the single-agent one-patch environment
@@ -201,21 +210,25 @@ The agents observe each other, and communicate via by providing a message in add
 We will use the messages as state inputs, to train the critic on
 Later I will extend this to multiple runs and use those to generate statistics for significance testing
 """
-def experiment4():
-    pass
+def experiment5(num_episodes, num_runs):
+    for i in range(num_runs):
+        path = create_exp_folder("Experiment5")
+        env = NAgentsEnv(n_agents=2, obs_others=True, seed=i, comm_dim=2, sw_fun=nash_sw)
+        ddpg_train_patch_n_agents(env, num_episodes, seed=i, path=path)
 
 
 if __name__ == "__main__":
-    num_episodes = 10
-    num_runs = 5
+    # Experiments can be run below
+    experiment5(5,1)
+    
+    # num_episodes = 5
+    # num_runs = 5
     
     # Uncomment the environment needed below
-    env = NAgentsEnv(patch_radius=0.5, step_max=400, alpha=0.025, beta=0.5, e_init=1, n_agents=1, obs_others=False, seed=1)
-    #env = OneAgentEnv(patch_radius=0.5, step_max=400, alpha=2)
+    #env = NAgentsEnv(patch_radius=0.5, step_max=400, alpha=0.025, beta=0.5, e_init=1, n_agents=2, obs_others=False, seed=2)
     
     # Uncomment the method needed below
-    ddpg_train_patch_n_agents(env, num_episodes)
-    #ddpg_train_patch(env, num_episodes)
+    #ddpg_train_patch_n_agents(env, num_episodes, path=path)
     #wandb_ddpg_train_patch(env, num_episodes, num_runs=num_runs, hidden_dim=256, batch_size=100, warmup_steps=200)
     
     # Fill in the path of the policy and uncomment the method below it

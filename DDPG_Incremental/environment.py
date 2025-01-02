@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 from pygame_recorder import PygameRecord
 import os
 from abc import ABC, abstractmethod
-from flax.core import FrozenDict
+from functools import partial
 
 # TODO: create an abstract class for the environment from which the specific experiments then can be build
 class Environment(ABC):
@@ -39,7 +39,7 @@ class Environment(ABC):
 
 # TODO: make a two (or N-) agent version of the single-patch foraging environment
 class NAgentsEnv(Environment):
-    def __init__(self, seed=0, patch_radius=2, s_init=10, e_init=1, eta=0.1, beta=0.5, alpha=0.1, gamma=0.01, step_max=400, x_max=5, y_max=5, v_max=0.1, n_agents=2, sw_fun=lambda x:0, obs_others=False):
+    def __init__(self, seed=0, patch_radius=0.5, s_init=10, e_init=1, eta=0.1, beta=0.5, alpha=0.025, gamma=0.01, step_max=400, x_max=5, y_max=5, v_max=0.1, n_agents=2, sw_fun=lambda x:0, obs_others=False, comm_dim=0):
         super().__init__(seed=seed, patch_radius=patch_radius, s_init=s_init, e_init=e_init, eta=eta, beta=beta, alpha=alpha, gamma=gamma, step_max=step_max, x_max=x_max, y_max=y_max, v_max=v_max)
         self.agents = [Agent(0,0,x_max,y_max,e_init,v_max, alpha=alpha, beta=beta) for i in range(n_agents)]
         self.n_agents = n_agents
@@ -47,47 +47,61 @@ class NAgentsEnv(Environment):
         self.alpha = alpha
         self.e_init = e_init
         self.obs_others = obs_others
+        self.comm_dim = comm_dim
 
     def size(self):
         return self.x_max, self.y_max
 
+    # TODO: maybe implement a toggle for viewing the energy state of other agents
     def get_states(self, agents_state, patch_state):
-        obs_size = self.n_agents*self.agents[0].num_vars + self.patch.num_vars
+        # -1 in the equation below is for the energy term of ONE agent
+        obs_size = self.n_agents*(self.agents[0].num_vars) + (self.n_agents-1)*(self.comm_dim-1) + self.patch.num_vars
         if not self.obs_others:
             obs_size -= (self.n_agents-1)*self.agents[0].num_vars
         agents_obs = np.zeros((self.n_agents, obs_size))
-        a_state = agents_state.flatten()
+        state_without_energy = agents_state[:,:agents_state.shape[1]-self.comm_dim-1]
+        comm_vec = agents_state[:,agents_state.shape[1]-self.comm_dim:]
+        energy_vec = agents_state[:,4]
+        a_state = state_without_energy.flatten()
         for i in range(self.n_agents):
             if not self.obs_others:
-                a_state = agents_state[i]
-            obs = np.concatenate([a_state, patch_state])
+                a_state = state_without_energy[i,:]
+            # Add communication channels and energy back to the agent's state
+            a_comm_state = np.concatenate([a_state, comm_vec[i,:], [energy_vec[i]]])
+            obs = np.concatenate([patch_state, a_comm_state])
             # obs = jnp.expand_dims(obs, 0) # May only be necessary for one agent case?
             agents_obs[i,:] = obs
         return agents_obs
 
     def get_state_space(self):
         env_state, agents_obs = self.reset()
-        print(agents_obs.shape)
         return agents_obs.shape[1]
         
-    
+    # TODO: Convert tried jax jit code back to regular numpy code
     def reset(self, seed=0):
         # Initialize rng_key and state arrays
         x_key = jax.random.PRNGKey(seed)
-        agents_state = np.zeros((self.n_agents, self.agents[0].num_vars))
+        agents_state = np.zeros((self.n_agents, self.agents[0].num_vars+(self.n_agents-1)*self.comm_dim))
         # Reset the patch
         patch_state = self.patch.reset()
         # Generate random position for each agent
-        for i,agent in enumerate(self.agents):
-            x_key, y_key = jax.random.split(x_key)
-            x = jax.random.uniform(x_key, minval=0,maxval=self.x_max)
-            y = jax.random.uniform(y_key, minval=0,maxval=self.y_max)
-            agents_state[i,:] = agent.reset(x,y)
-            while agent.is_in_patch(agents_state[i], patch_state):
-                x_key, y_key = jax.random.split(x_key)
-                x = jax.random.uniform(x_key, minval=0,maxval=self.x_max)
-                y = jax.random.uniform(y_key, minval=0,maxval=self.y_max)
-                agents_state[i,:] = agent.reset(x,y)
+        for i in range(self.n_agents):
+            def is_in_patch(a):
+                (pos, _) = a
+                x_diff = pos[0] - patch_state[0]
+                y_diff = pos[1] - patch_state[1]
+                dist = jnp.sqrt(x_diff**2 + y_diff**2)
+                return dist <= patch_state[2]
+            def get_coordinates(a):
+                (_, key) = a
+                subkey, key = jax.random.split(key)
+                x = jax.random.uniform(subkey, minval=0,maxval=self.x_max)
+                y = jax.random.uniform(key, minval=0,maxval=self.y_max)
+                return ([x,y], key)
+            (pos,key) = jax.lax.while_loop(is_in_patch, get_coordinates, get_coordinates((0,x_key)))
+            agent_state = self.agents[i].reset(*pos)
+            # Concatenate zero communication vector with each agent's calculated coordinates
+            agents_state[i,:] = jnp.concatenate([agent_state,jnp.zeros((self.n_agents-1)*self.comm_dim)])
         # Reset counter
         step_idx = 0
         # Store agents' observations
@@ -102,16 +116,19 @@ class NAgentsEnv(Environment):
         for i,action in enumerate(actions):
             # Flatten array if needed
             action = action.flatten()
+            # Obtain communication vector
+            comm_vec = jnp.array([action[action.shape[0]-self.comm_dim:] for j,action in enumerate(actions) if i!=j]).flatten()
             # Update agent position
-            agents_state[i, :] = self.agents[i].update_position(agents_state[i, :], action)
+            a_state = agents_state[i, :agents_state.shape[1]-comm_vec.shape[0]]
+            agents_state[i, :agents_state.shape[1]-comm_vec.shape[0]] = self.agents[i].update_position(a_state, action)
+            agents_state[i, agents_state.shape[1]-comm_vec.shape[0]:] = comm_vec
             # Update dynamical system of allocating resources
-            agent_state, reward, s_eaten = self.agents[i].update_energy(agents_state[i, :], patch_state, action, dt=0.1/self.n_agents)
-            agents_state[i, :] = agent_state
+            agent_state, reward, s_eaten = self.agents[i].update_energy(a_state, patch_state, action, dt=0.1/self.n_agents)
+            agents_state[i, :agents_state.shape[1]-comm_vec.shape[0]] = agent_state
             patch_state = self.patch.update_resources(patch_state, s_eaten, dt=0.1/self.n_agents)
             rewards[i] = reward+self.alpha # Only positive rewards are given this way
         # Apply social welfare function here
         rewards = np.array(rewards)
-        #energies = [agent.get_energy() for agent in self.agents]
         social_welfare = self.sw_fun(rewards)
         rewards += social_welfare
         # Update counter
@@ -121,6 +138,7 @@ class NAgentsEnv(Environment):
         # When any of the agents dies, the environment is terminated 
         terminated = np.any(agents_state[:,-1] == 0)
         truncated = step_idx >= self.step_max
+        #print(agents_state[:,agents_state.shape[1]-self.comm_dim:])
         env_state = (agents_state, patch_state, step_idx)
         return env_state, next_states, (rewards, social_welfare), terminated, truncated, None # None is to have similar output shape as gym API
 
@@ -153,11 +171,16 @@ class Agent:
         y_diff = agent_state[1] - patch_state[1]
         dist = np.sqrt(x_diff**2 + y_diff**2)
         return dist <= patch_state[2]
-    
+
+    #TODO: fix velocity norm
     def update_energy(self,agent_state,patch_state,action,dt=0.1):
         s_eaten = (self.is_in_patch(agent_state,patch_state)).astype(int)*self.beta*patch_state[3]
-        action_penalty = np.linalg.norm(action)
-        de = dt*(s_eaten - self.alpha*action_penalty)
+        # Penalty terms for the environment
+        max_penalty = np.linalg.norm([2*self.v_max]*2)
+        action_penalty = np.linalg.norm(action.at[:2].get())/max_penalty
+        comms_penalty = np.linalg.norm(action.at[2:].get())/max_penalty
+        # Update step (differential equation)
+        de = dt*(s_eaten - self.alpha*(action_penalty + comms_penalty)/2)
         # If agent has negative or zero energy, put the energy value at zero and consider the agent dead
         e_agent = agent_state[-1]
         if e_agent + de > 0: 
@@ -234,7 +257,7 @@ class RenderNAgentsEnvironment:
         self.step_idx = step_idx
         self.agent_poss = self.agent_poss.at[step_idx-1].set(agents_state[:,:2])
         self.ss_patch = self.ss_patch.at[step_idx-1].set(patch_state[-1])
-        self.es_agent = self.es_agent.at[step_idx-1].set(agents_state[:,-1])
+        self.es_agent = self.es_agent.at[step_idx-1].set(agents_state[:,-self.env.comm_dim-1])
         self.rewards = self.rewards.at[step_idx-1].set([reward.item() for reward in rewards])
         return (env_state, next_ss, rewards, terminated, truncated, info)
 
@@ -244,6 +267,33 @@ class RenderNAgentsEnvironment:
         n_agents = self.env.n_agents
         fname = f"{n_agents}_agents_one_patch.gif"
         fname = os.path.join(path, fname)
+
+        # Save the plots for the agent and the patch resources
+        plt.figure()
+        plt.title("Energy of agent(s)")
+        plt.xlabel("Timestep")
+        plt.ylabel("Energy")
+        [plt.plot(self.es_agent[:,i], label=f"Agent {i+1}") for i in range(self.es_agent.shape[1])]
+        if self.n_agents > 1:
+            plt.legend()
+        plt.savefig(os.path.join(path, "agent_energy.png"))
+
+        plt.figure()
+        plt.title("Resources in patch")
+        plt.xlabel("Timestep")
+        plt.ylabel("Resources")
+        plt.plot(self.ss_patch)
+        plt.savefig(os.path.join(path, "patch_resource.png"))
+
+        plt.figure()
+        plt.title("Rewards collected at timesteps")
+        plt.xlabel("Timestep")
+        plt.ylabel("Reward value")
+        [plt.plot(self.rewards[:,i], label=f"Agent {i+1}") for i in range(self.rewards.shape[1])]
+        if self.n_agents > 1:
+            plt.legend()
+        plt.savefig(os.path.join(path, "agent_rewards.png"))
+        
         # Render game and simultaneously save it as a gif
         with PygameRecord(fname, FPS) as recorder:
             # Pygame screen init
@@ -290,28 +340,3 @@ class RenderNAgentsEnvironment:
             pygame.quit()
             if save:
                 recorder.save()
-        # Save the plots for the agent and the patch resources
-        plt.figure()
-        plt.title("Energy of agent(s)")
-        plt.xlabel("Timestep")
-        plt.ylabel("Energy")
-        [plt.plot(self.es_agent[:,i], label=f"Agent {i+1}") for i in range(self.es_agent.shape[1])]
-        if self.n_agents > 1:
-            plt.legend()
-        plt.savefig(os.path.join(path, "agent_energy.png"))
-
-        plt.figure()
-        plt.title("Resources in patch")
-        plt.xlabel("Timestep")
-        plt.ylabel("Resources")
-        plt.plot(self.ss_patch)
-        plt.savefig(os.path.join(path, "patch_resource.png"))
-
-        plt.figure()
-        plt.title("Rewards collected at timesteps")
-        plt.xlabel("Timestep")
-        plt.ylabel("Reward value")
-        [plt.plot(self.rewards[:,i], label=f"Agent {i+1}") for i in range(self.rewards.shape[1])]
-        if self.n_agents > 1:
-            plt.legend()
-        plt.savefig(os.path.join(path, "agent_rewards.png"))
