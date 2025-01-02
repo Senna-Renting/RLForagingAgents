@@ -8,8 +8,105 @@ from pygame_recorder import PygameRecord
 import os
 from abc import ABC, abstractmethod
 from functools import partial
+from welfare_functions import zero_sw
+from flax.core.frozen_dict import FrozenDict, copy
 
-# TODO: create an abstract class for the environment from which the specific experiments then can be build
+# TODO: remove classes and instead rewrite everything in functions and dictionary states
+env_state = FrozenDict({
+    "patch_radius": 0.5,
+    "s_init": 10,
+    "e_init": 1,
+    "eta": 0.1,
+    "gamma": 0.01,
+    "beta":0.5,
+    "alpha":0.025,
+    "step_idx": 0,
+    "step_max": 400,
+    "x_max": 5,
+    "y_max": 5,
+    "v_max": 0.1,
+    "sw_fun": zero_sw,
+    "obs_others": False,
+    "n_agents": 1,
+    "comm_dim":0
+})
+# Initialize in the following order env -> patch -> agents
+def initialize_env(n_agents, obs_others, sw_fun, comm_dim, env_state=env_state):
+    return copy(env_state, {"sw_fun":sw_fun, "obs_others":obs_others, "n_agents":n_agents, "comm_dim":comm_dim})
+
+def initialize_patch(env_state):
+    patch_state = {
+        "dim": 4, 
+        "radius": jnp.full((1,1), env_state.get("patch_radius")),
+        "position": jnp.full((1,2), 2.5),
+        "resources": jnp.full((1,1), env_state.get("s_init"))
+    }
+    return copy(env_state, {"patch_state": patch_state})
+
+def initialize_agents(key, env_state):
+    n_agents = env_state.get("n_agents")
+    pos_k, v_k = jax.random.split(key)
+    def update_pos(args):
+        (key, pos) = args
+        x_k, y_k = jax.random.split(key)
+        x = jax.random.uniform(x_k, minval=0, maxval=env_state.get("x_max"), shape=(n_agents,1))
+        y = jax.random.uniform(y_k, minval=0, maxval=env_state.get("y_max"), shape=(n_agents,1))
+        return (x_k, jnp.concatenate([x,y], axis=1))
+    is_in_patch2 = lambda args: is_in_patch(args[1], env_state)
+    key, pos = jax.lax.while_loop(is_in_patch2, update_pos, update_pos((pos_k,0)))
+    v = jax.random.uniform(v_k, minval=-env_state.get("v_max"), maxval=env_state.get("v_max"), shape=(n_agents,2))
+    e = jnp.full((n_agents,1), env_state.get("e_init"))
+    comms = jnp.zeros((n_agents, (n_agents-1)*env_state.get("comm_dim")))
+    agents_state = {
+        "dim": 5+comms.shape[1],
+        "position": pos,
+        "velocity": v,
+        "energy": e,
+        "communication": comms
+    }
+    return copy(env_state, {"agents_state": agents_state})
+
+def is_in_patch(agent_pos, env_state):
+    patch_pos = env_state.get("patch_state").get("position")
+    patch_radius = env_state.get("patch_state").get("radius")
+    dist = jnp.sqrt(jax.lax.integer_pow(agent_pos - patch_pos,2))
+    return jnp.all(jnp.less(dist, patch_radius))
+
+def get_env_obs(env_state):
+    a_state = env_state.get("agents_state")
+    p_state = env_state.get("patch_state")
+    p_dim = p_state.get("dim")
+    a_dim = a_state.get("dim")
+    n_agents = env_state.get("n_agents")
+    obs_others = env_state.get("obs_others")
+    a_factor = 1+(n_agents-1)*int(obs_others)
+    print(p_dim, a_factor, a_dim)
+    obs_dim = p_dim+a_factor*(a_dim-1)+1
+    print(obs_dim)
+    obs = jnp.empty((n_agents, obs_dim))
+    def update_obs(i, obs):
+        velocity = a_state.get("velocity").at[i,:].get()
+        position = a_state.get("position").at[i,:].get()
+        if obs_others:
+            velocity = a_state.get("velocity").flatten() 
+            position = a_state.get("position").flatten()
+        temp_obs = jnp.concatenate([
+            p_state.get("position").flatten(),
+            p_state.get("radius").flatten(),
+            p_state.get("resources").flatten(),
+            a_state.get("energy").at[i,:].get(),
+            a_state.get("communication").at[i,:].get(),
+            position,
+            velocity
+        ])
+        return obs.at[i,:].set(temp_obs)
+    obs = jax.lax.fori_loop(0, n_agents, update_obs, obs)
+    return obs
+
+def env_step(key, env_state):
+    pass
+
+# Keep the code below as a reference for rewriting
 class Environment(ABC):
     def __init__(self, seed=0, patch_radius=2, s_init=10, e_init=1, eta=0.1, beta=0.5, alpha=0.1, gamma=0.01, step_max=400, x_max=5, y_max=5, v_max=0.1):
         self.x_max = x_max

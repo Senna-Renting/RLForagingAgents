@@ -7,3 +7,5 @@ def nash_sw(rewards):
     return res
 def mean_sw(rewards):
     return np.mean(rewards)
+def zero_sw(rewards):
+    return 0
