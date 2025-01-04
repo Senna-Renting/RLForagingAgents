@@ -12,11 +12,11 @@ from functools import partial
 
 ## Critic network and it's complementary functions
 class Critic(nnx.Module):
-    def __init__(self, in_dim, seed, hidden_dim=[16,32,16]):
+    def __init__(self, in_dim, seed, out_dim=1, hidden_dim=[16,32,16]):
         rngs = nnx.Rngs(seed)
         self.lin = nnx.Linear(in_dim, hidden_dim[0], rngs=rngs)
         self.lhs = [nnx.Linear(hidden_dim[i], hidden_dim[i+1], rngs=rngs) for i in range(len(hidden_dim) - 1)]
-        self.lout = nnx.Linear(hidden_dim[-1], 1, rngs=rngs)
+        self.lout = nnx.Linear(hidden_dim[-1], out_dim, rngs=rngs)
     def __call__(self, state, action):
         x = jnp.concatenate([state, action], axis=-1)
         x = nnx.relu(self.lin(x))
@@ -76,10 +76,10 @@ def polyak_update(tau: float, net_target: nnx.Module, net_normal: nnx.Module):
 # Implications: not JIT-compileable structure, but the output of the buffer when sampling does
 # contain jax arrays, so from that point onward we should be able to JIT.
 class Buffer:
-    def __init__(self, buffer_size, state_dim, action_dim):
+    def __init__(self, buffer_size, state_dim, action_dim, reward_dim=1):
         self.states = np.empty((buffer_size,state_dim))
         self.actions = np.empty((buffer_size,action_dim))
-        self.rewards = np.empty((buffer_size,1))
+        self.rewards = np.empty((buffer_size,reward_dim))
         self.next_states = np.empty((buffer_size,state_dim))
         self.dones = np.empty((buffer_size,1))
         self.max_size = buffer_size
@@ -200,27 +200,28 @@ def n_agents_train_ddpg(env, num_episodes, tau=0.05, gamma=0.99, batch_size=200,
     # Initialize neural networks
     n_agents = env.n_agents
     comm_dim = env.comm_dim
+    reward_dim = env.reward_dim
     step_max = env.step_max
     
     actor_dim = action_dim+comm_dim
     
     actors = [Actor(state_dim,actor_dim,action_max,seed+i,hidden_dim=hidden_dim) for i in range(n_agents)]
     actors_t = [Actor(state_dim,actor_dim,action_max,seed+i,hidden_dim=hidden_dim) for i in range(n_agents)]
-    critics = [Critic(state_dim+actor_dim,seed+i,hidden_dim=hidden_dim) for i in range(n_agents)]
-    critics_t = [Critic(state_dim+actor_dim,seed+i,hidden_dim=hidden_dim) for i in range(n_agents)]
+    critics = [Critic(state_dim+actor_dim,seed+i,out_dim=reward_dim,hidden_dim=hidden_dim) for i in range(n_agents)]
+    critics_t = [Critic(state_dim+actor_dim,seed+i,out_dim=reward_dim,hidden_dim=hidden_dim) for i in range(n_agents)]
     
     optim_actors = [nnx.Optimizer(actors[i], optax.adam(lr_a)) for i in range(n_agents)]
     optim_critics = [nnx.Optimizer(critics[i], optax.adam(lr_c)) for i in range(n_agents)]
     # Add seperate experience replay buffer for each agent 
     buffer_size = num_episodes*env.step_max # Ensure every step is kept in the replay buffer
-    buffers = [Buffer(buffer_size, state_dim, actor_dim) for i in range(n_agents)]
+    buffers = [Buffer(buffer_size, state_dim, actor_dim, reward_dim) for i in range(n_agents)]
     # Initialize environment
     key = jax.random.PRNGKey(seed)
     # Keep track of important loss variables (3 is for [avg,min,max] stats)
     critics_loss_stats = np.zeros((num_episodes, 3, n_agents))
     actors_loss_stats = np.zeros((num_episodes, 3, n_agents))
     # Keep track of accumulated rewards
-    returns = np.zeros((num_episodes, n_agents))
+    returns = np.zeros((num_episodes, n_agents, reward_dim))
     welfare_returns = np.zeros((num_episodes))
     # Run episodes
     for i in range(num_episodes):

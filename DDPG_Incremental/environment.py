@@ -39,7 +39,7 @@ class Environment(ABC):
 
 # TODO: make a two (or N-) agent version of the single-patch foraging environment
 class NAgentsEnv(Environment):
-    def __init__(self, seed=0, patch_radius=0.5, s_init=10, e_init=1, eta=0.1, beta=0.5, alpha=0.025, gamma=0.01, step_max=400, x_max=5, y_max=5, v_max=0.1, n_agents=2, sw_fun=lambda x:0, obs_others=False, comm_dim=0):
+    def __init__(self, seed=0, patch_radius=0.5, s_init=10, e_init=1, eta=0.1, beta=0.5, alpha=0.025, gamma=0.01, step_max=400, x_max=5, y_max=5, v_max=0.1, n_agents=2, sw_fun=lambda x:0, obs_others=False, reward_dim=1, comm_dim=0):
         super().__init__(seed=seed, patch_radius=patch_radius, s_init=s_init, e_init=e_init, eta=eta, beta=beta, alpha=alpha, gamma=gamma, step_max=step_max, x_max=x_max, y_max=y_max, v_max=v_max)
         self.agents = [Agent(0,0,x_max,y_max,e_init,v_max, alpha=alpha, beta=beta) for i in range(n_agents)]
         self.n_agents = n_agents
@@ -48,6 +48,7 @@ class NAgentsEnv(Environment):
         self.e_init = e_init
         self.obs_others = obs_others
         self.comm_dim = comm_dim
+        self.reward_dim = reward_dim
 
     def size(self):
         return self.x_max, self.y_max
@@ -112,7 +113,7 @@ class NAgentsEnv(Environment):
 
     def step(self, env_state, *actions):
         (agents_state, patch_state, step_idx) = env_state
-        rewards = list(range(agents_state.shape[0]))
+        rewards = np.empty((self.n_agents, self.reward_dim))
         for i,action in enumerate(actions):
             # Flatten array if needed
             action = action.flatten()
@@ -126,11 +127,11 @@ class NAgentsEnv(Environment):
             agent_state, reward, s_eaten = self.agents[i].update_energy(a_state, patch_state, action, dt=0.1/self.n_agents)
             agents_state[i, :agents_state.shape[1]-comm_vec.shape[0]] = agent_state
             patch_state = self.patch.update_resources(patch_state, s_eaten, dt=0.1/self.n_agents)
-            rewards[i] = reward+self.alpha # Only positive rewards are given this way
+            rewards[i,0] = reward+self.alpha # Only positive rewards are given this way
         # Apply social welfare function here
-        rewards = np.array(rewards)
-        social_welfare = self.sw_fun(rewards)
-        rewards += social_welfare
+        social_welfare = self.sw_fun(rewards[:,0])
+        if self.reward_dim == 2:
+            rewards[:,1] = np.full(self.n_agents, social_welfare)
         # Update counter
         step_idx += 1
         # Update states AFTER dynamical system updates of each agent have been made
@@ -235,12 +236,11 @@ class RenderNAgentsEnvironment:
         self.env = env
         self.closed = False
         # Tracking arrays
-        n_agents = self.env.n_agents
-        self.n_agents = n_agents
+        self.n_agents = self.env.n_agents
         self.step_idx = 0
-        self.agent_poss = jnp.empty((self.env.step_max, n_agents, 2))
-        self.es_agent = jnp.empty((self.env.step_max, n_agents))
-        self.rewards = jnp.empty((self.env.step_max, n_agents))
+        self.agent_poss = jnp.empty((self.env.step_max, self.env.n_agents, 2))
+        self.es_agent = jnp.empty((self.env.step_max, self.env.n_agents))
+        self.rewards = jnp.empty((self.env.step_max, self.env.n_agents, self.env.reward_dim))
         self.ss_patch = jnp.empty(self.env.step_max)
     
     def reset(self, seed=0):
@@ -258,7 +258,7 @@ class RenderNAgentsEnvironment:
         self.agent_poss = self.agent_poss.at[step_idx-1].set(agents_state[:,:2])
         self.ss_patch = self.ss_patch.at[step_idx-1].set(patch_state[-1])
         self.es_agent = self.es_agent.at[step_idx-1].set(agents_state[:,-self.env.comm_dim-1])
-        self.rewards = self.rewards.at[step_idx-1].set([reward.item() for reward in rewards])
+        self.rewards = self.rewards.at[step_idx-1].set([reward for reward in rewards])
         return (env_state, next_ss, rewards, terminated, truncated, info)
 
     def render(self, save=True, path=""):
@@ -289,7 +289,7 @@ class RenderNAgentsEnvironment:
         plt.title("Rewards collected at timesteps")
         plt.xlabel("Timestep")
         plt.ylabel("Reward value")
-        [plt.plot(self.rewards[:,i], label=f"Agent {i+1}") for i in range(self.rewards.shape[1])]
+        [plt.plot(self.rewards[:,i,0], label=f"Agent {i+1}") for i in range(self.rewards.shape[1])]
         if self.n_agents > 1:
             plt.legend()
         plt.savefig(os.path.join(path, "agent_rewards.png"))

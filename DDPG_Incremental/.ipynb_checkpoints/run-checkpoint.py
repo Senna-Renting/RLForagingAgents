@@ -14,7 +14,7 @@ def create_exp_folder(exp_name):
         os.makedirs(path)
     return path
 
-def plot_run_info(path, rewards, critics_loss_stats, actors_loss_stats, social_welfare=None, sw_fun=lambda x:0):
+def plot_run_info(path, rewards, critics_loss_stats, actors_loss_stats, sw_fun=lambda x:0):
     x_range = list(range(rewards.shape[0]))
     c_range = np.linspace(0.0,1.0,rewards.shape[1])
     # Plot and save return
@@ -25,8 +25,8 @@ def plot_run_info(path, rewards, critics_loss_stats, actors_loss_stats, social_w
     else:
         plt.title("Mean return across agents")
         plt.ylabel("Mean return")
-    plt.fill_between(x_range, np.min(rewards, axis=1), np.max(rewards, axis=1), color='r', alpha=0.1)
-    plt.plot(np.mean(rewards, axis=1), c='r') # Assumes the rewards are positive
+    plt.fill_between(x_range, np.min(rewards[:,:,0], axis=1), np.max(rewards[:,:,0], axis=1), color='r', alpha=0.1)
+    plt.plot(np.mean(rewards[:,:,0], axis=1), c='r') # Assumes the rewards are positive
     plt.xlabel("Episode")
     plt.savefig(os.path.join(path, "agent_episodes_return.png"))
     # Plot and save social welfare
@@ -35,7 +35,7 @@ def plot_run_info(path, rewards, critics_loss_stats, actors_loss_stats, social_w
         plt.title("Nash social welfare obtained through rewards")
         plt.xlabel("Episode")
         plt.ylabel(f"Social welfare ({sw_fun.__name__})")
-        plt.plot(social_welfare)
+        plt.plot(rewards[:,0,1])
         plt.savefig(os.path.join(path, "in_episode_welfare.png"))
 
     cmap = plt.cm.Set1
@@ -73,7 +73,7 @@ def ddpg_train_patch_n_agents(env, num_episodes, seed=0, path=""):
     (rewards, social_welfare), (actors, critics), (as_loss, cs_loss), reset_key = n_agents_train_ddpg(env, episodes[-1], lr_c=5e-4, lr_a=1e-4, tau=0.05, action_dim=action_dim, state_dim=env.get_state_space(), action_max=a_range[1], hidden_dim=[256,256], batch_size=256, seed=seed, reset_seed=seed)
     
     # Plot and save rewards figure to path
-    plot_run_info(path, rewards, cs_loss, as_loss, social_welfare, env.sw_fun)
+    plot_run_info(path, rewards, cs_loss, as_loss, env.sw_fun)
     
     # Render the obtained final policy from training
     n_agents = env.n_agents
@@ -201,7 +201,7 @@ Later I will extend this to multiple runs and use those to generate statistics f
 def experiment4(num_episodes, num_runs):
     for i in range(num_runs):
         path = create_exp_folder("Experiment4")
-        env = NAgentsEnv(n_agents=2, obs_others=True, seed=i, sw_fun=nash_sw)
+        env = NAgentsEnv(n_agents=2, obs_others=True, seed=i, sw_fun=nash_sw, reward_dim=2)
         ddpg_train_patch_n_agents(env, num_episodes, seed=i, path=path)
 
 """
@@ -213,13 +213,13 @@ Later I will extend this to multiple runs and use those to generate statistics f
 def experiment5(num_episodes, num_runs):
     for i in range(num_runs):
         path = create_exp_folder("Experiment5")
-        env = NAgentsEnv(n_agents=2, obs_others=True, seed=i, comm_dim=2, sw_fun=nash_sw)
+        env = NAgentsEnv(n_agents=2, obs_others=True, seed=i, comm_dim=2, sw_fun=nash_sw, reward_dim=2)
         ddpg_train_patch_n_agents(env, num_episodes, seed=i, path=path)
 
 
 if __name__ == "__main__":
     # Experiments can be run below
-    experiment5(5,1)
+    experiment4(10,1)
     
     # num_episodes = 5
     # num_runs = 5
