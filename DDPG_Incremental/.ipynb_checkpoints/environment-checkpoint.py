@@ -57,10 +57,10 @@ class NAgentsEnv(Environment):
 
     # TODO: maybe implement a toggle for viewing the energy state of other agents
     def get_states(self, agents_state, patch_state):
-        # -1 in the equation below is for the energy term of ONE agent
-        obs_size = self.n_agents*(self.agents[0].num_vars) + (self.n_agents-1)*(self.comm_dim-1) + self.patch.num_vars
+        energy_toggle = int(self.n_agents>1)*1
+        obs_size = self.n_agents*self.agents[0].num_vars +(self.n_agents-1)*self.comm_dim + self.patch.num_vars - energy_toggle
         if not self.obs_others:
-            obs_size -= (self.n_agents-1)*self.agents[0].num_vars
+            obs_size -= (self.n_agents-1)*self.agents[0].num_vars - energy_toggle
         agents_obs = np.zeros((self.n_agents, obs_size))
         state_without_energy = agents_state[:,:agents_state.shape[1]-self.comm_dim-1]
         comm_vec = agents_state[:,agents_state.shape[1]-self.comm_dim:]

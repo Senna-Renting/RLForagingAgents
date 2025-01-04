@@ -219,7 +219,7 @@ def experiment5(num_episodes, num_runs):
 
 if __name__ == "__main__":
     # Experiments can be run below
-    experiment4(50,1)
+    experiment5(10,1)
     
     # num_episodes = 5
     # num_runs = 5
