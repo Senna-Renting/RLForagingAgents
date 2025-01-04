@@ -202,7 +202,6 @@ def n_agents_train_ddpg(env, num_episodes, tau=0.05, gamma=0.99, batch_size=200,
     comm_dim = env.comm_dim
     reward_dim = env.reward_dim
     step_max = env.step_max
-    
     actor_dim = action_dim+comm_dim
     
     actors = [Actor(state_dim,actor_dim,action_max,seed+i,hidden_dim=hidden_dim) for i in range(n_agents)]
@@ -270,6 +269,7 @@ def n_agents_train_ddpg(env, num_episodes, tau=0.05, gamma=0.99, batch_size=200,
             env_state, next_states, (rewards,social_welfare) , terminated, truncated, _ = env.step(env_state, *actions)
             states = next_states
             done = terminated or truncated
+            #print(rewards)
             returns[i,:] += rewards 
             welfare_returns[i] += social_welfare
         # Log the important variables to some logger

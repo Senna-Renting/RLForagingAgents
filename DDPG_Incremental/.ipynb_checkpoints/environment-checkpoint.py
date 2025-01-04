@@ -41,6 +41,7 @@ class Environment(ABC):
 class NAgentsEnv(Environment):
     def __init__(self, seed=0, patch_radius=0.5, s_init=10, e_init=1, eta=0.1, beta=0.5, alpha=0.025, gamma=0.01, step_max=400, x_max=5, y_max=5, v_max=0.1, n_agents=2, sw_fun=lambda x:0, obs_others=False, reward_dim=1, comm_dim=0):
         super().__init__(seed=seed, patch_radius=patch_radius, s_init=s_init, e_init=e_init, eta=eta, beta=beta, alpha=alpha, gamma=gamma, step_max=step_max, x_max=x_max, y_max=y_max, v_max=v_max)
+        beta = beta / n_agents # This adjustment is done to keep the resource dynamics similar across different agent amounts
         self.agents = [Agent(0,0,x_max,y_max,e_init,v_max, alpha=alpha, beta=beta) for i in range(n_agents)]
         self.n_agents = n_agents
         self.sw_fun = sw_fun
@@ -48,7 +49,8 @@ class NAgentsEnv(Environment):
         self.e_init = e_init
         self.obs_others = obs_others
         self.comm_dim = comm_dim
-        self.reward_dim = reward_dim
+        self.penalty_dim = 1+int(comm_dim>0)
+        self.reward_dim = self.penalty_dim+reward_dim # 1: action_norm, int(comm_dim>0): comm_norm 
 
     def size(self):
         return self.x_max, self.y_max
@@ -81,7 +83,7 @@ class NAgentsEnv(Environment):
     # TODO: Convert tried jax jit code back to regular numpy code
     def reset(self, seed=0):
         # Initialize rng_key and state arrays
-        x_key = jax.random.PRNGKey(seed)
+        a_keys = jax.random.split(jax.random.PRNGKey(seed), self.n_agents)
         agents_state = np.zeros((self.n_agents, self.agents[0].num_vars+(self.n_agents-1)*self.comm_dim))
         # Reset the patch
         patch_state = self.patch.reset()
@@ -99,7 +101,7 @@ class NAgentsEnv(Environment):
                 x = jax.random.uniform(subkey, minval=0,maxval=self.x_max)
                 y = jax.random.uniform(key, minval=0,maxval=self.y_max)
                 return ([x,y], key)
-            (pos,key) = jax.lax.while_loop(is_in_patch, get_coordinates, get_coordinates((0,x_key)))
+            (pos,key) = jax.lax.while_loop(is_in_patch, get_coordinates, get_coordinates((0,a_keys[i])))
             agent_state = self.agents[i].reset(*pos)
             # Concatenate zero communication vector with each agent's calculated coordinates
             agents_state[i,:] = jnp.concatenate([agent_state,jnp.zeros((self.n_agents-1)*self.comm_dim)])
@@ -114,6 +116,7 @@ class NAgentsEnv(Environment):
     def step(self, env_state, *actions):
         (agents_state, patch_state, step_idx) = env_state
         rewards = np.empty((self.n_agents, self.reward_dim))
+        tot_eaten = 0
         for i,action in enumerate(actions):
             # Flatten array if needed
             action = action.flatten()
@@ -123,15 +126,21 @@ class NAgentsEnv(Environment):
             a_state = agents_state[i, :agents_state.shape[1]-comm_vec.shape[0]]
             agents_state[i, :agents_state.shape[1]-comm_vec.shape[0]] = self.agents[i].update_position(a_state, action)
             agents_state[i, agents_state.shape[1]-comm_vec.shape[0]:] = comm_vec
-            # Update dynamical system of allocating resources
-            agent_state, reward, s_eaten = self.agents[i].update_energy(a_state, patch_state, action, dt=0.1/self.n_agents)
+            # Update agent energy
+            agent_state, reward, s_eaten = self.agents[i].update_energy(a_state, patch_state, action, dt=0.1)
+            # Add agent reward to reward vector
+            if (self.reward_dim-self.penalty_dim) == 2:
+                rewards[i,:-1] = reward
+            else:
+                rewards[i,:] = reward
+            tot_eaten += s_eaten
             agents_state[i, :agents_state.shape[1]-comm_vec.shape[0]] = agent_state
-            patch_state = self.patch.update_resources(patch_state, s_eaten, dt=0.1/self.n_agents)
-            rewards[i,0] = reward+self.alpha # Only positive rewards are given this way
-        # Apply social welfare function here
-        social_welfare = self.sw_fun(rewards[:,0])
-        if self.reward_dim == 2:
-            rewards[:,1] = np.full(self.n_agents, social_welfare)
+        # Update patch resources
+        patch_state = self.patch.update_resources(patch_state, tot_eaten, dt=0.1)
+        # Apply social welfare function here (for now only depends on amount eaten by agents together)
+        social_welfare = self.sw_fun(np.sum(rewards[:,:-1], axis=1))
+        if (self.reward_dim-self.penalty_dim) == 2:
+            rewards[:,-1] = np.full(self.n_agents, social_welfare)
         # Update counter
         step_idx += 1
         # Update states AFTER dynamical system updates of each agent have been made
@@ -173,22 +182,21 @@ class Agent:
         dist = np.sqrt(x_diff**2 + y_diff**2)
         return dist <= patch_state[2]
 
-    #TODO: fix velocity norm
+    #TODO: Vectorize the penalties as seperate terms for the critic network (I will make it a multi-objective problem this way)
     def update_energy(self,agent_state,patch_state,action,dt=0.1):
         s_eaten = (self.is_in_patch(agent_state,patch_state)).astype(int)*self.beta*patch_state[3]
-        # Penalty terms for the environment
-        max_penalty = np.linalg.norm([2*self.v_max]*2)
-        action_penalty = np.linalg.norm(action.at[:2].get())/max_penalty
-        comms_penalty = np.linalg.norm(action.at[2:].get())/max_penalty
+        # Penalty terms for the environment (inverted for minimization instead of maximization)
+        action_penalty = 1/(1+np.linalg.norm(action.at[:2].get()))/400
+        comms_penalty = 1/(1+np.linalg.norm(action.at[2:].get()))/400
         # Update step (differential equation)
-        de = dt*(s_eaten - self.alpha*(action_penalty + comms_penalty)/2)
+        de = dt*(s_eaten)
+        # Reward vector shape: (de, -action_norm, -comm_norm), we will use a multi-objective approach 
+        reward_vec = np.array([de, action_penalty, comms_penalty])
+        if action.shape[0] == 2:
+            reward_vec = reward_vec[:-1]
         # If agent has negative or zero energy, put the energy value at zero and consider the agent dead
-        e_agent = agent_state[-1]
-        if e_agent + de > 0: 
-            agent_state[-1] = e_agent + de
-        else:
-            de = np.array(0, dtype=jnp.float32) # when dead reward should be/remain zero
-        return agent_state, de, s_eaten # reward and amount of resource eaten respectively
+        agent_state[-1] = np.max([0., agent_state[-1] + de])
+        return agent_state, reward_vec, s_eaten # reward and amount of resource eaten respectively
         
     def update_position(self,agent_state,action):
         # Functions needed to bound the allowed actions
