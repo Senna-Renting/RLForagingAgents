@@ -10,6 +10,7 @@ from abc import ABC, abstractmethod
 from functools import partial
 from welfare_functions import zero_sw
 from flax.core.frozen_dict import FrozenDict, copy
+from flax import nnx
 
 # TODO: remove classes and instead rewrite everything in functions and dictionary states
 env_state = FrozenDict({
@@ -25,15 +26,16 @@ env_state = FrozenDict({
     "x_max": 5,
     "y_max": 5,
     "v_max": 0.1,
-    "sw_fun": zero_sw,
+    #"sw_fun": zero_sw,
     "obs_others": False,
     "n_agents": 1,
-    "comm_dim":0
+    "comm_dim":0,
+    "dt":0.1
 })
 # Initialize in the following order env -> patch -> agents
 def initialize_env(n_agents, obs_others, sw_fun, comm_dim, env_state=env_state):
-    return copy(env_state, {"sw_fun":sw_fun, "obs_others":obs_others, "n_agents":n_agents, "comm_dim":comm_dim})
-
+    return copy(env_state, {"obs_others":obs_others, "n_agents":n_agents, "comm_dim":comm_dim})
+    
 def initialize_patch(env_state):
     patch_state = {
         "dim": 4, 
@@ -52,16 +54,19 @@ def initialize_agents(key, env_state):
         x = jax.random.uniform(x_k, minval=0, maxval=env_state.get("x_max"), shape=(n_agents,1))
         y = jax.random.uniform(y_k, minval=0, maxval=env_state.get("y_max"), shape=(n_agents,1))
         return (x_k, jnp.concatenate([x,y], axis=1))
-    is_in_patch2 = lambda args: is_in_patch(args[1], env_state)
+    is_in_patch2 = lambda args: is_in_patch(args[1], env_state)[0]
     key, pos = jax.lax.while_loop(is_in_patch2, update_pos, update_pos((pos_k,0)))
     v = jax.random.uniform(v_k, minval=-env_state.get("v_max"), maxval=env_state.get("v_max"), shape=(n_agents,2))
     e = jnp.full((n_agents,1), env_state.get("e_init"))
+    r = jnp.zeros((n_agents,1))
     comms = jnp.zeros((n_agents, (n_agents-1)*env_state.get("comm_dim")))
     agents_state = {
         "dim": 5+comms.shape[1],
         "position": pos,
         "velocity": v,
         "energy": e,
+        "reward": r,
+        "tot_eaten": 0.0,
         "communication": comms
     }
     return copy(env_state, {"agents_state": agents_state})
@@ -69,8 +74,9 @@ def initialize_agents(key, env_state):
 def is_in_patch(agent_pos, env_state):
     patch_pos = env_state.get("patch_state").get("position")
     patch_radius = env_state.get("patch_state").get("radius")
-    dist = jnp.sqrt(jax.lax.integer_pow(agent_pos - patch_pos,2))
-    return jnp.all(jnp.less(dist, patch_radius))
+    dist = jnp.linalg.norm(agent_pos - patch_pos, axis=1)
+    in_patch = jnp.less(dist, patch_radius)
+    return jnp.all(in_patch), in_patch
 
 def get_env_obs(env_state):
     a_state = env_state.get("agents_state")
@@ -79,10 +85,8 @@ def get_env_obs(env_state):
     a_dim = a_state.get("dim")
     n_agents = env_state.get("n_agents")
     obs_others = env_state.get("obs_others")
-    a_factor = 1+(n_agents-1)*int(obs_others)
-    print(p_dim, a_factor, a_dim)
+    a_factor = 1+(n_agents-1)*jnp.astype(obs_others, jnp.integer)
     obs_dim = p_dim+a_factor*(a_dim-1)+1
-    print(obs_dim)
     obs = jnp.empty((n_agents, obs_dim))
     def update_obs(i, obs):
         velocity = a_state.get("velocity").at[i,:].get()
@@ -103,8 +107,72 @@ def get_env_obs(env_state):
     obs = jax.lax.fori_loop(0, n_agents, update_obs, obs)
     return obs
 
-def env_step(key, env_state):
-    pass
+# TODO: in the training function (td3.py file) actions should be fully vectorized for this function to work
+def update_energy(actions, env_state):
+    dt = env_state.get("dt")
+    agent_pos = env_state.get("agents_state").get("position")
+    resources = env_state.get("patch_state").get("resources")
+    alpha = env_state.get("alpha")
+    s_eaten = (is_in_patch(agent_pos,env_state)[1]).astype(int)*env_state.get("beta")/env_state.get("n_agents")*resources
+    sum_eaten = jnp.sum(s_eaten)
+    # Penalty terms for the environment
+    max_penalty = jnp.linalg.norm(jnp.array([2*env_state.get("v_max")]*2))
+    action_penalty = jnp.linalg.norm(actions.at[:,:2].get(), axis=1)/max_penalty
+    comms_penalty = jnp.linalg.norm(actions.at[:,2:].get(), axis=1)/max_penalty
+    # Update step (differential equation)
+    de = dt*(s_eaten - alpha*action_penalty - alpha*comms_penalty)
+    de = de.T # Put energy terms on first axis
+    # If agent has negative or zero energy, put the energy value at zero and consider the agent dead
+    e_agent = env_state.get("agents_state").get("energy")
+    de = jnp.where(jnp.any(jnp.less(e_agent + de, 0)), de, jnp.zeros_like(de, dtype=jnp.float32))
+    return copy(env_state, {"agents_state":copy(env_state.get("agents_state"), {"energy": e_agent+de, "reward": de, "tot_eaten": sum_eaten})})
+
+def update_resources(env_state):
+    patch_state = env_state.get("patch_state")
+    resources = patch_state.get("resources")
+    eaten = env_state.get("agents_state").get("tot_eaten")
+    s_growth = jnp.multiply(env_state.get("eta"),resources)
+    s_decay = jnp.multiply(env_state.get("gamma"),jnp.power(resources,2))
+    ds = env_state.get("dt")*(s_growth - s_decay - eaten)
+    return copy(env_state, {"patch_state": copy(patch_state, {"resources": resources + ds})})
+
+def update_position(actions, env_state):
+    # Functions needed to bound the allowed actions
+    v_max = env_state.get("v_max")
+    v_bounded = lambda v: jnp.maximum(jnp.minimum(v, v_max), -v_max)
+    agents_state = env_state.get("agents_state")
+    # Compute action values
+    v = agents_state.get("velocity")
+    v = v_bounded(v + actions.at[:,:2].get())
+    # Update position
+    pos = agents_state.get("position")
+    x = jnp.mod(pos.at[:,0].get() + v.at[:,0].get(), env_state.get("x_max"))
+    y = jnp.mod(pos.at[:,1].get() + v.at[:,1].get(), env_state.get("y_max"))
+    pos = jnp.array([x,y]).T
+    agents_state = copy(agents_state, {"velocity": v, "position": pos})
+    return copy(env_state, {"agents_state": agents_state})
+
+# General functions to use for FrozenDict environment implementation
+def reset_env(key, env_state):
+    env_state = initialize_patch(env_state)
+    env_state = initialize_agents(key, env_state)
+    return env_state, get_env_obs(env_state)
+
+#@partial(nnx.jit, static_argnames='env_state')
+def step_env(actions, env_state):
+    env_state = update_energy(actions, env_state)
+    env_state = update_resources(env_state)
+    env_state = update_position(actions, env_state)
+    states_obs = get_env_obs(env_state)
+    # Update counter
+    step_idx = env_state.get("step_idx") + 1
+    env_state = copy(env_state, {"step_idx": step_idx})
+    # Compute termination conditions
+    reward = env_state.get("agents_state").get("reward")
+    social_welfare = jnp.prod(reward)
+    terminated = jnp.any(jnp.equal(env_state.get("agents_state").get("energy"),0))
+    truncated = step_idx >= env_state.get("step_max")
+    return env_state, states_obs, (reward, social_welfare), terminated, truncated
 
 # Keep the code below as a reference for rewriting
 class Environment(ABC):
@@ -215,15 +283,15 @@ class NAgentsEnv(Environment):
             action = action.flatten()
             # Obtain communication vector
             comm_vec = jnp.array([action[action.shape[0]-self.comm_dim:] for j,action in enumerate(actions) if i!=j]).flatten()
-            # Update agent position
-            a_state = agents_state[i, :agents_state.shape[1]-comm_vec.shape[0]]
-            agents_state[i, :agents_state.shape[1]-comm_vec.shape[0]] = self.agents[i].update_position(a_state, action)
-            agents_state[i, agents_state.shape[1]-comm_vec.shape[0]:] = comm_vec
             # Update dynamical system of allocating resources
+            a_state = agents_state[i, :agents_state.shape[1]-comm_vec.shape[0]]
             agent_state, reward, s_eaten = self.agents[i].update_energy(a_state, patch_state, action, dt=0.1/self.n_agents)
             agents_state[i, :agents_state.shape[1]-comm_vec.shape[0]] = agent_state
             patch_state = self.patch.update_resources(patch_state, s_eaten, dt=0.1/self.n_agents)
-            rewards[i] = reward+self.alpha # Only positive rewards are given this way
+            rewards[i] = reward+2*self.alpha # Only positive rewards are given this way
+            # Update agent position
+            agents_state[i, :agents_state.shape[1]-comm_vec.shape[0]] = self.agents[i].update_position(a_state, action)
+            agents_state[i, agents_state.shape[1]-comm_vec.shape[0]:] = comm_vec
         # Apply social welfare function here
         rewards = np.array(rewards)
         social_welfare = self.sw_fun(rewards)
@@ -277,7 +345,7 @@ class Agent:
         action_penalty = np.linalg.norm(action.at[:2].get())/max_penalty
         comms_penalty = np.linalg.norm(action.at[2:].get())/max_penalty
         # Update step (differential equation)
-        de = dt*(s_eaten - self.alpha*(action_penalty + comms_penalty)/2)
+        de = dt*(s_eaten - self.alpha*action_penalty - self.alpha*comms_penalty)
         # If agent has negative or zero energy, put the energy value at zero and consider the agent dead
         e_agent = agent_state[-1]
         if e_agent + de > 0: 
