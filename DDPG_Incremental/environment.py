@@ -39,7 +39,7 @@ class Environment(ABC):
 
 # TODO: make a two (or N-) agent version of the single-patch foraging environment
 class NAgentsEnv(Environment):
-    def __init__(self, seed=0, patch_radius=0.5, s_init=10, e_init=1, eta=0.1, beta=0.5, alpha=0.025, gamma=0.01, step_max=400, x_max=5, y_max=5, v_max=0.1, n_agents=2, sw_fun=lambda x:0, obs_others=False, reward_dim=1, comm_dim=0):
+    def __init__(self, seed=0, patch_radius=0.5, s_init=10, e_init=0, eta=0.1, beta=0.5, alpha=0.0025, gamma=0.01, step_max=400, x_max=5, y_max=5, v_max=0.1, n_agents=2, sw_fun=lambda x:0, obs_others=False, reward_dim=1, comm_dim=0):
         super().__init__(seed=seed, patch_radius=patch_radius, s_init=s_init, e_init=e_init, eta=eta, beta=beta, alpha=alpha, gamma=gamma, step_max=step_max, x_max=x_max, y_max=y_max, v_max=v_max)
         beta = beta / n_agents # This adjustment is done to keep the resource dynamics similar across different agent amounts
         self.agents = [Agent(0,0,x_max,y_max,e_init,v_max, alpha=alpha, beta=beta) for i in range(n_agents)]
@@ -49,8 +49,10 @@ class NAgentsEnv(Environment):
         self.e_init = e_init
         self.obs_others = obs_others
         self.comm_dim = comm_dim
-        self.penalty_dim = 1+int(comm_dim>0)
-        self.reward_dim = self.penalty_dim+reward_dim # 1: action_norm, int(comm_dim>0): comm_norm 
+        self.penalty_dim = 1+int(comm_dim>0) # 1: action_norm, int(comm_dim>0): comm_norm 
+        self.has_welfare = reward_dim == 2
+        self.reward_dim = self.penalty_dim+reward_dim 
+        
 
     def size(self):
         return self.x_max, self.y_max
@@ -146,7 +148,7 @@ class NAgentsEnv(Environment):
         # Update states AFTER dynamical system updates of each agent have been made
         next_states = self.get_states(agents_state, patch_state)
         # When any of the agents dies, the environment is terminated 
-        terminated = np.any(agents_state[:,-1] == 0)
+        terminated = False #np.any(agents_state[:,-1] == 0)
         truncated = step_idx >= self.step_max
         #print(agents_state[:,agents_state.shape[1]-self.comm_dim:])
         env_state = (agents_state, patch_state, step_idx)
@@ -155,7 +157,7 @@ class NAgentsEnv(Environment):
 
 
 class Agent:
-    def __init__(self,x,y,x_max,y_max,e_init,v_max, alpha=0.4, beta=0.25):
+    def __init__(self,x,y,x_max,y_max,e_init,v_max,alpha=0.4, beta=0.25):
         # Hyperparameters of dynamical system
         self.alpha = alpha # penalizing coëfficient for movement
         self.beta = beta # amount of eating per timestep
@@ -186,8 +188,8 @@ class Agent:
     def update_energy(self,agent_state,patch_state,action,dt=0.1):
         s_eaten = (self.is_in_patch(agent_state,patch_state)).astype(int)*self.beta*patch_state[3]
         # Penalty terms for the environment (inverted for minimization instead of maximization)
-        action_penalty = 1/(1+np.linalg.norm(action.at[:2].get()))/400
-        comms_penalty = 1/(1+np.linalg.norm(action.at[2:].get()))/400
+        action_penalty = 1/(1+np.linalg.norm(action.at[:2].get()))*self.alpha
+        comms_penalty = 1/(1+np.linalg.norm(action.at[2:].get()))*self.alpha
         # Update step (differential equation)
         de = dt*(s_eaten)
         # Reward vector shape: (de, -action_norm, -comm_norm), we will use a multi-objective approach 
@@ -275,13 +277,32 @@ class RenderNAgentsEnvironment:
         n_agents = self.env.n_agents
         fname = f"{n_agents}_agents_one_patch.gif"
         fname = os.path.join(path, fname)
+        # For colors of each agent
+        cmap = plt.cm.Set1
+        c_list = [cmap(i) for i in range(cmap.N)]
 
+        # Compute the in patch regions for each agent
+        in_patch_filter = self.rewards[:,:,0] > 0
+        all_in_patch = np.all(in_patch_filter, axis=1)
+        print("Filter", in_patch_filter)
+        x_range = list(range(self.rewards.shape[0]))
+        def fill_regions(min_v, max_v):
+            upper = min_v - (max_v - min_v)/10
+            lower = upper - (max_v - min_v)/5
+            plt.fill_between(x_range, upper, lower, color=c_list[n_agents])
+            [plt.fill_between(x_range, upper, lower, where=in_patch_filter[:,i], color=c_list[i], alpha=0.8) for i in range(n_agents)]
+            if n_agents > 1:
+                plt.fill_between(x_range, upper, lower, color=c_list[n_agents+1], where=all_in_patch)
+        
         # Save the plots for the agent and the patch resources
         plt.figure()
         plt.title("Energy of agent(s)")
         plt.xlabel("Timestep")
         plt.ylabel("Energy")
-        [plt.plot(self.es_agent[:,i], label=f"Agent {i+1}") for i in range(self.es_agent.shape[1])]
+        max_e = np.max(self.es_agent)
+        min_e = np.min(self.es_agent)
+        fill_regions(min_e, max_e)
+        [plt.plot(self.es_agent[:,i], label=f"Agent {i+1}", c=c_list[i]) for i in range(n_agents)]
         if self.n_agents > 1:
             plt.legend()
         plt.savefig(os.path.join(path, "agent_energy.png"))
@@ -290,17 +311,34 @@ class RenderNAgentsEnvironment:
         plt.title("Resources in patch")
         plt.xlabel("Timestep")
         plt.ylabel("Resources")
+        min_p = np.min(self.ss_patch)
+        max_p = np.max(self.ss_patch)
+        fill_regions(min_p, max_p)
         plt.plot(self.ss_patch)
         plt.savefig(os.path.join(path, "patch_resource.png"))
 
+        # Not needed for now (can remove later)
+        #plt.figure()
+        #plt.title("Rewards collected at timesteps")
+        #plt.xlabel("Timestep")
+        #plt.ylabel("Reward value")
+        #min_r = np.min(self.rewards[:,:,0])
+        #max_r = np.max(self.rewards[:,:,0])
+        #fill_regions(min_r, max_r)
+        #[plt.plot(self.rewards[:,i,0], label=f"Agent {i+1}", c=c_list[i]) for i in range(self.rewards.shape[1])]
+        #if self.n_agents > 1:
+        #    plt.legend()
+        #plt.savefig(os.path.join(path, "agent_rewards.png"))
+
+        action_mag = self.rewards[:,:,1]
         plt.figure()
-        plt.title("Rewards collected at timesteps")
+        plt.title("Average action magnitude of agents")
         plt.xlabel("Timestep")
-        plt.ylabel("Reward value")
-        [plt.plot(self.rewards[:,i,0], label=f"Agent {i+1}") for i in range(self.rewards.shape[1])]
-        if self.n_agents > 1:
-            plt.legend()
-        plt.savefig(os.path.join(path, "agent_rewards.png"))
+        plt.ylabel("Magnitude")
+        fill_regions(np.min(action_mag), np.max(action_mag))
+        [plt.plot(self.rewards[:,i,1], label=f"Agent {i+1}", c=c_list[i]) for i in range(self.rewards.shape[1])]
+        plt.legend()
+        plt.savefig(os.path.join(path, "action_magnitude.png"))
         
         # Render game and simultaneously save it as a gif
         with PygameRecord(fname, FPS) as recorder:
@@ -308,6 +346,7 @@ class RenderNAgentsEnvironment:
             pygame.init()
             clock = pygame.time.Clock()
             # Get render info
+            time_font = pygame.font.SysFont('Arial', 16)
             size_x, size_y = self.env.size()
             scale = 100
             agent_size = size_x/scale
@@ -333,12 +372,13 @@ class RenderNAgentsEnvironment:
                 patch_pos = self.env.patch.pos
                 patch_radius = self.env.patch.get_radius()
                 
-                #print("Patch color ratio: ",max_ratio_patch)
+                time_text = time_font.render(f"Time: {i}/{self.env.step_max}", False, (0,0,0))
                 patch_color = pygame.Color(0, max(50,int(max_ratio_patch*255)), 0)
                 agents_pos = scale*self.agent_poss.at[i].get()
                 patch_pos = [scale*patch_pos[0], scale*patch_pos[1]]
                 # Draw information on screen
                 screen.fill(white_color)
+                screen.blit(time_text, (0.2*scale, screen_y - 0.4*scale))
                 pygame.draw.circle(screen, patch_color, patch_pos, scale*patch_radius)
                 [pygame.draw.circle(screen, red_color, (agents_pos.at[i_a,0].get().item(),agents_pos.at[i_a,1].get().item()), scale*agent_size) for i_a in range(agents_pos.shape[0])]
                 # Update screen

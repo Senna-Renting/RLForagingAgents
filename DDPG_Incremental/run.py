@@ -14,7 +14,7 @@ def create_exp_folder(exp_name):
         os.makedirs(path)
     return path
 
-def plot_run_info(path, rewards, critics_loss_stats, actors_loss_stats, sw_fun=lambda x:0):
+def plot_run_info(path, rewards, critics_loss_stats, actors_loss_stats, has_welfare=False):
     x_range = list(range(rewards.shape[0]))
     c_range = np.linspace(0.0,1.0,rewards.shape[1])
     # Plot and save return
@@ -29,17 +29,36 @@ def plot_run_info(path, rewards, critics_loss_stats, actors_loss_stats, sw_fun=l
     plt.plot(np.mean(rewards[:,:,0], axis=1), c='r') # Assumes the rewards are positive
     plt.xlabel("Episode")
     plt.savefig(os.path.join(path, "agent_episodes_return.png"))
-    # Plot and save social welfare
-    if sw_fun.__name__ != "<lambda>":
+    # Plot and save social welfare when multiple agents in environment
+    if rewards.shape[1] > 1:
         plt.figure()
         plt.title("Nash social welfare obtained through rewards")
         plt.xlabel("Episode")
-        plt.ylabel(f"Social welfare ({sw_fun.__name__})")
-        plt.plot(rewards[:,0,1])
+        plt.ylabel(f"NSW")
+        plt.plot(np.prod(rewards[:,:,0], axis=1))
         plt.savefig(os.path.join(path, "in_episode_welfare.png"))
 
     cmap = plt.cm.Set1
     c_list = [cmap(i) for i in range(cmap.N)]
+
+    # Plot and save penalty vector 
+    if has_welfare:
+        penalties = np.mean(rewards[:,:,1:-1],axis=1)
+    else:
+        penalties = np.mean(rewards[:,:,1:],axis=1)
+    penalties = np.ones_like(penalties)/penalties-1 # Correcting the inversion
+    plt.figure()
+    plt.title("Penalty average across agents over time")
+    plt.ylabel("Penalty")
+    plt.xlabel("Episode")
+    if penalties.shape[1] == 2:
+        plt.plot(penalties[:,0], c='b', label="Action penalty")
+        plt.plot(penalties[:,1], c='r', label="Communication penalty")
+    else:
+        plt.plot(penalties[:,0], c='r', label="Action penalty")
+    plt.legend()
+    plt.savefig(os.path.join(path, "penalties.png"))
+    
     
     # Plot and save actor loss
     plt.figure()
@@ -64,16 +83,17 @@ def plot_run_info(path, rewards, critics_loss_stats, actors_loss_stats, sw_fun=l
     #plt.ylim([actors_avg_loss.min(), actors_avg_loss.max()])
     plt.legend()
     plt.savefig(os.path.join(path, "actors_loss.png"))
+    
 
 def ddpg_train_patch_n_agents(env, num_episodes, seed=0, path=""):
     jax.config.update('jax_threefry_partitionable', True)
     episodes = list(range(1,num_episodes+1))
     action_dim, a_range = env.get_action_space()
     # Train agent
-    (rewards, social_welfare), (actors, critics), (as_loss, cs_loss), reset_key = n_agents_train_ddpg(env, episodes[-1], lr_c=5e-4, lr_a=1e-4, tau=0.05, action_dim=action_dim, state_dim=env.get_state_space(), action_max=a_range[1], hidden_dim=[256,256], batch_size=256, seed=seed, reset_seed=seed)
+    (rewards, social_welfare), (actors, critics), (as_loss, cs_loss), reset_key = n_agents_train_ddpg(env, episodes[-1], lr_c=8e-4, lr_a=2e-4, tau=0.05, action_dim=action_dim, state_dim=env.get_state_space(), action_max=a_range[1], hidden_dim=[256,256], batch_size=256, seed=seed, reset_seed=seed)
     
     # Plot and save rewards figure to path
-    plot_run_info(path, rewards, cs_loss, as_loss, env.sw_fun)
+    plot_run_info(path, rewards, cs_loss, as_loss, has_welfare=env.has_welfare)
     
     # Render the obtained final policy from training
     n_agents = env.n_agents
@@ -219,7 +239,7 @@ def experiment5(num_episodes, num_runs):
 
 if __name__ == "__main__":
     # Experiments can be run below
-    experiment5(10,1)
+    experiment4(1,1)
     
     # num_episodes = 5
     # num_runs = 5
