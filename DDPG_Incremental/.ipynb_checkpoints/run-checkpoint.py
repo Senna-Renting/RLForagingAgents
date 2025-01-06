@@ -14,28 +14,29 @@ def create_exp_folder(exp_name):
         os.makedirs(path)
     return path
 
-def plot_run_info(path, rewards, critics_loss_stats, actors_loss_stats, has_welfare=False):
+def plot_run_info(path, rewards, critics_loss_stats, actors_loss_stats, actions, has_welfare=False):
     x_range = list(range(rewards.shape[0]))
-    c_range = np.linspace(0.0,1.0,rewards.shape[1])
+    n_agents = rewards.shape[2]
     # Plot and save return
     plt.figure()
-    if rewards.shape[1] == 1:
+    if n_agents == 1:
         plt.title("Return over episodes")
         plt.ylabel("Return")
     else:
         plt.title("Mean return across agents")
         plt.ylabel("Mean return")
-    plt.fill_between(x_range, np.min(rewards[:,:,0], axis=1), np.max(rewards[:,:,0], axis=1), color='r', alpha=0.1)
-    plt.plot(np.mean(rewards[:,:,0], axis=1), c='r') # Assumes the rewards are positive
+    returns = np.sum(rewards, axis=1)
+    plt.fill_between(x_range, np.min(returns[:,:,0], axis=1), np.max(returns[:,:,0], axis=1), color='r', alpha=0.1)
+    plt.plot(np.mean(returns[:,:,0], axis=1), c='r') # Assumes the rewards are positive
     plt.xlabel("Episode")
     plt.savefig(os.path.join(path, "agent_episodes_return.png"))
     # Plot and save social welfare when multiple agents in environment
-    if rewards.shape[1] > 1:
+    if n_agents > 1:
         plt.figure()
         plt.title("Nash social welfare obtained through rewards")
         plt.xlabel("Episode")
         plt.ylabel(f"NSW")
-        plt.plot(np.prod(rewards[:,:,0], axis=1))
+        plt.plot(np.prod(returns[:,:,0], axis=1))
         plt.savefig(os.path.join(path, "in_episode_welfare.png"))
 
     cmap = plt.cm.Set1
@@ -43,9 +44,9 @@ def plot_run_info(path, rewards, critics_loss_stats, actors_loss_stats, has_welf
 
     # Plot and save penalty vector 
     if has_welfare:
-        penalties = np.mean(rewards[:,:,1:-1],axis=1)
+        penalties = np.mean(returns[:,:,1:-1],axis=1)
     else:
-        penalties = np.mean(rewards[:,:,1:],axis=1)
+        penalties = np.mean(returns[:,:,1:],axis=1)
     penalties = np.ones_like(penalties)/penalties-1 # Correcting the inversion
     plt.figure()
     plt.title("Penalty average across agents over time")
@@ -83,6 +84,53 @@ def plot_run_info(path, rewards, critics_loss_stats, actors_loss_stats, has_welf
     #plt.ylim([actors_avg_loss.min(), actors_avg_loss.max()])
     plt.legend()
     plt.savefig(os.path.join(path, "actors_loss.png"))
+
+    # Helper function for showing activity trace
+    in_patch_filter = rewards[-1,:,:,0] > 0
+    all_in_patch = np.all(in_patch_filter, axis=1)
+    def fill_regions(min_v, max_v):
+            x_range = list(range(actions.shape[1]))
+            upper = min_v - (max_v - min_v)/10
+            lower = upper - (max_v - min_v)/5
+            plt.fill_between(x_range, upper, lower, color=c_list[n_agents], label='None in patch')
+            [plt.fill_between(x_range, upper, lower, where=in_patch_filter[:,i], color=c_list[i], alpha=0.8) for i in range(n_agents)]
+            if n_agents > 1:
+                plt.fill_between(x_range, upper, lower, color=c_list[n_agents+1], where=all_in_patch, label='All in patch')
+    # Plot and save action magnitude
+    action_mag = np.linalg.norm(actions[:,:,:,:2], axis=3)
+    last_mag = action_mag[-1,:,:]
+    fig = plt.figure(figsize=(15,10))
+    plt.subplot(3,2,1)
+    plt.title("Last episode action magnitude timeseries of agents")
+    plt.xlabel("Timestep")
+    plt.ylabel("Magnitude")
+    fill_regions(np.min(action_mag), np.max(action_mag))
+    [plt.plot(last_mag[:,i], label=f"Agent {i+1}", c=c_list[i]) for i in range(n_agents)]
+    plt.legend()
+    plt.subplot(3,2,2)
+    plt.title("Last episode action magnitude histogram of agents")
+    plt.xlabel("Magnitude")
+    plt.ylabel("Count")
+    [plt.hist(last_mag[:,i], label=f"Agent {i+1}", color=c_list[i], alpha=0.6, bins=30) for i in range(n_agents)]
+    plt.legend()
+    plt.subplot(3,2,(3,4))
+    plt.title("Average across episode action magnitude timeseries of agents")
+    plt.xlabel("Timestep")
+    plt.ylabel("Magnitude")
+    timesteps = list(range(action_mag.shape[1]))
+    for i in range(n_agents):
+        plt.fill_between(timesteps, np.min(action_mag[:,:,i], axis=0), np.max(action_mag[:,:,i], axis=0), color=c_list[i], alpha=0.1)
+        plt.plot(np.mean(action_mag[:,:,i], axis=0), label=f"Agent {i+1}", color=c_list[i])
+        
+    plt.legend()
+    for i in range(n_agents):
+        plt.subplot(3,2,5+i)
+        plt.title(f"Action magnitude histogram of agent {i+1}")
+        plt.xlabel("Timestep")
+        plt.ylabel("Episode")
+        plt.imshow(action_mag[:,:,i], origin = 'lower',  extent = [0, action_mag.shape[1], 0, action_mag.shape[0]], interpolation='nearest', aspect='auto')
+    fig.tight_layout()
+    plt.savefig(os.path.join(path, "action_magnitude.png"))
     
 
 def ddpg_train_patch_n_agents(env, num_episodes, seed=0, path=""):
@@ -90,10 +138,10 @@ def ddpg_train_patch_n_agents(env, num_episodes, seed=0, path=""):
     episodes = list(range(1,num_episodes+1))
     action_dim, a_range = env.get_action_space()
     # Train agent
-    (rewards, social_welfare), (actors, critics), (as_loss, cs_loss), reset_key = n_agents_train_ddpg(env, episodes[-1], lr_c=8e-4, lr_a=2e-4, tau=0.05, action_dim=action_dim, state_dim=env.get_state_space(), action_max=a_range[1], hidden_dim=[256,256], batch_size=256, seed=seed, reset_seed=seed)
+    (rewards, social_welfare), (actors, critics), (as_loss, cs_loss), actions, reset_key = n_agents_train_ddpg(env, episodes[-1], lr_c=8e-4, lr_a=2e-4, tau=0.05, action_dim=action_dim, state_dim=env.get_state_space(), action_max=a_range[1], hidden_dim=[256,256], batch_size=256, seed=seed, reset_seed=seed)
     
     # Plot and save rewards figure to path
-    plot_run_info(path, rewards, cs_loss, as_loss, has_welfare=env.has_welfare)
+    plot_run_info(path, rewards, cs_loss, as_loss, actions, has_welfare=env.has_welfare)
     
     # Render the obtained final policy from training
     n_agents = env.n_agents
@@ -233,13 +281,13 @@ Later I will extend this to multiple runs and use those to generate statistics f
 def experiment5(num_episodes, num_runs):
     for i in range(num_runs):
         path = create_exp_folder("Experiment5")
-        env = NAgentsEnv(n_agents=2, obs_others=True, seed=i, comm_dim=2, sw_fun=nash_sw, reward_dim=2)
+        env = NAgentsEnv(n_agents=2, obs_others=True, seed=i, comm_dim=1, sw_fun=nash_sw, reward_dim=2)
         ddpg_train_patch_n_agents(env, num_episodes, seed=i, path=path)
 
 
 if __name__ == "__main__":
     # Experiments can be run below
-    experiment4(1,1)
+    experiment4(100,1)
     
     # num_episodes = 5
     # num_runs = 5

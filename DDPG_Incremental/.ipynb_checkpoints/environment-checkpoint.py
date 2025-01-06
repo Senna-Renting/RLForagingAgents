@@ -184,7 +184,6 @@ class Agent:
         dist = np.sqrt(x_diff**2 + y_diff**2)
         return dist <= patch_state[2]
 
-    #TODO: Vectorize the penalties as seperate terms for the critic network (I will make it a multi-objective problem this way)
     def update_energy(self,agent_state,patch_state,action,dt=0.1):
         s_eaten = (self.is_in_patch(agent_state,patch_state)).astype(int)*self.beta*patch_state[3]
         # Penalty terms for the environment (inverted for minimization instead of maximization)
@@ -284,15 +283,15 @@ class RenderNAgentsEnvironment:
         # Compute the in patch regions for each agent
         in_patch_filter = self.rewards[:,:,0] > 0
         all_in_patch = np.all(in_patch_filter, axis=1)
-        print("Filter", in_patch_filter)
         x_range = list(range(self.rewards.shape[0]))
-        def fill_regions(min_v, max_v):
+        def fill_regions(min_v, max_v, ax=None):
             upper = min_v - (max_v - min_v)/10
             lower = upper - (max_v - min_v)/5
-            plt.fill_between(x_range, upper, lower, color=c_list[n_agents])
-            [plt.fill_between(x_range, upper, lower, where=in_patch_filter[:,i], color=c_list[i], alpha=0.8) for i in range(n_agents)]
+            ax = ax if ax is not None else plt  
+            ax.fill_between(x_range, upper, lower, color=c_list[n_agents], label='None in patch')
+            [ax.fill_between(x_range, upper, lower, where=in_patch_filter[:,i], color=c_list[i], alpha=0.8) for i in range(n_agents)]
             if n_agents > 1:
-                plt.fill_between(x_range, upper, lower, color=c_list[n_agents+1], where=all_in_patch)
+                ax.fill_between(x_range, upper, lower, color=c_list[n_agents+1], where=all_in_patch, label='All in patch')
         
         # Save the plots for the agent and the patch resources
         plt.figure()
@@ -330,15 +329,44 @@ class RenderNAgentsEnvironment:
         #    plt.legend()
         #plt.savefig(os.path.join(path, "agent_rewards.png"))
 
-        action_mag = self.rewards[:,:,1]
-        plt.figure()
-        plt.title("Average action magnitude of agents")
-        plt.xlabel("Timestep")
-        plt.ylabel("Magnitude")
-        fill_regions(np.min(action_mag), np.max(action_mag))
-        [plt.plot(self.rewards[:,i,1], label=f"Agent {i+1}", c=c_list[i]) for i in range(self.rewards.shape[1])]
-        plt.legend()
-        plt.savefig(os.path.join(path, "action_magnitude.png"))
+        # action_mag = self.rewards[:,:,1]
+        # plt.figure()
+        # plt.subplot(2,1,1)
+        # plt.title("Action magnitude over time of agents")
+        # plt.xlabel("Timestep")
+        # plt.ylabel("Magnitude")
+        # fill_regions(np.min(action_mag), np.max(action_mag))
+        # [plt.plot(action_mag[:,i], label=f"Agent {i+1}", c=c_list[i]) for i in range(n_agents)]
+        # plt.legend()
+        # plt.subplot(2,1,2)
+        # plt.title("Action magnitude histogram of agents")
+        # plt.xlabel("Magnitude")
+        # plt.ylabel("Count")
+        # [plt.hist(action_mag[:,i], label=f"Agent {i+1}", color=c_list[i], alpha=0.6, bins=30) for i in range(n_agents)]
+        # plt.legend()
+        # plt.tight_layout()
+        # plt.savefig(os.path.join(path, "action_magnitude.png"))
+
+        if self.rewards.shape[2] > 2 and self.env.has_welfare:
+            comms_mag = self.rewards[:,:,2]
+            plt.figure()
+            plt.subplot(2,1,1)
+            plt.title("Communication magnitude over time of agents")
+            plt.xlabel("Timestep")
+            plt.ylabel("Magnitude")
+            fill_regions(np.min(comms_mag), np.max(comms_mag), ax=plt)
+            [plt.plot(comms_mag[:,i], label=f"Agent {i+1}", c=c_list[i]) for i in range(n_agents)]
+            plt.legend()
+            plt.subplot(2,1,2)
+            plt.title("Communication magnitude histogram of agents")
+            plt.xlabel("Magnitude")
+            plt.ylabel("Count")
+            [plt.hist(comms_mag[:,i], label=f"Agent {i+1}", color=c_list[i], alpha=0.6, bins=30) for i in range(n_agents)]
+            plt.legend()
+            plt.tight_layout()
+            plt.savefig(os.path.join(path, "communication_magnitude.png"))
+
+        
         
         # Render game and simultaneously save it as a gif
         with PygameRecord(fname, FPS) as recorder:

@@ -120,11 +120,11 @@ def print_log_ddpg(epoch, critic_loss, actor_loss, returns):
     print(f"Episode {epoch} done")
     print(f"Critic loss: {critic_loss}")
     print(f"Actor loss: {actor_loss}")
-    print(f"Return: {returns}")
+    print(f"Return: {np.sum(returns, axis=1)}")
 
 def print_log_ddpg_n_agents(epoch, returns, energies):
     print(f"Episode {epoch} done")
-    [print(f"Agent {i+1}'s return: {returns[i]}") for i in range(returns.shape[0])]
+    [print(f"Agent {i+1}'s return: {np.sum(returns[:,i], axis=0)}") for i in range(returns.shape[1])]
     [print(f"Agent {i+1}'s energy: {energy}") for i,energy in enumerate(energies)]
 
 def wandb_log_ddpg(epoch, critic_loss, actor_loss, returns):
@@ -220,8 +220,9 @@ def n_agents_train_ddpg(env, num_episodes, tau=0.05, gamma=0.99, batch_size=200,
     critics_loss_stats = np.zeros((num_episodes, 3, n_agents))
     actors_loss_stats = np.zeros((num_episodes, 3, n_agents))
     # Keep track of accumulated rewards
-    returns = np.zeros((num_episodes, n_agents, reward_dim))
+    returns = np.zeros((num_episodes, step_max, n_agents, reward_dim))
     welfare_returns = np.zeros((num_episodes))
+    test_actions = np.zeros((num_episodes, step_max, n_agents, actor_dim))
     # Run episodes
     for i in range(num_episodes):
         done = False
@@ -266,15 +267,17 @@ def n_agents_train_ddpg(env, num_episodes, tau=0.05, gamma=0.99, batch_size=200,
         env_state, states = env.reset(seed=reset_seed)
         while not done:
             actions = [jnp.array(actors_t[i_a](states[i_a])) for i_a in range(n_agents)]
+            step_idx = env_state[2]
+            test_actions[i,step_idx,:] = np.array(actions)
             env_state, next_states, (rewards,social_welfare) , terminated, truncated, _ = env.step(env_state, *actions)
             states = next_states
             done = terminated or truncated
             #print(rewards)
-            returns[i,:] += rewards 
+            returns[i,step_idx] = rewards 
             welfare_returns[i] += social_welfare
         # Log the important variables to some logger
         (agents_state, patch_state, step_idx) = env_state
         end_energy = agents_state[:, -comm_dim-1]
         log_fun(i, returns[i], end_energy)
-    return (returns, welfare_returns), (actors_t, critics_t), (actors_loss_stats, critics_loss_stats),  reset_seed
+    return (returns, welfare_returns), (actors_t, critics_t), (actors_loss_stats, critics_loss_stats), test_actions,  reset_seed
             
