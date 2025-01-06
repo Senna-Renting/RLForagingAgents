@@ -39,7 +39,7 @@ class Environment(ABC):
 
 # TODO: make a two (or N-) agent version of the single-patch foraging environment
 class NAgentsEnv(Environment):
-    def __init__(self, seed=0, patch_radius=0.5, s_init=10, e_init=0, eta=0.1, beta=0.5, alpha=0.0025, gamma=0.01, step_max=400, x_max=5, y_max=5, v_max=0.1, n_agents=2, sw_fun=lambda x:0, obs_others=False, reward_dim=1, comm_dim=0):
+    def __init__(self, seed=0, patch_radius=0.5, s_init=10, e_init=1, eta=0.1, beta=0.5, alpha=0.0025, gamma=0.01, step_max=400, x_max=5, y_max=5, v_max=0.1, n_agents=2, sw_fun=lambda x:0, obs_others=False, reward_dim=1, comm_dim=0):
         super().__init__(seed=seed, patch_radius=patch_radius, s_init=s_init, e_init=e_init, eta=eta, beta=beta, alpha=alpha, gamma=gamma, step_max=step_max, x_max=x_max, y_max=y_max, v_max=v_max)
         beta = beta / n_agents # This adjustment is done to keep the resource dynamics similar across different agent amounts
         self.agents = [Agent(0,0,x_max,y_max,e_init,v_max, alpha=alpha, beta=beta) for i in range(n_agents)]
@@ -49,9 +49,9 @@ class NAgentsEnv(Environment):
         self.e_init = e_init
         self.obs_others = obs_others
         self.comm_dim = comm_dim
-        self.penalty_dim = 1+int(comm_dim>0) # 1: action_norm, int(comm_dim>0): comm_norm 
+        #self.penalty_dim = 1+int(comm_dim>0) # 1: action_norm, int(comm_dim>0): comm_norm 
         self.has_welfare = reward_dim == 2
-        self.reward_dim = self.penalty_dim+reward_dim 
+        self.reward_dim = reward_dim 
         
 
     def size(self):
@@ -118,7 +118,11 @@ class NAgentsEnv(Environment):
     def step(self, env_state, *actions):
         (agents_state, patch_state, step_idx) = env_state
         rewards = np.empty((self.n_agents, self.reward_dim))
+        n_penalties = 1+int(self.comm_dim > 0)
+        penalties = np.empty((self.n_agents, n_penalties))
+        is_in_patch = np.empty(self.n_agents)
         tot_eaten = 0
+        nash_social_welfare = 1
         for i,action in enumerate(actions):
             # Flatten array if needed
             action = action.flatten()
@@ -129,20 +133,22 @@ class NAgentsEnv(Environment):
             agents_state[i, :agents_state.shape[1]-comm_vec.shape[0]] = self.agents[i].update_position(a_state, action)
             agents_state[i, agents_state.shape[1]-comm_vec.shape[0]:] = comm_vec
             # Update agent energy
-            agent_state, reward, s_eaten = self.agents[i].update_energy(a_state, patch_state, action, dt=0.1)
+            agent_state, reward, s_eaten, penalty = self.agents[i].update_energy(a_state, patch_state, action, dt=0.1)
+            is_in_patch[i] = s_eaten != 0
+            penalties[i,:] = penalty
             # Add agent reward to reward vector
-            if (self.reward_dim-self.penalty_dim) == 2:
+            if self.reward_dim == 2:
                 rewards[i,:-1] = reward
             else:
                 rewards[i,:] = reward
             tot_eaten += s_eaten
+            nash_social_welfare *= reward
             agents_state[i, :agents_state.shape[1]-comm_vec.shape[0]] = agent_state
         # Update patch resources
         patch_state = self.patch.update_resources(patch_state, tot_eaten, dt=0.1)
         # Apply social welfare function here (for now only depends on amount eaten by agents together)
-        social_welfare = self.sw_fun(np.sum(rewards[:,:-1], axis=1))
-        if (self.reward_dim-self.penalty_dim) == 2:
-            rewards[:,-1] = np.full(self.n_agents, social_welfare)
+        if self.reward_dim == 2:
+            rewards[:,-1] = np.full(self.n_agents, nash_social_welfare)
         # Update counter
         step_idx += 1
         # Update states AFTER dynamical system updates of each agent have been made
@@ -152,7 +158,8 @@ class NAgentsEnv(Environment):
         truncated = step_idx >= self.step_max
         #print(agents_state[:,agents_state.shape[1]-self.comm_dim:])
         env_state = (agents_state, patch_state, step_idx)
-        return env_state, next_states, (rewards, social_welfare), terminated, truncated, None # None is to have similar output shape as gym API
+        agents_info = (penalties, is_in_patch)
+        return env_state, next_states, (rewards, agents_info), terminated, truncated, None # None is to have similar output shape as gym API
 
 
 
@@ -187,17 +194,19 @@ class Agent:
     def update_energy(self,agent_state,patch_state,action,dt=0.1):
         s_eaten = (self.is_in_patch(agent_state,patch_state)).astype(int)*self.beta*patch_state[3]
         # Penalty terms for the environment (inverted for minimization instead of maximization)
-        action_penalty = 1/(1+np.linalg.norm(action.at[:2].get()))*self.alpha
-        comms_penalty = 1/(1+np.linalg.norm(action.at[2:].get()))*self.alpha
+        max_penalty = np.linalg.norm(np.array([self.v_max]*2)) 
+        action_penalty = (np.linalg.norm(action.at[:2].get())/max_penalty)*self.alpha
+        comms_penalty = (np.linalg.norm(action.at[2:].get())/max_penalty)*self.alpha
         # Update step (differential equation)
-        de = dt*(s_eaten)
-        # Reward vector shape: (de, -action_norm, -comm_norm), we will use a multi-objective approach 
-        reward_vec = np.array([de, action_penalty, comms_penalty])
-        if action.shape[0] == 2:
-            reward_vec = reward_vec[:-1]
+        de = dt*(s_eaten - action_penalty - comms_penalty)
+        reward = de + 2*self.alpha # Ensure positive reward for algorithm
         # If agent has negative or zero energy, put the energy value at zero and consider the agent dead
         agent_state[-1] = np.max([0., agent_state[-1] + de])
-        return agent_state, reward_vec, s_eaten # reward and amount of resource eaten respectively
+        if action.shape[0] > 2:
+            penalties = [action_penalty, comms_penalty]
+        else:
+            penalties = action_penalty
+        return agent_state, reward, s_eaten, penalties
         
     def update_position(self,agent_state,action):
         # Functions needed to bound the allowed actions
@@ -247,27 +256,30 @@ class RenderNAgentsEnvironment:
         # Tracking arrays
         self.n_agents = self.env.n_agents
         self.step_idx = 0
-        self.agent_poss = jnp.empty((self.env.step_max, self.env.n_agents, 2))
-        self.es_agent = jnp.empty((self.env.step_max, self.env.n_agents))
-        self.rewards = jnp.empty((self.env.step_max, self.env.n_agents, self.env.reward_dim))
-        self.ss_patch = jnp.empty(self.env.step_max)
+        self.agent_poss = np.empty((self.env.step_max, self.env.n_agents, 2))
+        self.es_agent = np.empty((self.env.step_max, self.env.n_agents))
+        self.rewards = np.empty((self.env.step_max, self.env.n_agents, self.env.reward_dim))
+        self.in_patch = np.empty((self.env.step_max, self.env.n_agents))
+        self.ss_patch = np.empty(self.env.step_max)
     
     def reset(self, seed=0):
         (env_state, agents_obs) = self.env.reset(seed=seed)
         (agents_state, patch_state, step_idx) = env_state
         self.step_idx = step_idx
-        self.agent_poss = self.agent_poss.at[step_idx-1].set(agents_state[:,:2])
-        self.ss_patch = self.ss_patch.at[step_idx-1].set(patch_state[2])
+        self.agent_poss[step_idx-1] = agents_state[:,:2]
+        self.ss_patch[step_idx-1] = patch_state[2]
         return (env_state, agents_obs)
     
     def step(self, *actions):
-        (env_state, next_ss, (rewards, social_welfare), terminated, truncated, info) = self.env.step(*actions)
+        (env_state, next_ss, (rewards, agents_info), terminated, truncated, info) = self.env.step(*actions)
+        penalties, is_in_patch = agents_info
         (agents_state, patch_state, step_idx) = env_state
         self.step_idx = step_idx
-        self.agent_poss = self.agent_poss.at[step_idx-1].set(agents_state[:,:2])
-        self.ss_patch = self.ss_patch.at[step_idx-1].set(patch_state[-1])
-        self.es_agent = self.es_agent.at[step_idx-1].set(agents_state[:,-self.env.comm_dim-1])
-        self.rewards = self.rewards.at[step_idx-1].set([reward for reward in rewards])
+        self.agent_poss[step_idx-1] = agents_state[:,:2]
+        self.ss_patch[step_idx-1] = patch_state[-1]
+        self.es_agent[step_idx-1] = agents_state[:,-self.env.comm_dim-1]
+        self.rewards[step_idx-1] = [reward for reward in rewards]
+        self.in_patch[step_idx-1] = is_in_patch
         return (env_state, next_ss, rewards, terminated, truncated, info)
 
     def render(self, save=True, path=""):
@@ -289,9 +301,9 @@ class RenderNAgentsEnvironment:
             lower = upper - (max_v - min_v)/5
             ax = ax if ax is not None else plt  
             ax.fill_between(x_range, upper, lower, color=c_list[n_agents], label='None in patch')
-            [ax.fill_between(x_range, upper, lower, where=in_patch_filter[:,i], color=c_list[i], alpha=0.8) for i in range(n_agents)]
+            [ax.fill_between(x_range, upper, lower, where=self.in_patch[:,i], color=c_list[i], alpha=0.8) for i in range(n_agents)]
             if n_agents > 1:
-                ax.fill_between(x_range, upper, lower, color=c_list[n_agents+1], where=all_in_patch, label='All in patch')
+                ax.fill_between(x_range, upper, lower, color=c_list[n_agents+1], where=np.all(self.in_patch, axis=1), label='All in patch')
         
         # Save the plots for the agent and the patch resources
         plt.figure()
@@ -402,13 +414,13 @@ class RenderNAgentsEnvironment:
                 
                 time_text = time_font.render(f"Time: {i}/{self.env.step_max}", False, (0,0,0))
                 patch_color = pygame.Color(0, max(50,int(max_ratio_patch*255)), 0)
-                agents_pos = scale*self.agent_poss.at[i].get()
+                agents_pos = scale*self.agent_poss[i]
                 patch_pos = [scale*patch_pos[0], scale*patch_pos[1]]
                 # Draw information on screen
                 screen.fill(white_color)
                 screen.blit(time_text, (0.2*scale, screen_y - 0.4*scale))
                 pygame.draw.circle(screen, patch_color, patch_pos, scale*patch_radius)
-                [pygame.draw.circle(screen, red_color, (agents_pos.at[i_a,0].get().item(),agents_pos.at[i_a,1].get().item()), scale*agent_size) for i_a in range(agents_pos.shape[0])]
+                [pygame.draw.circle(screen, red_color, (agents_pos[i_a,0].item(),agents_pos[i_a,1].item()), scale*agent_size) for i_a in range(agents_pos.shape[0])]
                 # Update screen
                 pygame.display.update()
                 recorder.add_frame()
