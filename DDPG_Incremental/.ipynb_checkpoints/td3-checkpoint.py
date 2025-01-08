@@ -15,7 +15,7 @@ class Critic(nnx.Module):
     def __init__(self, in_dim, seed, out_dim=1, hidden_dim=[16,32,16]):
         rngs = nnx.Rngs(seed)
         self.lin = nnx.Linear(in_dim, hidden_dim[0], rngs=rngs)
-        self.lhs = [nnx.Linear(hidden_dim[i], hidden_dim[i+1], rngs=rngs) for i in range(len(hidden_dim) - 1)]
+        self.lhs = tuple([nnx.Linear(hidden_dim[i], hidden_dim[i+1], rngs=rngs) for i in range(len(hidden_dim) - 1)])
         self.lout = nnx.Linear(hidden_dim[-1], out_dim, rngs=rngs)
     def __call__(self, state, action):
         x = jnp.concatenate([state, action], axis=-1)
@@ -41,7 +41,7 @@ class Actor(nnx.Module):
         self.a_max = action_max
         rngs = nnx.Rngs(seed)
         self.lin = nnx.Linear(in_dim, hidden_dim[0], rngs=rngs)
-        self.lhs = [nnx.Linear(hidden_dim[i], hidden_dim[i+1], rngs=rngs) for i in range(len(hidden_dim) - 1)]
+        self.lhs = tuple([nnx.Linear(hidden_dim[i], hidden_dim[i+1], rngs=rngs) for i in range(len(hidden_dim) - 1)])
         self.lout = nnx.Linear(hidden_dim[-1], out_dim, rngs=rngs)
     def __call__(self, state):
         x = nnx.relu(self.lin(state))
@@ -70,6 +70,29 @@ def polyak_update(tau: float, net_target: nnx.Module, net_normal: nnx.Module):
     param_new = jax.tree.map(update_fn, params_t, params_n)
     return param_new
     
+# The function below returns a list of the weights of a nnx.Module (aka neural network) 
+def get_network_weights(network):
+    state = nnx.state(network)
+    weights = []
+    for name, params in state.items():
+        if 0 in params.keys():
+            for ps in params.values():
+                weights.append(np.asarray(ps["kernel"].value))
+        else:
+            weights.append(np.asarray(params["kernel"].value))
+    return weights
+
+# The function below returns a list of shapes required to store the nnx.Module's weights
+def get_network_shape(network):
+    state = nnx.state(network)
+    shapes = []
+    for name, params in state.items():
+        if 0 in params.keys():
+            for ps in params.values():
+                shapes.append(ps["kernel"].value.shape)
+        else:
+            shapes.append(params["kernel"].value.shape)
+    return shapes
 
 ## Buffer data structure
 # Note: numpy is used in this structure as I need to dynamically change the buffer over time
@@ -196,7 +219,7 @@ def train_ddpg(env, num_episodes, tau=0.05, gamma=0.99, batch_size=64, lr_a=1e-4
 
 # TODO: Create an n-agent ddpg training function
 #@partial(nnx.jit, static_argnums=0)
-def n_agents_train_ddpg(env, num_episodes, tau=0.05, gamma=0.99, batch_size=200, lr_a=2e-4, lr_c=1e-3, seed=0, reset_seed=43, action_dim=2, state_dim=3, action_max=0.2, hidden_dim=128, log_fun=print_log_ddpg_n_agents):
+def n_agents_train_ddpg(env, num_episodes, tau=0.05, gamma=0.99, batch_size=200, lr_a=2e-4, lr_c=1e-3, seed=0, reset_seed=43, action_dim=2, state_dim=3, action_max=0.2, hidden_dim=[128], log_fun=print_log_ddpg_n_agents):
     # Initialize neural networks
     n_agents = env.n_agents
     comm_dim = env.comm_dim
@@ -216,6 +239,9 @@ def n_agents_train_ddpg(env, num_episodes, tau=0.05, gamma=0.99, batch_size=200,
     buffers = [Buffer(buffer_size, state_dim, actor_dim, reward_dim) for i in range(n_agents)]
     # Initialize environment
     key = jax.random.PRNGKey(seed)
+    # Keep track of neural network weights (assumes homogeneous networks across agents!)
+    critic_weights = [np.zeros((num_episodes, n_agents, *shape)) for shape in get_network_shape(critics_t[0])]
+    actor_weights = [np.zeros((num_episodes, n_agents, *shape)) for shape in get_network_shape(actors_t[0])]
     # Keep track of important loss variables (3 is for [avg,min,max] stats)
     critics_loss_stats = np.zeros((num_episodes, 3, n_agents))
     actors_loss_stats = np.zeros((num_episodes, 3, n_agents))
@@ -262,6 +288,13 @@ def n_agents_train_ddpg(env, num_episodes, tau=0.05, gamma=0.99, batch_size=200,
         step_idx = env_state[2]
         actors_loss_stats[i,:,:] = [np.mean(as_loss, axis=1), np.min(as_loss, axis=1), np.max(as_loss, axis=1)]
         critics_loss_stats[i,:,:] = [np.mean(cs_loss, axis=1), np.min(cs_loss, axis=1), np.max(cs_loss, axis=1)]
+        for i_a in range(n_agents):
+            c_weights = get_network_weights(critics_t[i_a])
+            a_weights = get_network_weights(actors_t[i_a])
+            for i_w, critic_weight in enumerate(critic_weights):
+                critic_weight[i, i_a] = c_weights[i_w] 
+            for i_w, actor_weight in enumerate(actor_weights):
+                actor_weight[i, i_a] = a_weights[i_w]
         # Test agent
         done = False
         env_state, states = env.reset(seed=reset_seed)
@@ -280,5 +313,5 @@ def n_agents_train_ddpg(env, num_episodes, tau=0.05, gamma=0.99, batch_size=200,
         end_energy = agents_state[:, -comm_dim-1]
         log_fun(i, returns[i], end_energy)
         agents_info = (test_penalties, test_is_in_patch)
-    return returns, (actors_t, critics_t), (actors_loss_stats, critics_loss_stats), agents_info, reset_seed
+    return returns, ((actors_t, actor_weights), (critics_t, critic_weights)), (actors_loss_stats, critics_loss_stats), agents_info, reset_seed
             

@@ -49,8 +49,8 @@ def plot_run_info(path, rewards, critics_loss_stats, actors_loss_stats, agents_i
     plt.ylabel("Penalty")
     plt.xlabel("Episode")
     if penalties.shape[3] == 2:
-        plt.plot(np.mean(penalties[-1,:,:,1], axis=1), c='r', label="Communication penalty")
-    plt.plot(np.mean(penalties[-1,:,:,0], axis=1), c='b', label="Action penalty")
+        plt.plot(np.mean(np.sum(penalties[:,:,:,1], axis=1), axis=1), c='r', label="Communication penalty")
+    plt.plot(np.mean(np.sum(penalties[:,:,:,0], axis=1), axis=1), c='b', label="Action penalty")
     plt.legend()
     plt.savefig(os.path.join(path, "penalties.png"))
     
@@ -89,49 +89,48 @@ def plot_run_info(path, rewards, critics_loss_stats, actors_loss_stats, agents_i
             [plt.fill_between(x_range, upper, lower, where=in_patch[:,i], color=c_list[i], alpha=0.8) for i in range(n_agents)]
             if n_agents > 1:
                 plt.fill_between(x_range, upper, lower, color=c_list[n_agents+1], where=np.all(in_patch, axis=1), label='All in patch')
-    # Plot and save action magnitude
-    action_mag = penalties[:,:,:,0]
-    last_mag = action_mag[-1]
-    fig = plt.figure(figsize=(15,10))
-    plt.subplot(3,2,1)
-    plt.title("Last episode action magnitude timeseries of agents")
-    plt.xlabel("Timestep")
-    plt.ylabel("Magnitude")
-    fill_regions(np.min(action_mag), np.max(action_mag))
-    [plt.plot(last_mag[:,i], label=f"Agent {i+1}", c=c_list[i]) for i in range(n_agents)]
-    plt.legend()
-    plt.subplot(3,2,2)
-    plt.title("Last episode action magnitude histogram of agents")
-    plt.xlabel("Magnitude")
-    plt.ylabel("Count")
-    [plt.hist(last_mag[:,i], label=f"Agent {i+1}", color=c_list[i], alpha=0.6, bins=30) for i in range(n_agents)]
-    plt.legend()
-    plt.subplot(3,2,(3,4))
-    plt.title("Average across episode action magnitude timeseries of agents")
-    plt.xlabel("Timestep")
-    plt.ylabel("Magnitude")
-    timesteps = list(range(action_mag.shape[1]))
-    for i in range(n_agents):
-        plt.fill_between(timesteps, np.min(action_mag[:,:,i], axis=0), np.max(action_mag[:,:,i], axis=0), color=c_list[i], alpha=0.1)
-        plt.plot(np.mean(action_mag[:,:,i], axis=0), label=f"Agent {i+1}", color=c_list[i])
-        
-    plt.legend()
-    for i in range(n_agents):
-        plt.subplot(3,2,5+i)
-        plt.title(f"Action magnitude histogram of agent {i+1}")
+                
+    # Function for plotting a penalty
+    def plot_penalty(name, values):
+        last_mag = values[-1]
+        fig = plt.figure(figsize=(15,10))
+        plt.subplot(3,2,(1,2))
+        plt.title(f"Last episode {name} magnitude timeseries of agents")
         plt.xlabel("Timestep")
-        plt.ylabel("Episode")
-        plt.imshow(action_mag[:,:,i], origin = 'lower',  extent = [0, action_mag.shape[1], 0, action_mag.shape[0]], interpolation='nearest', aspect='auto')
-    fig.tight_layout()
-    plt.savefig(os.path.join(path, "action_magnitude.png"))
-    
+        plt.ylabel("Magnitude")
+        fill_regions(np.min(values), np.max(values))
+        [plt.plot(last_mag[:,i], label=f"Agent {i+1}", c=c_list[i]) for i in range(n_agents)]
+        plt.legend()
+        plt.subplot(3,2,(3,4))
+        plt.title(f"Last episode {name} magnitude histogram of agents")
+        plt.xlabel("Magnitude")
+        plt.ylabel("Count")
+        bins = np.histogram(last_mag, bins=30)[1]
+        [plt.hist(last_mag[:,i], label=f"Agent {i+1}", color=c_list[i], alpha=0.6, bins=bins) for i in range(n_agents)]
+        plt.legend()
+        for i in range(n_agents):
+            plt.subplot(3,2,5+i)
+            plt.title(f"{name} magnitude histogram of agent {i+1}")
+            plt.xlabel("Timestep")
+            plt.ylabel("Episode")
+            plt.imshow(values[:,:,i], origin = 'lower',  extent = [0, values.shape[1], 0, values.shape[0]], interpolation='nearest', aspect='auto')
+        fig.tight_layout()
+        plt.savefig(os.path.join(path, f"{name}_magnitude.png"))
+
+    # Plot and save action magnitude
+    plot_penalty("action", penalties[:,:,:,0])
+
+    # Plot and save communication magnitude
+    if penalties.shape[3] == 2:
+        plot_penalty("communication", penalties[:,:,:,1])
+
 
 def ddpg_train_patch_n_agents(env, num_episodes, seed=0, path=""):
     jax.config.update('jax_threefry_partitionable', True)
     episodes = list(range(1,num_episodes+1))
     action_dim, a_range = env.get_action_space()
     # Train agent
-    rewards, (actors, critics), (as_loss, cs_loss), agents_info, reset_key = n_agents_train_ddpg(env, episodes[-1], lr_c=8e-4, lr_a=2e-4, tau=0.01, action_dim=action_dim, state_dim=env.get_state_space(), action_max=a_range[1], hidden_dim=[128,128], batch_size=400, seed=seed, reset_seed=seed)
+    rewards, ((actors, a_weights), (critics, c_weights)), (as_loss, cs_loss), agents_info, reset_key = n_agents_train_ddpg(env, episodes[-1], lr_c=8e-4, lr_a=2e-4, tau=0.01, action_dim=action_dim, state_dim=env.get_state_space(), action_max=a_range[1], hidden_dim=[128,128], batch_size=400, seed=seed, reset_seed=seed)
     
     # Plot and save rewards figure to path
     plot_run_info(path, rewards, cs_loss, as_loss, agents_info)
@@ -274,7 +273,7 @@ Later I will extend this to multiple runs and use those to generate statistics f
 def experiment5(num_episodes, num_runs):
     for i in range(num_runs):
         path = create_exp_folder("Experiment5")
-        env = NAgentsEnv(n_agents=2, obs_others=True, seed=i, comm_dim=1, sw_fun=nash_sw, reward_dim=2)
+        env = NAgentsEnv(n_agents=2, obs_others=False, seed=i, comm_dim=1, sw_fun=nash_sw, reward_dim=2)
         ddpg_train_patch_n_agents(env, num_episodes, seed=i, path=path)
 
 
