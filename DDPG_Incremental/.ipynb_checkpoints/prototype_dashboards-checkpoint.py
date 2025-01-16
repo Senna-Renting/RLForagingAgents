@@ -59,20 +59,23 @@ def plot_rewards(path, rewards, colors=plt.cm.Set1.colors):
     ax.legend()
     plt.tight_layout()
     fig.savefig(os.path.join(path, "agent_episodes_return.png"))
+    plt.close(fig)
 
 #### Tested
 """
 The agent_state and the patch_state of the NAgentsEnv class are used as input here
-agent_state's shape: [step_max, n_agents, dim(x,y,x_dot,y_dot,e)]
-patch_state's shape: [step_max, dim(x,y,r,s)]
+agent_state's shape: [n_episodes, step_max, n_agents, dim(x,y,x_dot,y_dot,e)]
+patch_info's shape: ([dim(x,y,r)], [n_episodes, step_max, dim(s))])
 """
-def plot_env(path, env_shape, patch_state: np.ndarray, agents_state):
+def plot_env(path, env_shape, patch_info, agents_state):
+    n_episodes, step_max, n_agents, *_ = agents_state.shape
+    patch_energy = patch_info[1]
     agent_size = env_shape[0]/100
-    s_max = np.max(patch_state[:,-1])
-    patch_pos = lambda frame: patch_state[frame, :2]
-    patch_radius = lambda frame: patch_state[frame, 2]
-    agent_pos = lambda frame, i_a: agents_state[frame, i_a, :2]
-    norm = lambda frame: patch_state[frame, 3]/s_max
+    s_max = np.max(patch_info[1][-1])
+    patch_pos = patch_info[0][:2]
+    patch_radius = patch_info[0][2]
+    agent_pos = lambda frame, i_a: agents_state[int(frame/step_max),frame%step_max, i_a, :2]
+    norm = lambda frame: patch_energy[int(frame/step_max), frame%step_max,0]/s_max
     patch_color = lambda norm: (0.2,0.3+0.7*norm,0.2)
     fig = plt.figure()
     ax = plt.subplot(1,1,1)
@@ -81,18 +84,20 @@ def plot_env(path, env_shape, patch_state: np.ndarray, agents_state):
     ax.set_aspect('equal')
     ax.set_xticks([])
     ax.set_yticks([])
-    patch = ax.add_patch(plt.Circle(patch_pos(0), patch_radius(0), color=patch_color(norm(0))))
+    patch = ax.add_patch(plt.Circle(patch_pos, patch_radius, color=patch_color(norm(0))))
     agents = [ax.add_patch(plt.Circle(agent_pos(0, i_a), agent_size, color='r')) for i_a in range(n_agents)]
+    episode_text = ax.text(0.05,0.1, f"Episode: 1/{n_episodes}", transform=ax.transAxes)
     frame_text = ax.text(0.05,0.05, f"Timestep: 1/{step_max}", transform=ax.transAxes)
     plt.tight_layout()
     def update(frame):
-        frame_text.set_text(f"Timestep: {frame+1}/{step_max}")
+        frame_text.set_text(f"Timestep: {(frame%step_max)+1}/{step_max}")
+        episode_text.set_text(f"Episode: {int(frame/step_max)+1}/{n_episodes}")
         patch.set(color = patch_color(norm(frame)))
         for i_a, agent in enumerate(agents):
             agent.set(center = agent_pos(frame,i_a))
     fps = 24
-    anim = FuncAnimation(fig, update, step_max, interval=1000/fps)
-    anim.save(os.path.join(path, "final_run_environment.gif"))
+    anim = FuncAnimation(fig, update, n_episodes*step_max, interval=1000/fps)
+    anim.save(os.path.join(path, "runs_in_environment.mp4"))
     plt.show()
     plt.close(fig)
 
@@ -110,10 +115,10 @@ def plot_loss(path, name, data, colors=plt.cm.Set1.colors):
     fig.savefig(os.path.join(path, f"{name}_loss.png"))
     plt.close(fig)
         
-def plot_final_states_env(path, is_in_patch, patch_states, agents_states, rewards, colors=plt.cm.Set1.colors):
+def plot_final_states_env(path, is_in_patch, patch_info, agents_states, rewards, colors=plt.cm.Set1.colors):
     step_max, n_agents, *_ = agents_states.shape
     agents_energy = agents_states[:,:,4]
-    patch_ss = patch_states[:,-1]
+    patch_ss = patch_info[1][-1]
     fig = plt.figure(figsize=(10,12))
     ax1 = plt.subplot(3,1,1)
     plt.title("Energy of agents")
@@ -180,6 +185,7 @@ def plot_penalty(path, is_in_patch, data, name, colors=plt.cm.Set1.colors, bins=
     [plt.plot(np.mean(data[:,:,i_a], axis=1), label=f"$A_{i_a+1}$", color=colors[i_a]) for i_a in range(n_agents)]
     plt.legend(loc="lower right")
     fig.savefig(os.path.join(path, f"{name}_penalty_over_episodes.png"))
+    plt.close(fig)
     # Penalty within episodes
     bins = np.histogram(data, bins=bins)[1]
     text_box = dict(facecolor="green", alpha=0.5, edgecolor="darkgreen")

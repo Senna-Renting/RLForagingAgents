@@ -32,7 +32,7 @@ def ddpg_train_patch_n_agents(env, num_episodes, seed=0, path="", exp_num=1):
     # Train agent
     rewards, networks, (as_loss, cs_loss), agents_info, reset_key = n_agents_train_ddpg(env, episodes[-1], **train_args)
     ((actors, a_weights), (critics, c_weights)) = networks
-    (penalties, is_in_patch) = agents_info
+    (penalties, is_in_patch, agent_states, patch_info) = agents_info
     
     # Plot and save rewards figure to path
     plot_rewards(path, rewards)
@@ -43,20 +43,8 @@ def ddpg_train_patch_n_agents(env, num_episodes, seed=0, path="", exp_num=1):
         plot_penalty(path, is_in_patch, penalties[:,:,:,1], "communication")
     
     # Draw final run of agents
-    n_agents = env.n_agents
-    env_state, states = env.reset(seed=reset_key)
-    patch_states = np.empty((env.step_max, *env_state[1].shape))
-    agent_states = np.empty((env.step_max, *env_state[0].shape))
-    for i in range(env.step_max):
-        actions = [jnp.array(actors[i](states[i])) for i in range(n_agents)]
-        env_state, states, _, terminated, truncated, __ = env.step(env_state, *actions)
-        (agents_state, patch_state,step_max) = env_state
-        agent_states[i] = agents_state
-        patch_states[i] = patch_state
-        if np.all(terminated) or truncated:
-            break
-    plot_final_states_env(path, is_in_patch, patch_states, agent_states, rewards[-1])
-    plot_env(path, env.size(), patch_states, agent_states)
+    plot_final_states_env(path, is_in_patch, patch_info, agent_states[-1], rewards[-1])
+    plot_env(path, env.size(), patch_info, agent_states)
     
 
 def wandb_ddpg_train_patch(env, num_episodes, num_runs=5, hidden_dim=32, batch_size=100, warmup_steps=200):

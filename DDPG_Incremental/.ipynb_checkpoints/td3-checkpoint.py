@@ -150,7 +150,7 @@ def wandb_log_ddpg(epoch, critic_loss, actor_loss, returns):
 
 # TODO: Create an n-agent ddpg training function
 #@partial(nnx.jit, static_argnums=0)
-def n_agents_train_ddpg(env, num_episodes, tau=0.01, gamma=0.99, batch_size=200, lr_a=2e-4, lr_c=1e-3, seed=0, reset_seed=43, action_dim=2, state_dim=3, action_max=0.2, hidden_dim=[64,64], log_fun=print_log_ddpg_n_agents):
+def n_agents_train_ddpg(env, num_episodes, tau=0.01, gamma=0.99, batch_size=200, lr_a=2e-4, lr_c=1e-3, seed=0, action_dim=2, state_dim=3, action_max=0.2, hidden_dim=[64,64], log_fun=print_log_ddpg_n_agents):
     # Initialize neural networks
     n_agents = env.n_agents
     comm_dim = env.comm_dim
@@ -170,19 +170,23 @@ def n_agents_train_ddpg(env, num_episodes, tau=0.01, gamma=0.99, batch_size=200,
     # Initialize environment
     key = jax.random.PRNGKey(seed)
     # Keep track of neural network weights (assumes homogeneous networks across agents!)
-    critic_weights = [np.zeros((num_episodes, n_agents, *shape)) for shape in get_network_shape(critics_t[0])]
-    actor_weights = [np.zeros((num_episodes, n_agents, *shape)) for shape in get_network_shape(actors_t[0])]
+    critic_weights = [np.empty((num_episodes, n_agents, *shape)) for shape in get_network_shape(critics_t[0])]
+    actor_weights = [np.empty((num_episodes, n_agents, *shape)) for shape in get_network_shape(actors_t[0])]
     # Keep track of important loss variables (3 is for [avg,min,max] stats)
-    critics_loss_stats = np.zeros((num_episodes, 3, n_agents))
-    actors_loss_stats = np.zeros((num_episodes, 3, n_agents))
+    critics_loss_stats = np.empty((num_episodes, 3, n_agents))
+    actors_loss_stats = np.empty((num_episodes, 3, n_agents))
     # Keep track of accumulated rewards
-    returns = np.zeros((num_episodes, step_max, n_agents, 1))
-    test_penalties = np.zeros((num_episodes, step_max, n_agents, 1+int(comm_dim > 0)))
-    test_is_in_patch = np.zeros((num_episodes, step_max, n_agents))
+    returns = np.empty((num_episodes, step_max, n_agents, 1))
+    test_penalties = np.empty((num_episodes, step_max, n_agents, 1+int(comm_dim > 0)))
+    # Keep track of patch enter events and states of agents
+    test_is_in_patch = np.empty((num_episodes, step_max, n_agents))
+    (agents_state, patch_state, step_idx), states = env.reset(seed=seed)
+    agent_states = np.empty((num_episodes, step_max, *agents_state.shape))
+    patch_states = np.empty((num_episodes, step_max, 1)) #*patch_state.shape))
     # Run episodes
     for i in range(num_episodes):
         done = False
-        env_state, states = env.reset(seed=reset_seed)
+        env_state, states = env.reset(seed=seed)
         # Initialize loss temp variables
         cs_loss = np.empty((n_agents,step_max))
         as_loss = np.empty((n_agents,step_max))
@@ -227,21 +231,25 @@ def n_agents_train_ddpg(env, num_episodes, tau=0.01, gamma=0.99, batch_size=200,
                 actor_weight[i, i_a] = a_weights[i_w]
         # Test agent
         done = False
-        env_state, states = env.reset(seed=reset_seed)
-        while not done:
+        env_state, states = env.reset(seed=seed)
+        for i_t in range(step_max):
             actions = [jnp.array(actors_t[i_a](states[i_a])) for i_a in range(n_agents)]
             step_idx = env_state[2]
             env_state,next_states,(rewards,(penalties, is_in_patch)), terminated, truncated, _ = env.step(env_state, *actions)
+            agent_states[i, i_t] = env_state[0]
+            patch_states[i, i_t] = env_state[1][-1]
             test_penalties[i,step_idx,:] = penalties
             test_is_in_patch[i,step_idx] = is_in_patch
             states = next_states
             done = terminated or truncated
-            #print(rewards)
             returns[i,step_idx] = rewards
+            if done:
+                break
         # Log the important variables to some logger
         (agents_state, patch_state, step_idx) = env_state
         end_energy = agents_state[:, -comm_dim-1]
         log_fun(i, returns[i], end_energy)
-        agents_info = (test_penalties, test_is_in_patch)
-    return returns, ((actors_t, actor_weights), (critics_t, critic_weights)), (actors_loss_stats, critics_loss_stats), agents_info, reset_seed
+        patch_info = (patch_state[:-1], patch_states)
+        env_info = (test_penalties, test_is_in_patch, agent_states, patch_info)
+    return returns, ((actors_t, actor_weights), (critics_t, critic_weights)), (actors_loss_stats, critics_loss_stats), env_info, seed
             
