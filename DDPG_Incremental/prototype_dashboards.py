@@ -34,6 +34,33 @@ test_env_shape = [5,5]
 def plot_weights(path, weights):
     pass
 
+def plot_rewards(path, rewards, colors=plt.cm.Set1.colors):
+    x_range = np.arange(0,rewards.shape[0])
+    returns = np.sum(rewards, axis=1)
+    n_agents = rewards.shape[2]
+    n_axes = 1
+    fig = plt.figure()
+    # Plot and save social welfare when multiple agents in environment
+    if n_agents > 1:
+        n_axes = 2
+        ax = plt.subplot(n_axes, 1, 1)
+        ax.set_title("Nash social welfare obtained through rewards")
+        ax.set_xlabel("Episode")
+        ax.set_ylabel(f"NSW")
+        nsw_returns = np.prod(returns, axis=1)
+        ax.plot(nsw_returns)
+    # Plot and save return
+    ax = plt.subplot(n_axes, 1, n_axes)
+    ax.set_title("Return over episodes")
+    ax.set_ylabel("Return")
+    returns = np.sum(rewards, axis=1)
+    [ax.plot(returns[:,i_a,0], c=colors[i_a], label=f"$A_{i_a+1}$") for i_a in range(n_agents)]
+    ax.set_xlabel("Episode")
+    ax.legend()
+    plt.tight_layout()
+    fig.savefig(os.path.join(path, "agent_episodes_return.png"))
+
+#### Tested
 """
 The agent_state and the patch_state of the NAgentsEnv class are used as input here
 agent_state's shape: [step_max, n_agents, dim(x,y,x_dot,y_dot,e)]
@@ -67,9 +94,8 @@ def plot_env(path, env_shape, patch_state: np.ndarray, agents_state):
     anim = FuncAnimation(fig, update, step_max, interval=1000/fps)
     anim.save(os.path.join(path, "final_run_environment.gif"))
     plt.show()
-    
+    plt.close(fig)
 
-#### Tested
 def plot_loss(path, name, data, colors=plt.cm.Set1.colors):
     n_episodes, n_stats, n_agents = data.shape
     x_range = np.arange(0,n_episodes)
@@ -112,8 +138,7 @@ def plot_final_states_env(path, is_in_patch, patch_states, agents_states, reward
     make_colorbar()
     plt.tight_layout()
     fig.savefig(os.path.join(path, "final_states.png"))
-    plt.show()
-    #plt.close(fig)
+    plt.close(fig)
     
 # Works for two agents only
 def mark_patch_events(is_in_patch, colors=plt.cm.Set1.colors, step=-1, ax=plt):

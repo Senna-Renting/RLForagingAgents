@@ -19,155 +19,30 @@ def create_exp_folder(exp_name, test=False):
         os.makedirs(path)
     return path
 
-# cmap: RdYlGn
-# Function that converts saved weights (shape: n_episodes*n_agents*nn_shape) into a gif using plt and FuncAnimation
-# TODO: 1. Turn weights into single figure plot
-#       2. Animate figure through episodes
-#       3. Draw arrows from output to input
-def make_weights_gif(path, name, weights, exp_num=1):
-    n_layers = len(weights)
-    n_agents = weights[0].shape[1]
-    n_episodes = weights[0].shape[0]
-    # For now this is hardcoded maybe later connect this information to the networks (last element only included for Critic input)
-    input_orderings = [(("Patch", [0,4]), ("Agent", [4,9]), ("Action", [9,11])),
-                       (("Patch", [0,4]), ("Agent", [4,9]), ("Action", [9,11])),
-                       (("Patch", [0,4]), ("Agent1", [4,9]), ("Agent2", [9,14]), ("Action", [14,16])),
-                       (("Patch", [0,4]), ("Agent1", [4,9]), ("Agent2", [9,14]), ("Action", [14,16])),
-                       (("Patch", [0,4]), ("Agent1", [4,9]), ("Agent2", [9,14]), ("Communication", [14,15]), ("Action", [15,17]))]
-    input_ordering = input_orderings[exp_num-1]
-    if name == "Actor":
-        input_ordering = input_ordering[:-1]
-    
-    def add_ranking(data, axes=None):
-        out_axes = [None]*(len(input_ordering)*2+1)
-        input_sum = np.sum(data, axis=1)
-        abs_sum = np.array([np.sum(np.abs(input_sum[slice[0]:slice[1]])) for (name, slice) in input_ordering])
-        abs_sum /= np.max(abs_sum)
-        ranking = abs_sum.argsort()
-        fraction = 1/ranking.shape[0]
-        draw_bar = lambda i,rank,axis: axis.fill_between([0.5, 0.5+0.1*abs_sum[rank]], i*fraction, (i+1)*fraction, color='g', clip_on=False)
-        for i,rank in enumerate(ranking):
-            text = f"{ranking.shape[0] - i}. {input_ordering[rank][0]} :"
-            if axes is None:
-                out_axes[0] = plt.gcf().add_axes((0.4, 0.7, 0.15, 0.15))
-                out_axes[0].set_title("Ranking of which input \n changed the most", fontsize=10)
-                out_axes[0].set_xlim([0,1])
-                out_axes[0].set_ylim([0,1])
-                out_axes[1+2*i+1] = draw_bar(i,rank,out_axes[0])
-                out_axes[1+2*i] = out_axes[0].text(0,fraction*i,text, size=10)
-                out_axes[1+2*i].set_bbox(dict(alpha=0))
-            else:
-                dummy = draw_bar(i,rank,axes[0])
-                dp = dummy.get_paths()[0].vertices
-                dummy.remove()
-                axes[1+2*i].set_text(text)
-                axes[1+2*i+1].set_paths([dp])
-        return out_axes            
-        
-    # Only create a gif for runs with more than 1 episode
-    if n_episodes > 1:
-        for i_a in range(n_agents):
-            fig = plt.figure()
-            plt.suptitle(f"{name} gradient updates of Agent {i_a}")
-            images = [None]*n_layers
-            first_diff = weights[0][1,i_a] - weights[0][0,i_a]
-            width_hidden = weights[0].shape[3]
-            for i in range(n_layers):
-                plt.subplot(1, n_layers, i+1)
-                final_w = weights[i][1,i_a] - weights[i][0,i_a]
-                all_w_grad = weights[i][1:,i_a] - weights[i][:-1,i_a]
-                abs_max = np.max(np.abs(all_w_grad))
-                # Make tall images (short end on x-axis)
-                flip_axis = final_w.shape[0] < final_w.shape[1]
-                if flip_axis:
-                   final_w = final_w.T
-                plt.xlabel("Input"*flip_axis + "Output"*(1-flip_axis))
-                plt.ylabel("Output"*flip_axis + "Input"*(1-flip_axis))
-                plt.xlim([0,final_w.shape[1]])
-                plt.ylim([0,final_w.shape[0]])
-                images[i] = plt.imshow(final_w, cmap='RdYlGn', vmin=-abs_max, vmax=abs_max, interpolation='nearest', extent=[0,final_w.shape[1],final_w.shape[0],0])
-                layer_name = (i==0)*"Input" + (i==(n_layers-1))*"Output" + (i>0 and i!=(n_layers-1))*"Hidden"
-                plt.title(f"{layer_name} layer")
-                # Set minor ticks and gridlines
-                ax = plt.gca()
-                ax.set_yticks(np.arange(0, final_w.shape[0], 1), minor=True)
-                ax.set_xticks(np.arange(0, final_w.shape[1], 1), minor=True)
-                ax.grid(which="both", color='k', linestyle='-', linewidth=.5, alpha=0.1)
-                ax.tick_params(which="minor", length=0)
-            
-            plt.subplot(1, n_layers, 2)
-            plt.colorbar(shrink=0.3)
-            episode_text = plt.gcf().text(0.4,0.2,f"Episode {1}/{n_episodes}")
-            
-            axes = add_ranking(first_diff)
-            def update(frame):
-                first_diff = weights[0][frame,i_a] - weights[0][frame-1,i_a]
-                episode_text.set_text(f"Episode {frame+1}/{n_episodes}")
-                add_ranking(first_diff, axes=axes)
-                for i in range(n_layers):
-                    final_w = weights[i][frame,i_a] - weights[i][frame-1, i_a]
-                    flip_axis = final_w.shape[0] < final_w.shape[1]
-                    if flip_axis:
-                       final_w = final_w.T
-                    images[i].set_array(final_w)
-            anim = FuncAnimation(fig=fig, func=update, frames=n_episodes, interval=500)
-            anim.save(filename=os.path.join(path, f"{name}_weights_agent{i_a}.gif"))
-    
-
-def plot_run_info(path, rewards, critics_loss_stats, actors_loss_stats, agents_info):
-    (penalties, is_in_patch) = agents_info
-    x_range = list(range(rewards.shape[0]))
-    n_agents = rewards.shape[2]
-    # Plot and save return
-    plt.figure()
-    if n_agents == 1:
-        plt.title("Return over episodes")
-        plt.ylabel("Return")
-    else:
-        plt.title("Mean return across agents")
-        plt.ylabel("Mean return")
-    returns = np.sum(rewards, axis=1)
-    plt.fill_between(x_range, np.min(returns[:,:,0], axis=1), np.max(returns[:,:,0], axis=1), color='r', alpha=0.1)
-    plt.plot(np.mean(returns[:,:,0], axis=1), c='r') # Assumes the rewards are positive
-    plt.xlabel("Episode")
-    plt.savefig(os.path.join(path, "agent_episodes_return.png"))
-    # Plot and save social welfare when multiple agents in environment
-    if n_agents > 1:
-        plt.figure()
-        plt.title("Nash social welfare obtained through rewards")
-        plt.xlabel("Episode")
-        plt.ylabel(f"NSW")
-        plt.plot(np.prod(returns[:,:,0], axis=1))
-        plt.savefig(os.path.join(path, "in_episode_welfare.png"))
-
-    cmap = plt.cm.Set1
-    c_list = [cmap(i) for i in range(cmap.N)]
-
-    # Plot and save penalty vector
-    plot_penalty(path, is_in_patch, penalties[:,:,:,0], "action")
-    if penalties.shape[3] == 2:
-        plot_penalty(path, is_in_patch, penalties[:,:,:,1], "communication")
-    
-    # Plot and save actor loss
-    plot_loss(path, "critic", critics_loss_stats)
-
-    # Plot and save critic loss
-    plot_loss(path, "actor", actors_loss_stats)
-
-
 def ddpg_train_patch_n_agents(env, num_episodes, seed=0, path="", exp_num=1):
     jax.config.update('jax_threefry_partitionable', True)
     episodes = list(range(1,num_episodes+1))
     action_dim, a_range = env.get_action_space()
+    train_args = {
+        "seed":seed,
+        "state_dim":env.get_state_space(),
+        "action_dim":action_dim,
+        "action_max":a_range[1]
+    }
     # Train agent
-    rewards, ((actors, a_weights), (critics, c_weights)), (as_loss, cs_loss), agents_info, reset_key = n_agents_train_ddpg(env, episodes[-1], lr_c=1e-3, lr_a=2e-4, tau=0.01, action_dim=action_dim, state_dim=env.get_state_space(), action_max=a_range[1], hidden_dim=[64,64], batch_size=400, seed=seed, reset_seed=seed)
+    rewards, networks, (as_loss, cs_loss), agents_info, reset_key = n_agents_train_ddpg(env, episodes[-1], **train_args)
+    ((actors, a_weights), (critics, c_weights)) = networks
     (penalties, is_in_patch) = agents_info
-    # Plot and save rewards figure to path
-    plot_run_info(path, rewards, cs_loss, as_loss, agents_info)
-    #make_weights_gif(path, "Actor", a_weights, exp_num=exp_num)
-    #make_weights_gif(path, "Critic", c_weights, exp_num=exp_num)
     
-    # Render the obtained final policy from training
+    # Plot and save rewards figure to path
+    plot_rewards(path, rewards)
+    plot_loss(path, "critic", cs_loss)
+    plot_loss(path, "actor", as_loss)
+    plot_penalty(path, is_in_patch, penalties[:,:,:,0], "action")
+    if penalties.shape[3] == 2:
+        plot_penalty(path, is_in_patch, penalties[:,:,:,1], "communication")
+    
+    # Draw final run of agents
     n_agents = env.n_agents
     env_state, states = env.reset(seed=reset_key)
     patch_states = np.empty((env.step_max, *env_state[1].shape))

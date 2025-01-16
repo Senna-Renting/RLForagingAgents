@@ -150,7 +150,7 @@ def wandb_log_ddpg(epoch, critic_loss, actor_loss, returns):
 
 # TODO: Create an n-agent ddpg training function
 #@partial(nnx.jit, static_argnums=0)
-def n_agents_train_ddpg(env, num_episodes, tau=0.05, gamma=0.99, batch_size=200, lr_a=2e-4, lr_c=1e-3, seed=0, reset_seed=43, action_dim=2, state_dim=3, action_max=0.2, hidden_dim=[128], log_fun=print_log_ddpg_n_agents):
+def n_agents_train_ddpg(env, num_episodes, tau=0.01, gamma=0.99, batch_size=200, lr_a=2e-4, lr_c=1e-3, seed=0, reset_seed=43, action_dim=2, state_dim=3, action_max=0.2, hidden_dim=[64,64], log_fun=print_log_ddpg_n_agents):
     # Initialize neural networks
     n_agents = env.n_agents
     comm_dim = env.comm_dim
