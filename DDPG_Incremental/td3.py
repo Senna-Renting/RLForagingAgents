@@ -14,15 +14,15 @@ from functools import partial
 class Critic(nnx.Module):
     def __init__(self, in_dim, seed, out_dim=1, hidden_dim=[16,32,16]):
         rngs = nnx.Rngs(seed)
-        self.lin = nnx.Linear(in_dim, hidden_dim[0], rngs=rngs)
+        self.input = nnx.Linear(in_dim, hidden_dim[0], rngs=rngs)
         self.lhs = tuple([nnx.Linear(hidden_dim[i], hidden_dim[i+1], rngs=rngs) for i in range(len(hidden_dim) - 1)])
-        self.lout = nnx.Linear(hidden_dim[-1], out_dim, rngs=rngs)
+        self.out = nnx.Linear(hidden_dim[-1], out_dim, rngs=rngs)
     def __call__(self, state, action):
         x = jnp.concatenate([state, action], axis=-1)
-        x = nnx.relu(self.lin(x))
+        x = nnx.relu(self.input(x))
         for lh in self.lhs:
             x = nnx.leaky_relu(lh(x))
-        return self.lout(x)
+        return self.out(x)
 
 @nnx.jit
 def MSE_optimize_critic(optimizer: nnx.Optimizer, critic: nnx.Module, states: jnp.array, actions: jnp.array, ys: jnp.array):
@@ -40,14 +40,14 @@ class Actor(nnx.Module):
     def __init__(self, in_dim, out_dim, action_max, seed, hidden_dim=[16,32,16]):
         self.a_max = action_max
         rngs = nnx.Rngs(seed)
-        self.lin = nnx.Linear(in_dim, hidden_dim[0], rngs=rngs)
+        self.input = nnx.Linear(in_dim, hidden_dim[0], rngs=rngs)
         self.lhs = tuple([nnx.Linear(hidden_dim[i], hidden_dim[i+1], rngs=rngs) for i in range(len(hidden_dim) - 1)])
-        self.lout = nnx.Linear(hidden_dim[-1], out_dim, rngs=rngs)
+        self.out = nnx.Linear(hidden_dim[-1], out_dim, rngs=rngs)
     def __call__(self, state):
-        x = nnx.relu(self.lin(state))
+        x = nnx.relu(self.input(state))
         for lh in self.lhs:
             x = nnx.leaky_relu(lh(x))
-        x = self.lout(x)
+        x = self.out(x)
         return self.a_max * nnx.tanh(x)
 
 @nnx.jit
@@ -73,36 +73,28 @@ def polyak_update(tau: float, net_target: nnx.Module, net_normal: nnx.Module):
 # The function below returns a list of the weights of a nnx.Module (aka neural network) 
 def get_network_weights(network):
     state = nnx.state(network)
-    weights = []
-    for name, params in state.items():
-        if 0 in params.keys():
-            for ps in params.values():
-                weights.append(np.asarray(ps["kernel"].value))
-        else:
-            weights.append(np.asarray(params["kernel"].value))
-    return weights
+    input = state["input"]["kernel"].value
+    output = state["out"]["kernel"].value
+    hidden = [state["lhs"][i]["kernel"].value for i in range(len(state["lhs"]))]
+    return [input, *hidden, output]
 
 # The function below returns a list of shapes required to store the nnx.Module's weights
 def get_network_shape(network):
     state = nnx.state(network)
-    shapes = []
-    for name, params in state.items():
-        if 0 in params.keys():
-            for ps in params.values():
-                shapes.append(ps["kernel"].value.shape)
-        else:
-            shapes.append(params["kernel"].value.shape)
-    return shapes
+    input = state["input"]["kernel"].value.shape
+    output = state["out"]["kernel"].value.shape
+    hidden = [state["lhs"][i]["kernel"].value.shape for i in range(len(state["lhs"]))]
+    return [input, *hidden, output]
 
 ## Buffer data structure
 # Note: numpy is used in this structure as I need to dynamically change the buffer over time
 # Implications: not JIT-compileable structure, but the output of the buffer when sampling does
 # contain jax arrays, so from that point onward we should be able to JIT.
 class Buffer:
-    def __init__(self, buffer_size, state_dim, action_dim, reward_dim=1):
+    def __init__(self, buffer_size, state_dim, action_dim):
         self.states = np.empty((buffer_size,state_dim))
         self.actions = np.empty((buffer_size,action_dim))
-        self.rewards = np.empty((buffer_size,reward_dim))
+        self.rewards = np.empty((buffer_size,1))
         self.next_states = np.empty((buffer_size,state_dim))
         self.dones = np.empty((buffer_size,1))
         self.max_size = buffer_size
@@ -156,87 +148,25 @@ def wandb_log_ddpg(epoch, critic_loss, actor_loss, returns):
                "Actor loss":actor_loss,
                "Return":returns})
 
-## Train loop of DDPG algorithm
-def train_ddpg(env, num_episodes, tau=0.05, gamma=0.99, batch_size=64, lr_a=1e-4, lr_c=3e-4, seed=0, reset_seed=43, action_dim=1, state_dim=3, action_max=2, hidden_dim=256, warmup_steps=800, log_fun=print_log_ddpg):
-    # Initialize neural networks
-    actor = Actor(state_dim,action_dim,action_max,seed,hidden_dim=hidden_dim)
-    actor_t = Actor(state_dim,action_dim,action_max,seed,hidden_dim=hidden_dim)
-    critic = Critic(state_dim + action_dim,seed,hidden_dim=hidden_dim)
-    critic_t = Critic(state_dim + action_dim,seed,hidden_dim=hidden_dim)
-    optim_actor = nnx.Optimizer(actor, optax.adam(lr_a))
-    optim_critic = nnx.Optimizer(critic, optax.adam(lr_c))
-    # Add buffer
-    buffer_size = num_episodes*env.step_max+warmup_steps # Ensure every step is kept in the replay buffer
-    buffer = Buffer(buffer_size, state_dim, action_dim)
-    # Initialize environment
-    key = jax.random.PRNGKey(seed)
-    # Keep track of accumulated rewards
-    returns = np.zeros(num_episodes)
-    # Warm-up the buffer
-    np.random.seed(reset_seed)
-    rand_actions = np.random.uniform(low=-action_max, high=action_max, size=(warmup_steps,action_dim))
-    state, info = env.reset(seed=reset_seed)
-    for j in range(rand_actions.shape[0]):
-        action = rand_actions[j]
-        next_state, reward, terminated, truncated, _ = env.step(jnp.array(action))
-        buffer.add(state, action, reward, next_state, terminated)
-        state = next_state
-    # Run episodes
-    for i in range(num_episodes):
-        done = False
-        state, info = env.reset(seed=reset_seed)
-        # Train agent
-        while not done:
-            # Sample action, execute it, and add to buffer
-            action_key, key = jax.random.split(key)
-            action = sample_action(action_key, actor, state, -action_max, action_max, action_dim)
-            next_state, reward, terminated, truncated, _ = env.step(jnp.array(action))
-            done = truncated or terminated
-            buffer.add(state, action, reward, next_state, terminated)
-            state = next_state
-            # Sample batch from buffer
-            states, actions, rewards, next_states, dones = buffer.sample(batch_size)
-            # Update critic
-            ys = compute_targets(critic_t, actor, rewards, next_states, dones, gamma)
-            c_loss, grads = MSE_optimize_critic(optim_critic, critic, states, actions, ys)
-            # Update policy
-            a_loss, grads = mean_optimize_actor(optim_actor, actor, critic, states)
-            # Update targets (critic and policy)
-            nnx.update(critic_t, polyak_update(tau, critic_t, critic))
-            nnx.update(actor_t, polyak_update(tau, actor_t, actor))
-        # Test agent
-        done = False
-        state, info = env.reset(seed=reset_seed)
-        while not done:
-            action = actor_t(state)
-            next_state, reward, terminated, truncated, _ = env.step(jnp.array(action))
-            state = next_state
-            done = terminated or truncated
-        returns[i] = env.agent.get_energy()
-        # Log the important variables to some logger
-        log_fun(i, c_loss, a_loss, returns[i])
-    return returns, actor_t, critic_t, reset_seed
-
 # TODO: Create an n-agent ddpg training function
 #@partial(nnx.jit, static_argnums=0)
 def n_agents_train_ddpg(env, num_episodes, tau=0.05, gamma=0.99, batch_size=200, lr_a=2e-4, lr_c=1e-3, seed=0, reset_seed=43, action_dim=2, state_dim=3, action_max=0.2, hidden_dim=[128], log_fun=print_log_ddpg_n_agents):
     # Initialize neural networks
     n_agents = env.n_agents
     comm_dim = env.comm_dim
-    reward_dim = env.reward_dim
     step_max = env.step_max
     actor_dim = action_dim+comm_dim
     
     actors = [Actor(state_dim,actor_dim,action_max,seed+i,hidden_dim=hidden_dim) for i in range(n_agents)]
     actors_t = [Actor(state_dim,actor_dim,action_max,seed+i,hidden_dim=hidden_dim) for i in range(n_agents)]
-    critics = [Critic(state_dim+actor_dim,seed+i,out_dim=reward_dim,hidden_dim=hidden_dim) for i in range(n_agents)]
-    critics_t = [Critic(state_dim+actor_dim,seed+i,out_dim=reward_dim,hidden_dim=hidden_dim) for i in range(n_agents)]
+    critics = [Critic(state_dim+actor_dim,seed+i,out_dim=1,hidden_dim=hidden_dim) for i in range(n_agents)]
+    critics_t = [Critic(state_dim+actor_dim,seed+i,out_dim=1,hidden_dim=hidden_dim) for i in range(n_agents)]
     
     optim_actors = [nnx.Optimizer(actors[i], optax.adam(lr_a)) for i in range(n_agents)]
     optim_critics = [nnx.Optimizer(critics[i], optax.adam(lr_c)) for i in range(n_agents)]
     # Add seperate experience replay buffer for each agent 
     buffer_size = num_episodes*env.step_max # Ensure every step is kept in the replay buffer
-    buffers = [Buffer(buffer_size, state_dim, actor_dim, reward_dim) for i in range(n_agents)]
+    buffers = [Buffer(buffer_size, state_dim, actor_dim) for i in range(n_agents)]
     # Initialize environment
     key = jax.random.PRNGKey(seed)
     # Keep track of neural network weights (assumes homogeneous networks across agents!)
@@ -246,7 +176,7 @@ def n_agents_train_ddpg(env, num_episodes, tau=0.05, gamma=0.99, batch_size=200,
     critics_loss_stats = np.zeros((num_episodes, 3, n_agents))
     actors_loss_stats = np.zeros((num_episodes, 3, n_agents))
     # Keep track of accumulated rewards
-    returns = np.zeros((num_episodes, step_max, n_agents, reward_dim))
+    returns = np.zeros((num_episodes, step_max, n_agents, 1))
     test_penalties = np.zeros((num_episodes, step_max, n_agents, 1+int(comm_dim > 0)))
     test_is_in_patch = np.zeros((num_episodes, step_max, n_agents))
     # Run episodes

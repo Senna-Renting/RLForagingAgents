@@ -1,10 +1,7 @@
 import jax
 import jax.numpy as jnp
-import pygame
-from pygame.locals import *
 import numpy as np
 import matplotlib.pyplot as plt
-from pygame_recorder import PygameRecord
 import os
 from abc import ABC, abstractmethod
 from functools import partial
@@ -39,7 +36,7 @@ class Environment(ABC):
 
 # TODO: make a two (or N-) agent version of the single-patch foraging environment
 class NAgentsEnv(Environment):
-    def __init__(self, seed=0, patch_radius=0.5, s_init=10, e_init=1, eta=0.1, beta=0.5, alpha=0.0025, gamma=0.01, step_max=400, x_max=5, y_max=5, v_max=0.1, n_agents=2, sw_fun=lambda x:0, obs_others=False, reward_dim=1, comm_dim=0):
+    def __init__(self, seed=0, patch_radius=0.5, s_init=10, e_init=1, eta=0.1, beta=0.5, alpha=0.0025, gamma=0.01, step_max=400, x_max=5, y_max=5, v_max=0.1, n_agents=2, sw_fun=lambda x:0, obs_others=False, comm_dim=0, p_welfare=0):
         super().__init__(seed=seed, patch_radius=patch_radius, s_init=s_init, e_init=e_init, eta=eta, beta=beta, alpha=alpha, gamma=gamma, step_max=step_max, x_max=x_max, y_max=y_max, v_max=v_max)
         beta = beta / n_agents # This adjustment is done to keep the resource dynamics similar across different agent amounts
         self.agents = [Agent(0,0,x_max,y_max,e_init,v_max, alpha=alpha, beta=beta) for i in range(n_agents)]
@@ -50,8 +47,7 @@ class NAgentsEnv(Environment):
         self.obs_others = obs_others
         self.comm_dim = comm_dim
         #self.penalty_dim = 1+int(comm_dim>0) # 1: action_norm, int(comm_dim>0): comm_norm 
-        self.has_welfare = reward_dim == 2
-        self.reward_dim = reward_dim 
+        self.p_welfare = p_welfare
         
 
     def size(self):
@@ -117,7 +113,7 @@ class NAgentsEnv(Environment):
 
     def step(self, env_state, *actions):
         (agents_state, patch_state, step_idx) = env_state
-        rewards = np.empty((self.n_agents, self.reward_dim))
+        rewards = np.empty((self.n_agents, 1))
         n_penalties = 1+int(self.comm_dim > 0)
         penalties = np.empty((self.n_agents, n_penalties))
         is_in_patch = np.empty(self.n_agents)
@@ -137,18 +133,14 @@ class NAgentsEnv(Environment):
             is_in_patch[i] = s_eaten != 0
             penalties[i,:] = penalty
             # Add agent reward to reward vector
-            if self.reward_dim == 2:
-                rewards[i,:-1] = reward
-            else:
-                rewards[i,:] = reward
+            rewards[i,:] = reward
             tot_eaten += s_eaten
             nash_social_welfare *= reward
             agents_state[i, :agents_state.shape[1]-comm_vec.shape[0]] = agent_state
         # Update patch resources
         patch_state = self.patch.update_resources(patch_state, tot_eaten, dt=0.1)
         # Apply social welfare function here (for now only depends on amount eaten by agents together)
-        if self.reward_dim == 2:
-            rewards[:,-1] = np.full(self.n_agents, nash_social_welfare)
+        rewards = (1-self.p_welfare)*rewards + self.p_welfare*nash_social_welfare
         # Update counter
         step_idx += 1
         # Update states AFTER dynamical system updates of each agent have been made
@@ -248,183 +240,3 @@ class Patch:
         patch_state[2] = self.radius
         patch_state[3] = self.s_init
         return patch_state
-
-class RenderNAgentsEnvironment:
-    def __init__(self, env):
-        self.env = env
-        self.closed = False
-        # Tracking arrays
-        self.n_agents = self.env.n_agents
-        self.step_idx = 0
-        self.agent_poss = np.empty((self.env.step_max, self.env.n_agents, 2))
-        self.es_agent = np.empty((self.env.step_max, self.env.n_agents))
-        self.rewards = np.empty((self.env.step_max, self.env.n_agents, self.env.reward_dim))
-        self.in_patch = np.empty((self.env.step_max, self.env.n_agents))
-        self.ss_patch = np.empty(self.env.step_max)
-    
-    def reset(self, seed=0):
-        (env_state, agents_obs) = self.env.reset(seed=seed)
-        (agents_state, patch_state, step_idx) = env_state
-        self.step_idx = step_idx
-        self.agent_poss[step_idx-1] = agents_state[:,:2]
-        self.ss_patch[step_idx-1] = patch_state[2]
-        return (env_state, agents_obs)
-    
-    def step(self, *actions):
-        (env_state, next_ss, (rewards, agents_info), terminated, truncated, info) = self.env.step(*actions)
-        penalties, is_in_patch = agents_info
-        (agents_state, patch_state, step_idx) = env_state
-        self.step_idx = step_idx
-        self.agent_poss[step_idx-1] = agents_state[:,:2]
-        self.ss_patch[step_idx-1] = patch_state[-1]
-        self.es_agent[step_idx-1] = agents_state[:,-self.env.comm_dim-1]
-        self.rewards[step_idx-1] = [reward for reward in rewards]
-        self.in_patch[step_idx-1] = is_in_patch
-        return (env_state, next_ss, rewards, terminated, truncated, info)
-
-    def render(self, save=True, path=""):
-        FPS = 15
-        # Generate GIF filename
-        n_agents = self.env.n_agents
-        fname = f"{n_agents}_agents_one_patch.gif"
-        fname = os.path.join(path, fname)
-        # For colors of each agent
-        cmap = plt.cm.Set1
-        c_list = [cmap(i) for i in range(cmap.N)]
-
-        # Compute the in patch regions for each agent
-        in_patch_filter = self.rewards[:,:,0] > 0
-        all_in_patch = np.all(in_patch_filter, axis=1)
-        x_range = list(range(self.rewards.shape[0]))
-        def fill_regions(min_v, max_v, ax=None):
-            upper = min_v - (max_v - min_v)/10
-            lower = upper - (max_v - min_v)/5
-            ax = ax if ax is not None else plt  
-            ax.fill_between(x_range, upper, lower, color=c_list[n_agents], label='None in patch')
-            [ax.fill_between(x_range, upper, lower, where=self.in_patch[:,i], color=c_list[i], alpha=0.8) for i in range(n_agents)]
-            if n_agents > 1:
-                ax.fill_between(x_range, upper, lower, color=c_list[n_agents+1], where=np.all(self.in_patch, axis=1), label='All in patch')
-        
-        # Save the plots for the agent and the patch resources
-        plt.figure()
-        plt.title("Energy of agent(s)")
-        plt.xlabel("Timestep")
-        plt.ylabel("Energy")
-        max_e = np.max(self.es_agent)
-        min_e = np.min(self.es_agent)
-        fill_regions(min_e, max_e)
-        [plt.plot(self.es_agent[:,i], label=f"Agent {i+1}", c=c_list[i]) for i in range(n_agents)]
-        if self.n_agents > 1:
-            plt.legend()
-        plt.savefig(os.path.join(path, "agent_energy.png"))
-
-        plt.figure()
-        plt.title("Resources in patch")
-        plt.xlabel("Timestep")
-        plt.ylabel("Resources")
-        min_p = np.min(self.ss_patch)
-        max_p = np.max(self.ss_patch)
-        fill_regions(min_p, max_p)
-        plt.plot(self.ss_patch)
-        plt.savefig(os.path.join(path, "patch_resource.png"))
-
-        # Not needed for now (can remove later)
-        #plt.figure()
-        #plt.title("Rewards collected at timesteps")
-        #plt.xlabel("Timestep")
-        #plt.ylabel("Reward value")
-        #min_r = np.min(self.rewards[:,:,0])
-        #max_r = np.max(self.rewards[:,:,0])
-        #fill_regions(min_r, max_r)
-        #[plt.plot(self.rewards[:,i,0], label=f"Agent {i+1}", c=c_list[i]) for i in range(self.rewards.shape[1])]
-        #if self.n_agents > 1:
-        #    plt.legend()
-        #plt.savefig(os.path.join(path, "agent_rewards.png"))
-
-        # action_mag = self.rewards[:,:,1]
-        # plt.figure()
-        # plt.subplot(2,1,1)
-        # plt.title("Action magnitude over time of agents")
-        # plt.xlabel("Timestep")
-        # plt.ylabel("Magnitude")
-        # fill_regions(np.min(action_mag), np.max(action_mag))
-        # [plt.plot(action_mag[:,i], label=f"Agent {i+1}", c=c_list[i]) for i in range(n_agents)]
-        # plt.legend()
-        # plt.subplot(2,1,2)
-        # plt.title("Action magnitude histogram of agents")
-        # plt.xlabel("Magnitude")
-        # plt.ylabel("Count")
-        # [plt.hist(action_mag[:,i], label=f"Agent {i+1}", color=c_list[i], alpha=0.6, bins=30) for i in range(n_agents)]
-        # plt.legend()
-        # plt.tight_layout()
-        # plt.savefig(os.path.join(path, "action_magnitude.png"))
-
-        if self.rewards.shape[2] > 2 and self.env.has_welfare:
-            comms_mag = self.rewards[:,:,2]
-            plt.figure()
-            plt.subplot(2,1,1)
-            plt.title("Communication magnitude over time of agents")
-            plt.xlabel("Timestep")
-            plt.ylabel("Magnitude")
-            fill_regions(np.min(comms_mag), np.max(comms_mag), ax=plt)
-            [plt.plot(comms_mag[:,i], label=f"Agent {i+1}", c=c_list[i]) for i in range(n_agents)]
-            plt.legend()
-            plt.subplot(2,1,2)
-            plt.title("Communication magnitude histogram of agents")
-            plt.xlabel("Magnitude")
-            plt.ylabel("Count")
-            [plt.hist(comms_mag[:,i], label=f"Agent {i+1}", color=c_list[i], alpha=0.6, bins=30) for i in range(n_agents)]
-            plt.legend()
-            plt.tight_layout()
-            plt.savefig(os.path.join(path, "communication_magnitude.png"))
-
-        
-        
-        # Render game and simultaneously save it as a gif
-        with PygameRecord(fname, FPS) as recorder:
-            # Pygame screen init
-            pygame.init()
-            clock = pygame.time.Clock()
-            # Get render info
-            time_font = pygame.font.SysFont('Arial', 16)
-            size_x, size_y = self.env.size()
-            scale = 100
-            agent_size = size_x/scale
-            screen_x = scale*size_x
-            screen_y = scale*size_y
-            screen = pygame.display.set_mode((screen_x, screen_y))
-            red_color = pygame.Color(255, 0, 0)
-            white_color = pygame.Color(255,255,255)
-            # Select used segments of tracking arrays
-            self.agent_poss = self.agent_poss[:self.step_idx - 1]
-            self.ss_patch = self.ss_patch[:self.step_idx - 1]
-            self.es_agent = self.es_agent[:self.step_idx - 1]
-            self.rewards = self.rewards[:self.step_idx - 1]
-            # Render on initialization
-            for i in range(self.step_idx - 2):
-                for event in pygame.event.get():
-                    if event.type == QUIT:
-                        return
-                clock.tick(FPS)
-                # Get render info
-                size_x, size_y = self.env.size()
-                max_ratio_patch = self.ss_patch[i]/(self.env.eta/self.env.gamma)
-                patch_pos = self.env.patch.pos
-                patch_radius = self.env.patch.get_radius()
-                
-                time_text = time_font.render(f"Time: {i}/{self.env.step_max}", False, (0,0,0))
-                patch_color = pygame.Color(0, max(50,int(max_ratio_patch*255)), 0)
-                agents_pos = scale*self.agent_poss[i]
-                patch_pos = [scale*patch_pos[0], scale*patch_pos[1]]
-                # Draw information on screen
-                screen.fill(white_color)
-                screen.blit(time_text, (0.2*scale, screen_y - 0.4*scale))
-                pygame.draw.circle(screen, patch_color, patch_pos, scale*patch_radius)
-                [pygame.draw.circle(screen, red_color, (agents_pos[i_a,0].item(),agents_pos[i_a,1].item()), scale*agent_size) for i_a in range(agents_pos.shape[0])]
-                # Update screen
-                pygame.display.update()
-                recorder.add_frame()
-            # Close the screen
-            pygame.quit()
-            if save:
-                recorder.save()
