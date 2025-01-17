@@ -10,3 +10,4 @@ def load_policy(model, wandb_code):
 def save_policy(model, wandb_code):
     state = nnx.state(model)
     orbax_checkpointer.save(wandb_code, state)
+    

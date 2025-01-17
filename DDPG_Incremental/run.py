@@ -20,8 +20,8 @@ def create_exp_folder(exp_name, test=False):
     return path
 
 def ddpg_train_patch_n_agents(env, num_episodes, seed=0, path="", exp_num=1):
-    jax.config.update('jax_threefry_partitionable', True)
-    episodes = list(range(1,num_episodes+1))
+    # Extract/define initial variables
+    episodes = np.arange(1,num_episodes+1)
     action_dim, a_range = env.get_action_space()
     train_args = {
         "seed":seed,
@@ -29,12 +29,24 @@ def ddpg_train_patch_n_agents(env, num_episodes, seed=0, path="", exp_num=1):
         "action_dim":action_dim,
         "action_max":a_range[1]
     }
-    # Train agent
+    # Train agent(s)
     rewards, networks, (as_loss, cs_loss), agents_info, reset_key = n_agents_train_ddpg(env, episodes[-1], **train_args)
     ((actors, a_weights), (critics, c_weights)) = networks
     (penalties, is_in_patch, agent_states, patch_info) = agents_info
+
+    # Save all data (as efficiently as possible)
+    data = {
+        "rewards": rewards,
+        "penalties": penalties,
+        "is_in_patch": is_in_patch,
+        "patch_state": patch_info[0],
+        "patch_resource": patch_info[1],
+        "agent_states": agent_states
+    }
+    np.savez(os.path.join(path, "data"), **data)
     
-    # Plot and save rewards figure to path
+    
+    # Plot a few informative plots
     plot_rewards(path, rewards)
     plot_loss(path, "critic", cs_loss)
     plot_loss(path, "actor", as_loss)
@@ -42,7 +54,7 @@ def ddpg_train_patch_n_agents(env, num_episodes, seed=0, path="", exp_num=1):
     if penalties.shape[3] == 2:
         plot_penalty(path, is_in_patch, penalties[:,:,:,1], "communication")
     
-    # Draw final run of agents
+    # Draw run of agents over the episodes and save informative plots of final state environment
     plot_final_states_env(path, is_in_patch, patch_info, agent_states[-1], rewards[-1])
     plot_env(path, env.size(), patch_info, agent_states)
     
