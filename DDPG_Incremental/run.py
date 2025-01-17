@@ -19,6 +19,49 @@ def create_exp_folder(exp_name, test=False):
         os.makedirs(path)
     return path
 
+def save_metadata_readme(path, metadata):
+    with open(os.path.join(path, "README.md"), "a") as f:
+        f.write("# Run information\n\n")
+        f.write("## Algorithm (DDPG) hyperparameters:\n\n")
+        f.write(f"State dimension: {metadata["state_dim"]}\n\n")
+        f.write(f"Action dimension: {metadata["action_dim"]}\n\n")
+        a_max = metadata["action_max"]
+        f.write(f"Action range [min, max]: [-{a_max}, {a_max}]\n\n")
+        f.write(f"Size of each hidden layer: {', '.join(metadata["hidden_dims"])}\n\n")
+        f.write(f"Tau: {metadata["tau"]}\n\n")
+        f.write(f"Learning rate (actor): {metadata["lr_actor"]}\n\n")
+        f.write(f"Learning rate (critic): {metadata["lr_critic"]}\n\n")
+        f.write(f"Gamma ($\\gamma$): {metadata["gamma"]}\n\n")
+        f.write("## Training parameters:\n\n")
+        f.write(f"Seed: {metadata["seed"]}\n\n")
+        f.write(f"Number of episodes: {metadata["n_episodes"]}\n\n")
+        f.write(f"Batch size: {metadata["batch_size"]}\n\n")
+        f.write("## Environment parameters:\n\n")
+        f.write(f"Number of agents: {metadata["n_agents"]}\n\n")
+        f.write(f"Range of x-axis: [0, {metadata["x_max"]}]\n\n")
+        f.write(f"Range of y-axis: [0, {metadata["y_max"]}]\n\n")
+        f.write(f"Maximum amount of steps allowed in environment (training horizon): {metadata["step_max"]}\n\n")
+        f.write(f"Maximum allowed velocity: {metadata["v_max"]}\n\n")
+        f.write(f"Patch radius: {metadata["patch_radius"]}\n\n")
+        f.write(f"Initial resource amount in patch: {metadata["s_init"]}\n\n")
+        f.write(f"Initial energy of agents: {metadata["e_init"]}\n\n")
+        f.write(f"Severity of penalties ($\\alpha$): {metadata["alpha"]}\n\n")
+        f.write("Resource differential equation used: $s_{t+1} = s_t\\cdot\\eta - s_t\\cdot\\gamma^2 - s_t\\cdot\\beta$\n\n")
+        f.write(f"Rate of resource decay ($\\gamma$): {metadata["env_gamma"]}\n\n")
+        f.write(f"Rate of consuming resources for agents ($\\beta$): {metadata["beta"]}\n\n")
+        f.write(f"Rate of resource growth ($\\eta$): {metadata["eta"]}\n\n")
+        f.write("## General remaining parameters:\n\n")
+        f.write(f"Communication dimension: {metadata["comm_dim"]}\n\n")
+        has_obs = "Yes" if metadata["obs_others"] else "No"
+        f.write(f"Observe other agents: {has_obs}\n\n")
+        f.write(f"Proportion of NSW (pNSW) used: {metadata["p_welfare"]}\n\n")
+        f.write("## Reward formula description: \n\n")
+        f.write("Penalty for communication := p_comm\n\n")
+        f.write("Penalty for movement actions := p_act\n\n")
+        f.write("Reward obtained by agent i : $r_i = s_{eaten} - \\alpha\\cdot (p_{comm} + p_{act})$ \n\n")
+        f.write("Nash social welfare for n agents: NSW := $\\prod_{i=1}^{n} r_i$\n\n")
+        f.write("Final reward update used in RL problem: $r_i = (1-pNSW)\\cdot r_i + pNSW\\cdot NSW$\n\n")
+
 def ddpg_train_patch_n_agents(env, num_episodes, seed=0, path="", exp_num=1):
     # Extract/define initial variables
     episodes = np.arange(1,num_episodes+1)
@@ -30,7 +73,7 @@ def ddpg_train_patch_n_agents(env, num_episodes, seed=0, path="", exp_num=1):
         "action_max":a_range[1]
     }
     # Train agent(s)
-    rewards, networks, (as_loss, cs_loss), agents_info, reset_key = n_agents_train_ddpg(env, episodes[-1], **train_args)
+    rewards, networks, (as_loss, cs_loss), agents_info, metadata = n_agents_train_ddpg(env, episodes[-1], **train_args)
     ((actors, a_weights), (critics, c_weights)) = networks
     (penalties, is_in_patch, agent_states, patch_info) = agents_info
 
@@ -44,7 +87,9 @@ def ddpg_train_patch_n_agents(env, num_episodes, seed=0, path="", exp_num=1):
         "agent_states": agent_states
     }
     np.savez(os.path.join(path, "data"), **data)
-    
+
+    # Generate README
+    save_metadata_readme(path, metadata)
     
     # Plot a few informative plots
     plot_rewards(path, rewards)
@@ -174,7 +219,7 @@ Later I will extend this to multiple runs and use those to generate statistics f
 def experiment4(num_episodes, num_runs, test=False):
     for i in range(num_runs):
         path = create_exp_folder("Experiment4", test=test)
-        env = NAgentsEnv(n_agents=2, obs_others=True, seed=i, sw_fun=nash_sw, p_welfare=0.2)
+        env = NAgentsEnv(n_agents=2, obs_others=True, seed=i, p_welfare=0.2)
         ddpg_train_patch_n_agents(env, num_episodes, seed=i, path=path)
 
 """
@@ -186,13 +231,13 @@ Later I will extend this to multiple runs and use those to generate statistics f
 def experiment5(num_episodes, num_runs, test=False):
     for i in range(num_runs):
         path = create_exp_folder("Experiment5", test=test)
-        env = NAgentsEnv(n_agents=2, obs_others=False, seed=i, comm_dim=1, sw_fun=nash_sw, p_welfare=0.7)
+        env = NAgentsEnv(n_agents=2, obs_others=False, seed=i, comm_dim=1, p_welfare=0.7)
         ddpg_train_patch_n_agents(env, num_episodes, seed=i, path=path)
 
 
 if __name__ == "__main__":
     # Experiments can be run below
-    experiment4(2,1, test=True)
+    experiment4(80,20)
     
     # num_episodes = 5
     # num_runs = 5

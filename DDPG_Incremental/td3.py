@@ -151,6 +151,12 @@ def wandb_log_ddpg(epoch, critic_loss, actor_loss, returns):
 # TODO: Create an n-agent ddpg training function
 #@partial(nnx.jit, static_argnums=0)
 def n_agents_train_ddpg(env, num_episodes, tau=0.01, gamma=0.99, batch_size=200, lr_a=2e-4, lr_c=1e-3, seed=0, action_dim=2, state_dim=3, action_max=0.2, hidden_dim=[64,64], log_fun=print_log_ddpg_n_agents):
+    # Initialize metadata object for keeping track of (hyper-)parameters and/or additional settings of the environment
+    hidden_dims = [str(h_dim) for h_dim in hidden_dim]
+    metadata = dict(n_episodes=num_episodes, tau=tau, gamma=gamma, 
+                    batch_size=batch_size, lr_actor=lr_a, lr_critic=lr_c, 
+                    seed=seed, action_dim=action_dim, state_dim=state_dim,
+                    action_max=action_max, hidden_dims=hidden_dims, **env.get_params())
     # Initialize neural networks
     n_agents = env.n_agents
     comm_dim = env.comm_dim
@@ -251,5 +257,5 @@ def n_agents_train_ddpg(env, num_episodes, tau=0.01, gamma=0.99, batch_size=200,
         log_fun(i, returns[i], end_energy)
         patch_info = (patch_state[:-1], patch_states)
         env_info = (test_penalties, test_is_in_patch, agent_states, patch_info)
-    return returns, ((actors_t, actor_weights), (critics_t, critic_weights)), (actors_loss_stats, critics_loss_stats), env_info, seed
+    return returns, ((actors_t, actor_weights), (critics_t, critic_weights)), (actors_loss_stats, critics_loss_stats), env_info, metadata
             

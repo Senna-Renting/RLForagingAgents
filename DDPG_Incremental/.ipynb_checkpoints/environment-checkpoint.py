@@ -36,19 +36,36 @@ class Environment(ABC):
 
 # TODO: make a two (or N-) agent version of the single-patch foraging environment
 class NAgentsEnv(Environment):
-    def __init__(self, seed=0, patch_radius=0.5, s_init=10, e_init=1, eta=0.1, beta=0.5, alpha=0.0025, gamma=0.01, step_max=400, x_max=5, y_max=5, v_max=0.1, n_agents=2, sw_fun=lambda x:0, obs_others=False, comm_dim=0, p_welfare=0):
+    def __init__(self, seed=0, patch_radius=0.5, s_init=10, e_init=1, eta=0.1, beta=0.5, alpha=0.0025, gamma=0.01, step_max=400, x_max=5, y_max=5, v_max=0.1, n_agents=2, obs_others=False, comm_dim=0, p_welfare=0):
         super().__init__(seed=seed, patch_radius=patch_radius, s_init=s_init, e_init=e_init, eta=eta, beta=beta, alpha=alpha, gamma=gamma, step_max=step_max, x_max=x_max, y_max=y_max, v_max=v_max)
         beta = beta / n_agents # This adjustment is done to keep the resource dynamics similar across different agent amounts
         self.agents = [Agent(0,0,x_max,y_max,e_init,v_max, alpha=alpha, beta=beta) for i in range(n_agents)]
         self.n_agents = n_agents
-        self.sw_fun = sw_fun
         self.alpha = alpha
+        self.beta = beta
         self.e_init = e_init
         self.obs_others = obs_others
         self.comm_dim = comm_dim
-        #self.penalty_dim = 1+int(comm_dim>0) # 1: action_norm, int(comm_dim>0): comm_norm 
         self.p_welfare = p_welfare
-        
+
+    def get_params(self):
+        return {
+            "n_agents": self.n_agents, 
+            "x_max": self.x_max,
+            "y_max": self.y_max,
+            "v_max": self.v_max,
+            "patch_radius": self.patch.get_radius(),
+            "s_init": self.patch.s_init,
+            "e_init": self.e_init,
+            "eta": self.eta,
+            "beta": self.beta,
+            "alpha": self.alpha,
+            "env_gamma": self.gamma,
+            "step_max": self.step_max,
+            "comm_dim": self.comm_dim,
+            "obs_others": self.obs_others,
+            "p_welfare": self.p_welfare
+        }
 
     def size(self):
         return self.x_max, self.y_max
