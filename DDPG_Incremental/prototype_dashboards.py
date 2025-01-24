@@ -98,7 +98,6 @@ def plot_env(path, env_shape, patch_info, agents_state):
     fps = 24
     anim = FuncAnimation(fig, update, n_episodes*step_max, interval=1000/fps)
     anim.save(os.path.join(path, "runs_in_environment.mp4"))
-    plt.show()
     plt.close(fig)
 
 def plot_loss(path, name, data, colors=plt.cm.Set1.colors):

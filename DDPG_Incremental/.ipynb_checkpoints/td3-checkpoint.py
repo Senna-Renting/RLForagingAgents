@@ -86,6 +86,11 @@ def get_network_shape(network):
     hidden = [state["lhs"][i]["kernel"].value.shape for i in range(len(state["lhs"]))]
     return [input, *hidden, output]
 
+# Function for computing the welfare of a specific selected batch
+def compute_NSW(buffers, indices):
+    b_rewards = np.array([buffer.get(indices)[2] for buffer in buffers])
+    return np.prod(np.mean(b_rewards, axis=1))
+
 ## Buffer data structure
 # Note: numpy is used in this structure as I need to dynamically change the buffer over time
 # Implications: not JIT-compileable structure, but the output of the buffer when sampling does
@@ -109,6 +114,14 @@ class Buffer:
         self.dones[self.ptr, :] = done
         self.size = min(self.size + 1, self.max_size)
         self.ptr = (self.ptr + 1) % self.max_size
+    def get(self, indices):
+        return (
+            self.states[indices],
+            self.actions[indices],
+            self.rewards[indices],
+            self.next_states[indices],
+            self.dones[indices],
+        )
     def sample(self, batch_size):
         ind = self.rng.integers(0,self.size,size=batch_size)
         return (
@@ -117,7 +130,7 @@ class Buffer:
             jax.device_put(self.rewards[ind]),
             jax.device_put(self.next_states[ind]),
             jax.device_put(self.dones[ind]),
-        ) 
+        ), ind
 
 # Below I build a curried function designed to work with wandb
 def wandb_train_ddpg(env):
@@ -150,13 +163,13 @@ def wandb_log_ddpg(epoch, critic_loss, actor_loss, returns):
 
 # TODO: Create an n-agent ddpg training function
 #@partial(nnx.jit, static_argnums=0)
-def n_agents_train_ddpg(env, num_episodes, tau=0.01, gamma=0.99, batch_size=200, lr_a=2e-4, lr_c=1e-3, seed=0, action_dim=2, state_dim=3, action_max=0.2, hidden_dim=[64,64], log_fun=print_log_ddpg_n_agents):
+def n_agents_train_ddpg(env, num_episodes, tau=0.01, gamma=0.99, batch_size=200, lr_a=2e-4, lr_c=1e-3, seed=0, action_dim=2, state_dim=3, action_max=0.2, hidden_dim=[64,64], p_welfare=0, log_fun=print_log_ddpg_n_agents):
     # Initialize metadata object for keeping track of (hyper-)parameters and/or additional settings of the environment
     hidden_dims = [str(h_dim) for h_dim in hidden_dim]
     metadata = dict(n_episodes=num_episodes, tau=tau, gamma=gamma, 
                     batch_size=batch_size, lr_actor=lr_a, lr_critic=lr_c, 
                     seed=seed, action_dim=action_dim, state_dim=state_dim,
-                    action_max=action_max, hidden_dims=hidden_dims, **env.get_params())
+                    action_max=action_max, hidden_dims=hidden_dims, p_welfare=p_welfare, **env.get_params())
     # Initialize neural networks
     n_agents = env.n_agents
     comm_dim = env.comm_dim
@@ -209,8 +222,12 @@ def n_agents_train_ddpg(env, num_episodes, tau=0.01, gamma=0.99, batch_size=200,
             if not terminated:
                 for i_a in range(n_agents):
                     buffers[i_a].add(states[i_a], actions[i_a], rewards[i_a], next_states[i_a], terminated)
+                for i_a in range(n_agents):
                     # Sample batch from buffer
-                    b_states, b_actions, b_rewards, b_next_states, b_dones = buffers[i_a].sample(batch_size)
+                    (b_states, b_actions, b_rewards, b_next_states, b_dones), ind = buffers[i_a].sample(batch_size)
+                    # Add welfare to batch rewards
+                    b_welfare = compute_NSW(buffers, ind)
+                    b_rewards = jnp.multiply(b_rewards, 1-p_welfare) + jnp.multiply(b_welfare, p_welfare)
                     # Update critic
                     ys = compute_targets(critics_t[i_a], actors[i_a], b_rewards, b_next_states, b_dones, gamma)
                     c_loss, grads = MSE_optimize_critic(optim_critics[i_a], critics[i_a], b_states, b_actions, ys)
@@ -219,7 +236,7 @@ def n_agents_train_ddpg(env, num_episodes, tau=0.01, gamma=0.99, batch_size=200,
                     # Update targets (critic and policy)
                     nnx.update(critics_t[i_a], polyak_update(tau, critics_t[i_a], critics[i_a]))
                     nnx.update(actors_t[i_a], polyak_update(tau, actors_t[i_a], actors[i_a]))
-                    # Update actor and critic loss (idea: sum of losses for each episode)
+                    # Store actor and critic loss 
                     as_loss[i_a,step_idx-1] = a_loss
                     cs_loss[i_a,step_idx-1] = c_loss
             # Update state of agents
