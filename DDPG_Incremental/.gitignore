@@ -3,3 +3,5 @@
 /renders/*
 /runs/*
 /tests/*
+/__pycache__/*
+/.ipynb_checkpoints/*

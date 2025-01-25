@@ -87,9 +87,13 @@ def get_network_shape(network):
     return [input, *hidden, output]
 
 # Function for computing the welfare of a specific selected batch
-def compute_NSW(buffers, indices):
-    b_rewards = np.array([buffer.get(indices)[2] for buffer in buffers])
-    return np.prod(np.mean(b_rewards, axis=1))
+def compute_NSW(buffers, num_samples):
+    nsw = 1
+    for buffer in buffers:
+        ptr = buffer.get_pointer()
+        indices = np.arange(np.max([0,ptr-num_samples]), ptr)
+        nsw *= buffer.get(indices)[2].mean()
+    return nsw
 
 ## Buffer data structure
 # Note: numpy is used in this structure as I need to dynamically change the buffer over time
@@ -122,6 +126,8 @@ class Buffer:
             self.next_states[indices],
             self.dones[indices],
         )
+    def get_pointer(self):
+        return self.ptr
     def sample(self, batch_size):
         ind = self.rng.integers(0,self.size,size=batch_size)
         return (
@@ -163,13 +169,14 @@ def wandb_log_ddpg(epoch, critic_loss, actor_loss, returns):
 
 # TODO: Create an n-agent ddpg training function
 #@partial(nnx.jit, static_argnums=0)
-def n_agents_train_ddpg(env, num_episodes, tau=0.01, gamma=0.99, batch_size=200, lr_a=2e-4, lr_c=1e-3, seed=0, action_dim=2, state_dim=3, action_max=0.2, hidden_dim=[64,64], p_welfare=0, log_fun=print_log_ddpg_n_agents):
+def n_agents_train_ddpg(env, num_episodes, tau=0.01, gamma=0.99, batch_size=200, lr_a=2e-4, lr_c=1e-3, seed=0, action_dim=2, state_dim=3, action_max=0.2, hidden_dim=[64,64], p_welfare=0, log_fun=print_log_ddpg_n_agents, welfare_trail=200, welfare_interval=1):
     # Initialize metadata object for keeping track of (hyper-)parameters and/or additional settings of the environment
     hidden_dims = [str(h_dim) for h_dim in hidden_dim]
     metadata = dict(n_episodes=num_episodes, tau=tau, gamma=gamma, 
                     batch_size=batch_size, lr_actor=lr_a, lr_critic=lr_c, 
                     seed=seed, action_dim=action_dim, state_dim=state_dim,
-                    action_max=action_max, hidden_dims=hidden_dims, p_welfare=p_welfare, **env.get_params())
+                    action_max=action_max, hidden_dims=hidden_dims, 
+                    p_welfare=p_welfare, welfare_trail=welfare_trail, welfare_interval=welfare_interval, **env.get_params())
     # Initialize neural networks
     n_agents = env.n_agents
     comm_dim = env.comm_dim
@@ -184,7 +191,7 @@ def n_agents_train_ddpg(env, num_episodes, tau=0.01, gamma=0.99, batch_size=200,
     optim_actors = [nnx.Optimizer(actors[i], optax.adam(lr_a)) for i in range(n_agents)]
     optim_critics = [nnx.Optimizer(critics[i], optax.adam(lr_c)) for i in range(n_agents)]
     # Add seperate experience replay buffer for each agent 
-    buffer_size = num_episodes*env.step_max # Ensure every step is kept in the replay buffer
+    buffer_size = num_episodes*env.step_max+1 # Ensure every step is kept in the replay buffer
     buffers = [Buffer(buffer_size, state_dim, actor_dim) for i in range(n_agents)]
     # Initialize environment
     key = jax.random.PRNGKey(seed)
@@ -210,7 +217,7 @@ def n_agents_train_ddpg(env, num_episodes, tau=0.01, gamma=0.99, batch_size=200,
         cs_loss = np.empty((n_agents,step_max))
         as_loss = np.empty((n_agents,step_max))
         # Train agent
-        while not done:
+        for s_i in range(step_max):
             # Sample action, execute it, and add to buffer
             actions = list(range(n_agents))
             for i_a,actor in enumerate(actors):
@@ -220,13 +227,15 @@ def n_agents_train_ddpg(env, num_episodes, tau=0.01, gamma=0.99, batch_size=200,
             (agents_state, patch_state, step_idx) = env_state
             done = truncated or terminated
             if not terminated:
+                # Add states info to buffer(s)
                 for i_a in range(n_agents):
                     buffers[i_a].add(states[i_a], actions[i_a], rewards[i_a], next_states[i_a], terminated)
+                # Only compute welfare at certain intervals
+                if s_i*(i+1) % welfare_interval == 0:
+                    b_welfare = compute_NSW(buffers, welfare_trail)
                 for i_a in range(n_agents):
                     # Sample batch from buffer
                     (b_states, b_actions, b_rewards, b_next_states, b_dones), ind = buffers[i_a].sample(batch_size)
-                    # Add welfare to batch rewards
-                    b_welfare = compute_NSW(buffers, ind)
                     b_rewards = jnp.multiply(b_rewards, 1-p_welfare) + jnp.multiply(b_welfare, p_welfare)
                     # Update critic
                     ys = compute_targets(critics_t[i_a], actors[i_a], b_rewards, b_next_states, b_dones, gamma)
@@ -239,6 +248,8 @@ def n_agents_train_ddpg(env, num_episodes, tau=0.01, gamma=0.99, batch_size=200,
                     # Store actor and critic loss 
                     as_loss[i_a,step_idx-1] = a_loss
                     cs_loss[i_a,step_idx-1] = c_loss
+            else:
+                break
             # Update state of agents
             states = next_states
         # Save training results
