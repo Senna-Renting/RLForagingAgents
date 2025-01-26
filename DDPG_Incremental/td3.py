@@ -95,6 +95,22 @@ def compute_NSW(buffers, num_samples):
         nsw *= buffer.get(indices)[2].mean()
     return nsw
 
+def compute_minmean(buffers, num_samples):
+    means = np.empty(len(buffers))
+    for i,buffer in enumerate(buffers):
+        ptr = buffer.get_pointer()
+        indices = np.arange(np.max([0,ptr-num_samples]), ptr)
+        means[i] = buffer.get(indices)[2].mean()
+    return np.min(means)
+
+def welfare_fun(name):
+        if name == "NSW":
+            return compute_NSW
+        elif name == "Minmean":
+            return compute_minmean
+        else:
+            return compute_NSW
+
 ## Buffer data structure
 # Note: numpy is used in this structure as I need to dynamically change the buffer over time
 # Implications: not JIT-compileable structure, but the output of the buffer when sampling does
@@ -169,14 +185,15 @@ def wandb_log_ddpg(epoch, critic_loss, actor_loss, returns):
 
 # TODO: Create an n-agent ddpg training function
 #@partial(nnx.jit, static_argnums=0)
-def n_agents_train_ddpg(env, num_episodes, tau=0.01, gamma=0.99, batch_size=200, lr_a=2e-4, lr_c=1e-3, seed=0, action_dim=2, state_dim=3, action_max=0.2, hidden_dim=[64,64], p_welfare=0, log_fun=print_log_ddpg_n_agents, welfare_trail=200, welfare_interval=1):
+def n_agents_train_ddpg(env, num_episodes, tau=0.01, gamma=0.99, batch_size=200, lr_a=2e-4, lr_c=1e-3, seed=0, action_dim=2, state_dim=3, action_max=0.2, hidden_dim=[64,64], p_welfare=0, log_fun=print_log_ddpg_n_agents, welfare_trail=200, welfare_interval=1, welfare_name="NSW"):
     # Initialize metadata object for keeping track of (hyper-)parameters and/or additional settings of the environment
     hidden_dims = [str(h_dim) for h_dim in hidden_dim]
     metadata = dict(n_episodes=num_episodes, tau=tau, gamma=gamma, 
                     batch_size=batch_size, lr_actor=lr_a, lr_critic=lr_c, 
                     seed=seed, action_dim=action_dim, state_dim=state_dim,
                     action_max=action_max, hidden_dims=hidden_dims, 
-                    p_welfare=p_welfare, welfare_trail=welfare_trail, welfare_interval=welfare_interval, **env.get_params())
+                    p_welfare=p_welfare, welfare_trail=welfare_trail, 
+                    welfare_interval=welfare_interval, welfare_name=welfare_name, **env.get_params())
     # Initialize neural networks
     n_agents = env.n_agents
     comm_dim = env.comm_dim
@@ -232,7 +249,7 @@ def n_agents_train_ddpg(env, num_episodes, tau=0.01, gamma=0.99, batch_size=200,
                     buffers[i_a].add(states[i_a], actions[i_a], rewards[i_a], next_states[i_a], terminated)
                 # Only compute welfare at certain intervals
                 if s_i*(i+1) % welfare_interval == 0:
-                    b_welfare = compute_NSW(buffers, welfare_trail)
+                    b_welfare = welfare_fun(welfare_name)(buffers, welfare_trail)
                 for i_a in range(n_agents):
                     # Sample batch from buffer
                     (b_states, b_actions, b_rewards, b_next_states, b_dones), ind = buffers[i_a].sample(batch_size)
