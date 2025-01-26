@@ -53,9 +53,9 @@ def save_metadata_readme(path, metadata):
         f.write(f"Rate of consuming resources for agents ($\\beta$): {metadata["beta"]}\n\n")
         f.write(f"Rate of resource growth ($\\eta$): {metadata["eta"]}\n\n")
         f.write("## General remaining parameters:\n\n")
-        f.write(f"Communication dimension: {metadata["comm_dim"]}\n\n")
+        f.write(f"Distance below which we allow information sharing: {metadata["obs_range"]}\n\n")
         has_obs = "Yes" if metadata["obs_others"] else "No"
-        f.write(f"Observe other agents: {has_obs}\n\n")
+        f.write(f"Observe other agents (our form of communication): {has_obs}\n\n")
         f.write(f"Proportion of NSW (pNSW) used: {metadata["p_welfare"]}\n\n")
         f.write("## Reward formula description: \n\n")
         f.write("Penalty for communication := p_comm\n\n")
@@ -246,7 +246,7 @@ Later I will extend this to multiple runs and use those to generate statistics f
 def experiment5(num_episodes, num_runs, test=False):
     for i in range(num_runs):
         path = create_exp_folder("Experiment5", test=test)
-        env = NAgentsEnv(n_agents=2, obs_others=False, comm_dim=1)
+        env = NAgentsEnv(n_agents=2, obs_others=False)
         train_args = dict(p_welfare=0.5)
         ddpg_train_patch_n_agents(env, num_episodes, seed=i, path=path, train_args=train_args)
 

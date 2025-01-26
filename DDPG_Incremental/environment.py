@@ -36,7 +36,7 @@ class Environment(ABC):
 
 # TODO: make a two (or N-) agent version of the single-patch foraging environment
 class NAgentsEnv(Environment):
-    def __init__(self, patch_radius=0.5, s_init=10, e_init=1, eta=0.1, beta=0.5, alpha=0.0025, gamma=0.01, step_max=400, x_max=5, y_max=5, v_max=0.1, n_agents=2, obs_others=False, comm_dim=0):
+    def __init__(self, patch_radius=0.5, s_init=10, e_init=1, eta=0.1, beta=0.5, alpha=0.0025, gamma=0.01, step_max=400, x_max=5, y_max=5, v_max=0.1, n_agents=2, obs_others=False, obs_range=8):
         super().__init__(patch_radius=patch_radius, s_init=s_init, e_init=e_init, eta=eta, beta=beta, alpha=alpha, gamma=gamma, step_max=step_max, x_max=x_max, y_max=y_max, v_max=v_max)
         beta = beta / n_agents # This adjustment is done to keep the resource dynamics similar across different agent amounts
         self.agents = [Agent(0,0,x_max,y_max,e_init,v_max, alpha=alpha, beta=beta) for i in range(n_agents)]
@@ -45,7 +45,7 @@ class NAgentsEnv(Environment):
         self.beta = beta
         self.e_init = e_init
         self.obs_others = obs_others
-        self.comm_dim = comm_dim
+        self.obs_range = obs_range
 
     def get_params(self):
         return {
@@ -61,15 +61,15 @@ class NAgentsEnv(Environment):
             "alpha": self.alpha,
             "env_gamma": self.gamma,
             "step_max": self.step_max,
-            "comm_dim": self.comm_dim,
-            "obs_others": self.obs_others
+            "obs_others": self.obs_others,
+            "obs_range": self.obs_range
         }
 
     def size(self):
         return self.x_max, self.y_max
 
     # TODO: maybe implement a toggle for viewing the energy state of other agents
-    def get_states(self, agents_state, patch_state):
+    def get_states_v1(self, agents_state, patch_state):
         energy_toggle = int(self.n_agents>1)*1
         obs_size = self.n_agents*self.agents[0].num_vars +(self.n_agents-1)*self.comm_dim + self.patch.num_vars - energy_toggle
         if not self.obs_others:
@@ -89,14 +89,58 @@ class NAgentsEnv(Environment):
             agents_obs[i,:] = obs
         return agents_obs
 
+    """
+    For the state generator version 2 below, I will make a few major changes.
+    The patch resource state will now only be seen if the agent is in the patch, or if communication is enabled (obs_others) and a close-by agent is in the patch.
+    Agents communicate their velocity and position with the other agents only when nearby (within obs_range) if obs_others is enabled.
+    When either the patch resource cannot be seen, or other agents are not nearby enough, we will assume zero values for their states, as this should remove dependence on those state values for the neural networks.
+    """
+    def get_states(self, agents_state, patch_state):
+        # Initialize size of state
+        obs_size = self.get_state_space()
+        is_nearby = self.get_nearby_agents(agents_state)
+        in_patch = np.array([self.agents[i].is_in_patch(agents_state[i], patch_state) for i in range(self.n_agents)])
+        agents_obs = np.zeros((self.n_agents, obs_size))
+        # Compute components of state
+        for i in range(self.n_agents):
+            ptr = 0
+            agents_obs[i, ptr:self.agents[i].num_vars] = agents_state[i]
+            ptr += self.agents[i].num_vars
+            agents_obs[i, ptr:ptr+self.patch.num_vars-1] = patch_state[:3]
+            ptr += self.patch.num_vars-1
+            # Add patch resource info to state
+            if np.any(is_nearby[i] & in_patch):
+                agents_obs[i, ptr] = patch_state[3]
+            ptr += 1
+            # Add position and velocity information of nearby agents (including self) to state
+            if self.obs_others:
+                for j in range(self.n_agents):
+                    if is_nearby[i,j] and i != j:
+                        agents_obs[i, ptr:ptr+4] = agents_state[j][:4]
+                    if i != j:
+                        ptr += 4
+        return agents_obs
+
+    def get_nearby_agents(self, agents_state):
+        nearby_mat = np.empty((self.n_agents, self.n_agents), dtype='bool')
+        for i in range(self.n_agents):
+            for j in range(self.n_agents):
+                x_diff = agents_state[i][0] - agents_state[j][0]
+                y_diff = agents_state[i][1] - agents_state[j][1]
+                dist = np.sqrt(x_diff**2 + y_diff**2)
+                nearby_mat[i,j] = dist < self.obs_range
+        return nearby_mat
+
     def get_state_space(self):
-        env_state, agents_obs = self.reset()
-        return agents_obs.shape[1]
+        obs_size = self.agents[0].num_vars + self.patch.num_vars
+        if self.obs_others:
+            obs_size += 4*(self.n_agents-1) # Add indices for tracking position and velocity of other agents when nearby
+        return obs_size 
     
     def reset(self, seed=0):
         # Initialize rng_key and state arrays
         a_keys = jax.random.split(jax.random.PRNGKey(seed), self.n_agents)
-        agents_state = np.zeros((self.n_agents, self.agents[0].num_vars+(self.n_agents-1)*self.comm_dim))
+        agents_state = np.zeros((self.n_agents, self.agents[0].num_vars))
         # Reset the patch
         patch_state = self.patch.reset()
         # Generate random position for each agent
@@ -114,9 +158,7 @@ class NAgentsEnv(Environment):
                 y = jax.random.uniform(key, minval=0,maxval=self.y_max)
                 return ([x,y], key)
             (pos,key) = jax.lax.while_loop(is_in_patch, get_coordinates, get_coordinates((0,a_keys[i])))
-            agent_state = self.agents[i].reset(*pos)
-            # Concatenate zero communication vector with each agent's calculated coordinates
-            agents_state[i,:] = jnp.concatenate([agent_state,jnp.zeros((self.n_agents-1)*self.comm_dim)])
+            agents_state[i] = self.agents[i].reset(*pos)
         # Reset counter
         step_idx = 0
         # Store agents' observations
@@ -128,19 +170,16 @@ class NAgentsEnv(Environment):
     def step(self, env_state, *actions):
         (agents_state, patch_state, step_idx) = env_state
         rewards = np.empty((self.n_agents, 1))
-        n_penalties = 1+int(self.comm_dim > 0)
+        n_penalties = 1
         penalties = np.empty((self.n_agents, n_penalties))
         is_in_patch = np.empty(self.n_agents)
         tot_eaten = 0
         for i,action in enumerate(actions):
             # Flatten array if needed
             action = action.flatten()
-            # Obtain communication vector
-            comm_vec = jnp.array([action[action.shape[0]-self.comm_dim:] for j,action in enumerate(actions) if i!=j]).flatten()
             # Update agent position
-            a_state = agents_state[i, :agents_state.shape[1]-comm_vec.shape[0]]
-            agents_state[i, :agents_state.shape[1]-comm_vec.shape[0]] = self.agents[i].update_position(a_state, action)
-            agents_state[i, agents_state.shape[1]-comm_vec.shape[0]:] = comm_vec
+            a_state = agents_state[i]
+            agents_state[i, :agents_state.shape[1]] = self.agents[i].update_position(a_state, action)
             # Update agent energy
             agent_state, reward, s_eaten, penalty = self.agents[i].update_energy(a_state, patch_state, action, dt=0.1)
             is_in_patch[i] = s_eaten != 0
@@ -148,7 +187,7 @@ class NAgentsEnv(Environment):
             # Add agent reward to reward vector
             rewards[i,:] = reward
             tot_eaten += s_eaten
-            agents_state[i, :agents_state.shape[1]-comm_vec.shape[0]] = agent_state
+            agents_state[i] = agent_state
         # Update patch resources
         patch_state = self.patch.update_resources(patch_state, tot_eaten, dt=0.1)
         # Update counter
@@ -158,7 +197,6 @@ class NAgentsEnv(Environment):
         # When any of the agents dies, the environment is terminated 
         terminated = False #np.any(agents_state[:,-1] == 0)
         truncated = step_idx >= self.step_max
-        #print(agents_state[:,agents_state.shape[1]-self.comm_dim:])
         env_state = (agents_state, patch_state, step_idx)
         agents_info = (penalties, is_in_patch)
         return env_state, next_states, (rewards, agents_info), terminated, truncated, None # None is to have similar output shape as gym API
@@ -184,7 +222,7 @@ class Agent:
         x_dot = jax.random.uniform(v_key, minval=-self.v_max, maxval=self.v_max)
         y_dot = jax.random.uniform(v_key, minval=-self.v_max, maxval=self.v_max)
         agent_state[2:4] = np.array([x_dot, y_dot])
-        agent_state[-1] = np.array(self.e_init, dtype=np.float32)
+        agent_state[4] = self.e_init
         return agent_state
     
     def is_in_patch(self,agent_state,patch_state):
@@ -198,16 +236,12 @@ class Agent:
         # Penalty terms for the environment (inverted for minimization instead of maximization)
         max_penalty = np.linalg.norm(np.array([self.v_max]*2)) 
         action_penalty = (np.linalg.norm(action.at[:2].get())/max_penalty)*self.alpha
-        comms_penalty = (np.linalg.norm(action.at[2:].get())/max_penalty)*self.alpha
         # Update step (differential equation)
-        de = dt*(s_eaten - action_penalty - comms_penalty)
-        reward = de + 2*self.alpha # Ensure positive reward for algorithm
+        de = dt*(s_eaten - action_penalty)
+        reward = de + 1*self.alpha # Ensure positive reward for algorithm
         # If agent has negative or zero energy, put the energy value at zero and consider the agent dead
         agent_state[-1] = np.max([0., agent_state[-1] + de])
-        if action.shape[0] > 2:
-            penalties = [action_penalty, comms_penalty]
-        else:
-            penalties = action_penalty
+        penalties = action_penalty
         return agent_state, reward, s_eaten, penalties
         
     def update_position(self,agent_state,action):

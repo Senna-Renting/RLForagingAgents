@@ -196,9 +196,8 @@ def n_agents_train_ddpg(env, num_episodes, tau=0.01, gamma=0.99, batch_size=200,
                     welfare_interval=welfare_interval, welfare_name=welfare_name, **env.get_params())
     # Initialize neural networks
     n_agents = env.n_agents
-    comm_dim = env.comm_dim
     step_max = env.step_max
-    actor_dim = action_dim+comm_dim
+    actor_dim = action_dim
     
     actors = [Actor(state_dim,actor_dim,action_max,seed+i,hidden_dim=hidden_dim) for i in range(n_agents)]
     actors_t = [Actor(state_dim,actor_dim,action_max,seed+i,hidden_dim=hidden_dim) for i in range(n_agents)]
@@ -220,7 +219,7 @@ def n_agents_train_ddpg(env, num_episodes, tau=0.01, gamma=0.99, batch_size=200,
     actors_loss_stats = np.empty((num_episodes, 3, n_agents))
     # Keep track of accumulated rewards
     returns = np.empty((num_episodes, step_max, n_agents, 1))
-    test_penalties = np.empty((num_episodes, step_max, n_agents, 1+int(comm_dim > 0)))
+    test_penalties = np.empty((num_episodes, step_max, n_agents, 1))
     # Keep track of patch enter events and states of agents
     test_is_in_patch = np.empty((num_episodes, step_max, n_agents))
     (agents_state, patch_state, step_idx), states = env.reset(seed=seed)
@@ -298,7 +297,7 @@ def n_agents_train_ddpg(env, num_episodes, tau=0.01, gamma=0.99, batch_size=200,
                 break
         # Log the important variables to some logger
         (agents_state, patch_state, step_idx) = env_state
-        end_energy = agents_state[:, -comm_dim-1]
+        end_energy = agents_state[:, -1]
         log_fun(i, returns[i], end_energy)
         patch_info = (patch_state[:-1], patch_states)
         env_info = (test_penalties, test_is_in_patch, agent_states, patch_info)
