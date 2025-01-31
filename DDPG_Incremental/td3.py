@@ -142,6 +142,14 @@ class Buffer:
             self.next_states[indices],
             self.dones[indices],
         )
+    def get_all(self):
+        return (
+            self.states[np.newaxis, :],
+            self.actions[np.newaxis, :],
+            self.rewards[np.newaxis, :],
+            self.next_states[np.newaxis, :],
+            self.dones[np.newaxis, :],
+        )
     def get_pointer(self):
         return self.ptr
     def sample(self, batch_size):
@@ -185,7 +193,7 @@ def wandb_log_ddpg(epoch, critic_loss, actor_loss, returns):
 
 # TODO: Create an n-agent ddpg training function
 #@partial(nnx.jit, static_argnums=0)
-def n_agents_train_ddpg(env, num_episodes, tau=0.01, gamma=0.99, batch_size=200, lr_a=2e-4, lr_c=1e-3, seed=0, action_dim=2, state_dim=3, action_max=0.2, hidden_dim=[64,64], p_welfare=0, log_fun=print_log_ddpg_n_agents, welfare_trail=200, welfare_interval=1, welfare_name="NSW"):
+def n_agents_train_ddpg(env, num_episodes, tau=0.01, gamma=0.99, batch_size=200, lr_a=2e-4, lr_c=8e-4, seed=0, action_dim=2, state_dim=3, action_max=0.2, hidden_dim=[64,64], p_welfare=0, log_fun=print_log_ddpg_n_agents, welfare_trail=200, welfare_interval=1, welfare_name="NSW"):
     # Initialize metadata object for keeping track of (hyper-)parameters and/or additional settings of the environment
     hidden_dims = [str(h_dim) for h_dim in hidden_dim]
     metadata = dict(n_episodes=num_episodes, tau=tau, gamma=gamma, 
@@ -207,7 +215,8 @@ def n_agents_train_ddpg(env, num_episodes, tau=0.01, gamma=0.99, batch_size=200,
     optim_actors = [nnx.Optimizer(actors[i], optax.adam(lr_a)) for i in range(n_agents)]
     optim_critics = [nnx.Optimizer(critics[i], optax.adam(lr_c)) for i in range(n_agents)]
     # Add seperate experience replay buffer for each agent 
-    buffer_size = num_episodes*env.step_max+1 # Ensure every step is kept in the replay buffer
+    warmup_size = 2*batch_size
+    buffer_size = num_episodes*env.step_max+warmup_size+1 # Ensure every step is kept in the replay buffer
     buffers = [Buffer(buffer_size, state_dim, actor_dim) for i in range(n_agents)]
     # Initialize environment
     key = jax.random.PRNGKey(seed)
@@ -225,6 +234,19 @@ def n_agents_train_ddpg(env, num_episodes, tau=0.01, gamma=0.99, batch_size=200,
     (agents_state, patch_state, step_idx), states = env.reset(seed=seed)
     agent_states = np.empty((num_episodes, step_max, *agents_state.shape))
     patch_states = np.empty((num_episodes, step_max, 1)) #*patch_state.shape))
+    # Warm-up round
+    env_state, states = env.reset(seed=seed)
+    for s_i in range(warmup_size):
+        # Sample action, execute it, and add to buffer
+        actions = list(range(n_agents))
+        for i_a,actor in enumerate(actors):
+            action_key, key = jax.random.split(key)
+            actions[i_a] = jnp.array(sample_action(action_key, actor, states[i_a], -action_max, action_max, actor_dim)) 
+        env_state, next_states, (rewards, penalties), terminated, truncated, _ = env.step(env_state, *actions)
+        (agents_state, patch_state, step_idx) = env_state
+        for i_a in range(n_agents):
+            buffers[i_a].add(states[i_a], actions[i_a], rewards[i_a], next_states[i_a], terminated)
+        states = next_states
     # Run episodes
     for i in range(num_episodes):
         done = False
@@ -299,7 +321,11 @@ def n_agents_train_ddpg(env, num_episodes, tau=0.01, gamma=0.99, batch_size=200,
         (agents_state, patch_state, step_idx) = env_state
         end_energy = agents_state[:, -1]
         log_fun(i, returns[i], end_energy)
+        # Compute relevant information
         patch_info = (patch_state[:-1], patch_states)
         env_info = (test_penalties, test_is_in_patch, agent_states, patch_info)
-    return returns, ((actors_t, actor_weights), (critics_t, critic_weights)), (actors_loss_stats, critics_loss_stats), env_info, metadata
+    buffer_tuple = zip(*[buffer.get_all() for buffer in buffers])
+    buffer_data = [np.concatenate(tuple, axis=0) for tuple in buffer_tuple]
+    [print(d.shape) for d in buffer_data]
+    return returns, ((actors_t, actor_weights), (critics_t, critic_weights)), (actors_loss_stats, critics_loss_stats), env_info, metadata, buffer_data
             

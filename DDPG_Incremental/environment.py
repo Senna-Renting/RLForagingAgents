@@ -109,7 +109,7 @@ class NAgentsEnv(Environment):
             agents_obs[i, ptr:ptr+self.patch.num_vars-1] = patch_state[:3]
             ptr += self.patch.num_vars-1
             # Add patch resource info to state
-            if np.any(is_nearby[i] & in_patch):
+            if (np.any(is_nearby[i] & in_patch) and self.obs_others) or in_patch[i]:
                 agents_obs[i, ptr] = patch_state[3]
             ptr += 1
             # Add position and velocity information of nearby agents (including self) to state

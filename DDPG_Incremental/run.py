@@ -78,19 +78,18 @@ def ddpg_train_patch_n_agents(env, num_episodes, seed=0, path="", train_args=dic
         "state_dim":env.get_state_space(),
         "action_dim":action_dim,
         "action_max":a_range[1],
-        "hidden_dim":[128,128],
-        "batch_size":200,
+        "hidden_dim":[16,16],
+        "batch_size":800,
         "gamma":0.985,
         "welfare_trail":400,
-        "welfare_interval":20,
+        "welfare_interval":40,
         "welfare_name":"NSW",
         **train_args
     }
     # Train agent(s)
-    rewards, networks, (as_loss, cs_loss), agents_info, metadata = n_agents_train_ddpg(env, episodes[-1], **train_args)
+    rewards, networks, (as_loss, cs_loss), agents_info, metadata, buffer_data = n_agents_train_ddpg(env, episodes[-1], **train_args)
     ((actors, a_weights), (critics, c_weights)) = networks
     (penalties, is_in_patch, agent_states, patch_info) = agents_info
-
     # Save all data (as efficiently as possible)
     data = {
         "rewards": rewards,
@@ -98,9 +97,16 @@ def ddpg_train_patch_n_agents(env, num_episodes, seed=0, path="", train_args=dic
         "is_in_patch": is_in_patch,
         "patch_state": patch_info[0],
         "patch_resource": patch_info[1],
-        "agent_states": agent_states
+        "agent_states": agent_states,
+        "b_states": buffer_data[0],
+        "b_actions": buffer_data[1],
+        "b_rewards": buffer_data[2],
+        "b_next_states": buffer_data[3]
     }
     np.savez(os.path.join(path, "data"), **data)
+    np.savez(os.path.join(path, "actor_weights"), *a_weights)
+    np.savez(os.path.join(path, "critic_weights"), *c_weights)
+    
 
     # Generate README
     save_metadata_readme(path, metadata)
@@ -233,9 +239,9 @@ Later I will extend this to multiple runs and use those to generate statistics f
 def experiment4(num_episodes, num_runs, test=False):
     for i in range(num_runs):
         path = create_exp_folder("Experiment4", test=test)
-        env = NAgentsEnv(n_agents=2, obs_others=True)
-        train_args = dict(p_welfare=0.5)
-        ddpg_train_patch_n_agents(env, num_episodes, seed=i+1, path=path, train_args=train_args)
+        env = NAgentsEnv(n_agents=2, obs_others=True, obs_range=1.5)
+        train_args = dict(p_welfare=0.4)
+        ddpg_train_patch_n_agents(env, num_episodes, seed=i+7, path=path, train_args=train_args)
 
 """
 For this experiment we test the single-agent one-patch environment
@@ -246,7 +252,7 @@ Later I will extend this to multiple runs and use those to generate statistics f
 def experiment5(num_episodes, num_runs, test=False):
     for i in range(num_runs):
         path = create_exp_folder("Experiment5", test=test)
-        env = NAgentsEnv(n_agents=2, obs_others=False)
+        env = NAgentsEnv(n_agents=2)
         train_args = dict(p_welfare=0.5)
         ddpg_train_patch_n_agents(env, num_episodes, seed=i, path=path, train_args=train_args)
 
@@ -256,13 +262,13 @@ Two agents who don't observe each other but do observe their own state as well a
 def experiment6(num_episodes, num_runs, test=False):
     for i in range(2,num_runs+2):
         path = create_exp_folder("Experiment6", test=test)
-        env = NAgentsEnv(n_agents=2, obs_others=False)
+        env = NAgentsEnv(n_agents=2)
         train_args = dict(p_welfare=0.7)
         ddpg_train_patch_n_agents(env, num_episodes, seed=i, path=path, train_args=train_args)
 
 if __name__ == "__main__":
     # Experiments can be run below
-    experiment4(80,2)
+    experiment3(3,1,test=True)
     
     # num_episodes = 5
     # num_runs = 5
