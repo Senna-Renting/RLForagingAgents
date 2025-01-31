@@ -1,8 +1,6 @@
 from flax import nnx
 import jax.numpy as jnp
 import jax
-import gymnax
-import gymnasium as gym
 import numpy as np
 import optax
 import wandb
@@ -86,31 +84,6 @@ def get_network_shape(network):
     hidden = [state["lhs"][i]["kernel"].value.shape for i in range(len(state["lhs"]))]
     return [input, *hidden, output]
 
-# Function for computing the welfare of a specific selected batch
-def compute_NSW(buffers, num_samples):
-    nsw = 1
-    for buffer in buffers:
-        ptr = buffer.get_pointer()
-        indices = np.arange(np.max([0,ptr-num_samples]), ptr)
-        nsw *= buffer.get(indices)[2].mean()
-    return nsw
-
-def compute_minmean(buffers, num_samples):
-    means = np.empty(len(buffers))
-    for i,buffer in enumerate(buffers):
-        ptr = buffer.get_pointer()
-        indices = np.arange(np.max([0,ptr-num_samples]), ptr)
-        means[i] = buffer.get(indices)[2].mean()
-    return np.min(means)
-
-def welfare_fun(name):
-        if name == "NSW":
-            return compute_NSW
-        elif name == "Minmean":
-            return compute_minmean
-        else:
-            return compute_NSW
-
 ## Buffer data structure
 # Note: numpy is used in this structure as I need to dynamically change the buffer over time
 # Implications: not JIT-compileable structure, but the output of the buffer when sampling does
@@ -191,17 +164,16 @@ def wandb_log_ddpg(epoch, critic_loss, actor_loss, returns):
                "Actor loss":actor_loss,
                "Return":returns})
 
-# TODO: Create an n-agent ddpg training function
-#@partial(nnx.jit, static_argnums=0)
-def n_agents_train_ddpg(env, num_episodes, tau=0.01, gamma=0.99, batch_size=200, lr_a=2e-4, lr_c=8e-4, seed=0, action_dim=2, state_dim=3, action_max=0.2, hidden_dim=[64,64], p_welfare=0, log_fun=print_log_ddpg_n_agents, welfare_trail=200, welfare_interval=1, welfare_name="NSW"):
+# TODO: Simplify this function by removing the welfare stuff (stuff relating to the p_welfare parameter)
+def n_agents_ddpg(env, num_episodes, tau=0.01, gamma=0.99, batch_size=30, lr_a=2e-4, lr_c=8e-4, seed=0, action_dim=2, state_dim=3, action_max=0.2, hidden_dim=[16,16], log_fun=print_log_ddpg_n_agents):
     # Initialize metadata object for keeping track of (hyper-)parameters and/or additional settings of the environment
     hidden_dims = [str(h_dim) for h_dim in hidden_dim]
+    warmup_size = 2*batch_size
     metadata = dict(n_episodes=num_episodes, tau=tau, gamma=gamma, 
                     batch_size=batch_size, lr_actor=lr_a, lr_critic=lr_c, 
                     seed=seed, action_dim=action_dim, state_dim=state_dim,
-                    action_max=action_max, hidden_dims=hidden_dims, 
-                    p_welfare=p_welfare, welfare_trail=welfare_trail, 
-                    welfare_interval=welfare_interval, welfare_name=welfare_name, **env.get_params())
+                    action_max=action_max, hidden_dims=hidden_dims,
+                    warmup_size=warmup_size, alg_name="Normal DDPG", **env.get_params())
     # Initialize neural networks
     n_agents = env.n_agents
     step_max = env.step_max
@@ -215,8 +187,7 @@ def n_agents_train_ddpg(env, num_episodes, tau=0.01, gamma=0.99, batch_size=200,
     optim_actors = [nnx.Optimizer(actors[i], optax.adam(lr_a)) for i in range(n_agents)]
     optim_critics = [nnx.Optimizer(critics[i], optax.adam(lr_c)) for i in range(n_agents)]
     # Add seperate experience replay buffer for each agent 
-    warmup_size = 2*batch_size
-    buffer_size = num_episodes*env.step_max+warmup_size+1 # Ensure every step is kept in the replay buffer
+    buffer_size = num_episodes*env.step_max+warmup_size # Ensure every step is kept in the replay buffer
     buffers = [Buffer(buffer_size, state_dim, actor_dim) for i in range(n_agents)]
     # Initialize environment
     key = jax.random.PRNGKey(seed)
@@ -233,7 +204,7 @@ def n_agents_train_ddpg(env, num_episodes, tau=0.01, gamma=0.99, batch_size=200,
     test_is_in_patch = np.empty((num_episodes, step_max, n_agents))
     (agents_state, patch_state, step_idx), states = env.reset(seed=seed)
     agent_states = np.empty((num_episodes, step_max, *agents_state.shape))
-    patch_states = np.empty((num_episodes, step_max, 1)) #*patch_state.shape))
+    patch_states = np.empty((num_episodes, step_max, 1))
     # Warm-up round
     env_state, states = env.reset(seed=seed)
     for s_i in range(warmup_size):
@@ -265,16 +236,11 @@ def n_agents_train_ddpg(env, num_episodes, tau=0.01, gamma=0.99, batch_size=200,
             (agents_state, patch_state, step_idx) = env_state
             done = truncated or terminated
             if not terminated:
-                # Add states info to buffer(s)
                 for i_a in range(n_agents):
+                    # Add states info to buffer
                     buffers[i_a].add(states[i_a], actions[i_a], rewards[i_a], next_states[i_a], terminated)
-                # Only compute welfare at certain intervals
-                if s_i*(i+1) % welfare_interval == 0:
-                    b_welfare = welfare_fun(welfare_name)(buffers, welfare_trail)
-                for i_a in range(n_agents):
                     # Sample batch from buffer
                     (b_states, b_actions, b_rewards, b_next_states, b_dones), ind = buffers[i_a].sample(batch_size)
-                    b_rewards = jnp.multiply(b_rewards, 1-p_welfare) + jnp.multiply(b_welfare, p_welfare)
                     # Update critic
                     ys = compute_targets(critics_t[i_a], actors[i_a], b_rewards, b_next_states, b_dones, gamma)
                     c_loss, grads = MSE_optimize_critic(optim_critics[i_a], critics[i_a], b_states, b_actions, ys)
@@ -324,8 +290,12 @@ def n_agents_train_ddpg(env, num_episodes, tau=0.01, gamma=0.99, batch_size=200,
         # Compute relevant information
         patch_info = (patch_state[:-1], patch_states)
         env_info = (test_penalties, test_is_in_patch, agent_states, patch_info)
+        
     buffer_tuple = zip(*[buffer.get_all() for buffer in buffers])
     buffer_data = [np.concatenate(tuple, axis=0) for tuple in buffer_tuple]
-    [print(d.shape) for d in buffer_data]
     return returns, ((actors_t, actor_weights), (critics_t, critic_weights)), (actors_loss_stats, critics_loss_stats), env_info, metadata, buffer_data
+
+# TODO: Implement a welfare version of the DDPG algorithm defined above
+def n_agents_welfare_ddpg():
+    pass
             

@@ -1,7 +1,7 @@
 import wandb
 from environment import *
 from save_utils import load_policy, save_policy
-from td3 import Actor, wandb_train_ddpg, n_agents_train_ddpg
+from td3 import Actor, wandb_train_ddpg, n_agents_ddpg
 from welfare_functions import *
 import os
 from datetime import datetime
@@ -33,11 +33,11 @@ def save_metadata_readme(path, metadata):
         f.write(f"Learning rate (critic): {metadata["lr_critic"]}\n\n")
         f.write(f"Gamma ($\\gamma$): {metadata["gamma"]}\n\n")
         f.write("## Training parameters:\n\n")
+        f.write(f"Algorithm name: {metadata["alg_name"]}\n\n")
         f.write(f"Seed: {metadata["seed"]}\n\n")
         f.write(f"Number of episodes: {metadata["n_episodes"]}\n\n")
         f.write(f"Batch size: {metadata["batch_size"]}\n\n")
-        f.write(f"Welfare trail (steps to look back to compute welfare): {metadata["welfare_trail"]}\n\n")
-        f.write(f"Welfare interval: {metadata["welfare_interval"]}\n\n")
+        f.write(f"Warmup size: {metadata["warmup_size"]}\n\n")
         f.write("## Environment parameters:\n\n")
         f.write(f"Number of agents: {metadata["n_agents"]}\n\n")
         f.write(f"Range of x-axis: [0, {metadata["x_max"]}]\n\n")
@@ -56,38 +56,19 @@ def save_metadata_readme(path, metadata):
         f.write(f"Distance below which we allow information sharing: {metadata["obs_range"]}\n\n")
         has_obs = "Yes" if metadata["obs_others"] else "No"
         f.write(f"Observe other agents (our form of communication): {has_obs}\n\n")
-        f.write(f"Proportion of NSW (pNSW) used: {metadata["p_welfare"]}\n\n")
-        f.write("## Reward formula description: \n\n")
-        f.write("Penalty for communication := p_comm\n\n")
-        f.write("Penalty for movement actions := p_act\n\n")
-        f.write("Reward obtained by agent i : $r_i = s_{eaten} - \\alpha\\cdot (p_{comm} + p_{act})$ \n\n")
-        f.write("## Reward formula on the batch level: \n\n")
-        if metadata["welfare_name"] == "NSW":
-            f.write("Social welfare for n agents: NSW := $\\prod_{i=1}^{n} E[r_i]$\n\n")
-        if metadata["welfare_name"] == "Minmean":
-            f.write("Social welfare for n agents: Minmean := $\\min_{i=1}^{n}(E[r_i])$\n\n")
-        f.write("To compute nash social welfare we look N steps into the past of obtained rewards for the agents \n\n")
-        f.write("Reward update used in RL batch update: $r_i = (1-pNSW)\\cdot r_i + pNSW\\cdot NSW$\n\n")
 
-def ddpg_train_patch_n_agents(env, num_episodes, seed=0, path="", train_args=dict()):
+def run_ddpg(env, num_episodes, train_fun, path, train_args=dict(), skip_vid=False):
     # Extract/define initial variables
     episodes = np.arange(1,num_episodes+1)
     action_dim, a_range = env.get_action_space()
     train_args = {
-        "seed":seed,
         "state_dim":env.get_state_space(),
         "action_dim":action_dim,
         "action_max":a_range[1],
-        "hidden_dim":[16,16],
-        "batch_size":800,
-        "gamma":0.985,
-        "welfare_trail":400,
-        "welfare_interval":40,
-        "welfare_name":"NSW",
         **train_args
     }
     # Train agent(s)
-    rewards, networks, (as_loss, cs_loss), agents_info, metadata, buffer_data = n_agents_train_ddpg(env, episodes[-1], **train_args)
+    rewards, networks, (as_loss, cs_loss), agents_info, metadata, buffer_data = train_fun(env, episodes[-1], **train_args)
     ((actors, a_weights), (critics, c_weights)) = networks
     (penalties, is_in_patch, agent_states, patch_info) = agents_info
     # Save all data (as efficiently as possible)
@@ -121,7 +102,11 @@ def ddpg_train_patch_n_agents(env, num_episodes, seed=0, path="", train_args=dic
     
     # Draw run of agents over the episodes and save informative plots of final state environment
     plot_final_states_env(path, is_in_patch, patch_info, agent_states[-1], rewards[-1])
-    plot_env(path, env.size(), patch_info, agent_states)
+    
+    # Toggle for generating video of the training over episodes
+    if not skip_vid:
+        plot_env(path, env.size(), patch_info, agent_states)
+    
     
 
 def wandb_ddpg_train_patch(env, num_episodes, num_runs=5, hidden_dim=32, batch_size=100, warmup_steps=200):
@@ -205,7 +190,8 @@ def experiment1(num_episodes, num_runs, test=False):
         path = create_exp_folder("Experiment1", test=test)
         print(f"Run {i+1} has been started")
         env = NAgentsEnv(n_agents=1)
-        ddpg_train_patch_n_agents(env, num_episodes, seed=i, path=path)
+        train_args = dict(seed=i)
+        run_ddpg(env, num_episodes, n_agents_ddpg, path, train_args, skip_vid=True)
 
 """
 For this experiment we test the two-agent one-patch environment
@@ -217,7 +203,8 @@ def experiment2(num_episodes, num_runs, test=False):
         path = create_exp_folder("Experiment2", test=test)
         print(f"Run {i+1} has been started")
         env = NAgentsEnv(n_agents=2)
-        ddpg_train_patch_n_agents(env, num_episodes, seed=i, path=path)
+        train_args = dict(seed=i)
+        run_ddpg(env, num_episodes, n_agents_ddpg, path, train_args, skip_vid=True)
 
 """
 For this experiment we test the two-agent one-patch environment
@@ -229,7 +216,8 @@ def experiment3(num_episodes, num_runs, test=False):
         path = create_exp_folder("Experiment3", test=test)
         print(f"Run {i+1} has been started")
         env = NAgentsEnv(n_agents=2, obs_others=True)
-        ddpg_train_patch_n_agents(env, num_episodes, seed=i, path=path)
+        train_args = dict(seed=i)
+        run_ddpg(env, num_episodes, n_agents_ddpg, path, train_args, skip_vid=True)
 
 """
 For this experiment we test the two-agent one-patch environment
@@ -240,8 +228,8 @@ def experiment4(num_episodes, num_runs, test=False):
     for i in range(num_runs):
         path = create_exp_folder("Experiment4", test=test)
         env = NAgentsEnv(n_agents=2, obs_others=True, obs_range=1.5)
-        train_args = dict(p_welfare=0.4)
-        ddpg_train_patch_n_agents(env, num_episodes, seed=i+7, path=path, train_args=train_args)
+        train_args = dict(seed=i)
+        run_ddpg(env, num_episodes, n_agents_ddpg, path, train_args, skip_vid=True)
 
 """
 For this experiment we test the single-agent one-patch environment
@@ -250,36 +238,14 @@ We will use the messages as state inputs, to train the critic on
 Later I will extend this to multiple runs and use those to generate statistics for significance testing
 """
 def experiment5(num_episodes, num_runs, test=False):
-    for i in range(num_runs):
-        path = create_exp_folder("Experiment5", test=test)
-        env = NAgentsEnv(n_agents=2)
-        train_args = dict(p_welfare=0.5)
-        ddpg_train_patch_n_agents(env, num_episodes, seed=i, path=path, train_args=train_args)
+    pass
 
 """
 Two agents who don't observe each other but do observe their own state as well as the patch's state. They are given a global reward signal in the form of nash social welfare (product of their returns as computed from the sample batches)
 """
 def experiment6(num_episodes, num_runs, test=False):
-    for i in range(2,num_runs+2):
-        path = create_exp_folder("Experiment6", test=test)
-        env = NAgentsEnv(n_agents=2)
-        train_args = dict(p_welfare=0.7)
-        ddpg_train_patch_n_agents(env, num_episodes, seed=i, path=path, train_args=train_args)
+    pass
 
 if __name__ == "__main__":
     # Experiments can be run below
-    experiment3(3,1,test=True)
-    
-    # num_episodes = 5
-    # num_runs = 5
-    
-    # Uncomment the environment needed below
-    #env = NAgentsEnv(patch_radius=0.5, step_max=400, alpha=0.025, beta=0.5, e_init=1, n_agents=2, obs_others=False, seed=2)
-    
-    # Uncomment the method needed below
-    #ddpg_train_patch_n_agents(env, num_episodes, path=path)
-    #wandb_ddpg_train_patch(env, num_episodes, num_runs=num_runs, hidden_dim=256, batch_size=100, warmup_steps=200)
-    
-    # Fill in the path of the policy and uncomment the method below it
-    #path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "policies", "e4nii8kg", "efficient-sweep-4")
-    #patch_test_saved_policy(env, path, hidden_dim=256)
+    experiment1(2,1,test=True)
