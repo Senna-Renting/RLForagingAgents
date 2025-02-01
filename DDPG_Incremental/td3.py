@@ -8,6 +8,13 @@ from environment import *
 from save_utils import save_policy
 from functools import partial
 
+# TODO: Implement the four new functions added, allowing multi-objective RL updates:
+# 1. compute_NSW
+# 2. compute_welfare_targets
+# 3. optimize_welfare_critic
+# 4. optimize_welfare_actor
+
+
 ## Critic network and it's complementary functions
 class Critic(nnx.Module):
     def __init__(self, in_dim, seed, out_dim=1, hidden_dim=[16,32,16]):
@@ -95,6 +102,10 @@ def get_network_shape(network):
     output = state["out"]["kernel"].value.shape
     hidden = [state["lhs"][i]["kernel"].value.shape for i in range(len(state["lhs"]))]
     return [input, *hidden, output]
+
+# Helper function for computing the Nash Social Welfare function (aka geometric mean)
+def compute_NSW(rewards):
+    pass
 
 ## Buffer data structure
 # Note: numpy is used in this structure as I need to dynamically change the buffer over time
