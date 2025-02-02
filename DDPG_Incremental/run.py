@@ -1,7 +1,7 @@
 import wandb
 from environment import *
 from save_utils import load_policy, save_policy
-from td3 import Actor, wandb_train_ddpg, n_agents_ddpg, n_agents_welfare_ddpg
+from td3 import Actor, wandb_train_ddpg, n_agents_ddpg, n_agents_td3
 from welfare_functions import *
 import os
 from datetime import datetime
@@ -38,6 +38,8 @@ def save_metadata_readme(path, metadata):
         f.write(f"Number of episodes: {metadata["n_episodes"]}\n\n")
         f.write(f"Batch size: {metadata["batch_size"]}\n\n")
         f.write(f"Warmup size: {metadata["warmup_size"]}\n\n")
+        f.write(f"Proportion of welfare metric (p_welfare) used: {metadata["p_welfare"]}")
+        f.write(f"Action step noise: {metadata["act_noise"]}")
         f.write("## Environment parameters:\n\n")
         f.write(f"Number of agents: {metadata["n_agents"]}\n\n")
         f.write(f"Range of x-axis: [0, {metadata["x_max"]}]\n\n")
@@ -56,8 +58,6 @@ def save_metadata_readme(path, metadata):
         f.write(f"Distance below which we allow information sharing: {metadata["obs_range"]}\n\n")
         has_obs = "Yes" if metadata["obs_others"] else "No"
         f.write(f"Observe other agents (our form of communication): {has_obs}\n\n")
-        if "p_welfare" in metadata:
-            f.write(f"Proportion of welfare metric (p_welfare) used: {metadata["p_welfare"]}")
 
 def run_ddpg(env, num_episodes, train_fun, path, train_args=dict(), skip_vid=False):
     # Extract/define initial variables
@@ -230,7 +230,7 @@ def experiment4(num_episodes, num_runs, test=False):
     for i in range(num_runs):
         path = create_exp_folder("Experiment4", test=test)
         env = NAgentsEnv(n_agents=2, obs_others=True, obs_range=8)
-        train_args = dict(seed=i, p_welfare=0.4)
+        train_args = dict(seed=i, p_welfare=0.0)
         run_ddpg(env, num_episodes, n_agents_ddpg, path, train_args, skip_vid=False)
 
 """
@@ -250,4 +250,4 @@ def experiment6(num_episodes, num_runs, test=False):
 
 if __name__ == "__main__":
     # Experiments can be run below
-    experiment4(80,1)
+    experiment1(80,1)
