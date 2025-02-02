@@ -54,7 +54,7 @@ def plot_rewards(path, rewards, colors=plt.cm.Set1.colors):
     ax.set_title("Return over episodes")
     ax.set_ylabel("Return")
     returns = np.sum(rewards, axis=1)
-    [ax.plot(returns[:,i_a,0], c=colors[i_a], label=f"$A_{i_a+1}$") for i_a in range(n_agents)]
+    [ax.plot(returns[:,i_a], c=colors[i_a], label=f"$A_{i_a+1}$") for i_a in range(n_agents)]
     ax.set_xlabel("Episode")
     ax.legend()
     plt.tight_layout()

@@ -9,7 +9,6 @@ from save_utils import save_policy
 from functools import partial
 
 # TODO: Implement the four new functions added, allowing multi-objective RL updates:
-# 1. compute_NSW
 # 2. compute_welfare_targets
 # 3. optimize_welfare_critic
 # 4. optimize_welfare_actor
@@ -37,16 +36,8 @@ def MSE_optimize_critic(optimizer: nnx.Optimizer, critic: nnx.Module, states: jn
     return loss, grads
 
 @nnx.jit
-def optimize_welfare_critic(optimizer: nnx.Optimizer, critic: nnx.Module, states: jnp.array, actions: jnp.array, ys: jnp.array):
-    pass
-
-@nnx.jit
 def compute_targets(critic: nnx.Module, actor: nnx.Module, rs: jnp.array, states: jnp.array, done: jnp.array, gamma: float):
     return rs + gamma*(1-done)*(critic(states, actor(states)))
-
-@nnx.jit
-def compute_welfare_targets(critic: nnx.Module, actor: nnx.Module, rs: jnp.array, states: jnp.array, done: jnp.array, gamma: float):
-    pass
 
 ## Actor network and it's complementary functions
 class Actor(nnx.Module):
@@ -69,10 +60,6 @@ def mean_optimize_actor(optimizer: nnx.Optimizer, actor: nnx.Module, critic: nnx
     loss, grads = nnx.value_and_grad(loss_fn)(actor)
     optimizer.update(grads)
     return loss, grads
-
-@nnx.jit
-def optimize_welfare_actor(optimizer: nnx.Optimizer, actor: nnx.Module, critic: nnx.Module, states: jnp.array):
-    pass
 
 def sample_action(rng, actor, state, action_min, action_max, action_dim):
     mu_action = actor(state)
@@ -105,7 +92,21 @@ def get_network_shape(network):
 
 # Helper function for computing the Nash Social Welfare function (aka geometric mean)
 def compute_NSW(rewards):
-    pass
+    #print("Rewards: ", rewards)
+    NSW = jnp.power(jnp.prod(rewards, axis=0), 1/rewards.shape[0])
+    #print("Welfare: ", NSW.item())
+    return NSW
+
+def compute_welfare(buffers, lookback):
+    rewards = np.zeros(len(buffers))
+    for i,buffer in enumerate(buffers):
+        size = buffer.get_size()
+        rs = buffer.get(slice(size-lookback-1, size))[2]
+        rewards[i] = rs.mean()
+    NSW = compute_NSW(rewards)
+    return NSW
+
+    
 
 ## Buffer data structure
 # Note: numpy is used in this structure as I need to dynamically change the buffer over time
@@ -146,8 +147,8 @@ class Buffer:
             self.next_states[np.newaxis, :],
             self.dones[np.newaxis, :],
         )
-    def get_pointer(self):
-        return self.ptr
+    def get_size(self):
+        return self.size
     def sample(self, batch_size):
         ind = self.rng.integers(0,self.size,size=batch_size)
         return (
@@ -188,7 +189,7 @@ def wandb_log_ddpg(epoch, critic_loss, actor_loss, returns):
                "Return":returns})
 
 # TODO: Simplify this function by removing the welfare stuff (stuff relating to the p_welfare parameter)
-def n_agents_ddpg(env, num_episodes, tau=0.01, gamma=0.99, batch_size=30, lr_a=2e-4, lr_c=8e-4, seed=0, action_dim=2, state_dim=3, action_max=0.2, hidden_dim=[16,16], log_fun=print_log_ddpg_n_agents):
+def n_agents_ddpg(env, num_episodes, tau=0.01, gamma=0.99, batch_size=30, lr_a=2e-4, lr_c=8e-4, seed=0, action_dim=2, state_dim=3, action_max=0.2, hidden_dim=[16,16], p_welfare=0.0, log_fun=print_log_ddpg_n_agents):
     # Initialize metadata object for keeping track of (hyper-)parameters and/or additional settings of the environment
     hidden_dims = [str(h_dim) for h_dim in hidden_dim]
     warmup_size = 2*batch_size
@@ -196,7 +197,7 @@ def n_agents_ddpg(env, num_episodes, tau=0.01, gamma=0.99, batch_size=30, lr_a=2
                     batch_size=batch_size, lr_actor=lr_a, lr_critic=lr_c, 
                     seed=seed, action_dim=action_dim, state_dim=state_dim,
                     action_max=action_max, hidden_dims=hidden_dims,
-                    warmup_size=warmup_size, alg_name="Normal DDPG", **env.get_params())
+                    warmup_size=warmup_size, p_welfare=p_welfare, alg_name="Normal DDPG", **env.get_params())
     # Initialize neural networks
     n_agents = env.n_agents
     step_max = env.step_max
@@ -221,7 +222,7 @@ def n_agents_ddpg(env, num_episodes, tau=0.01, gamma=0.99, batch_size=30, lr_a=2
     critics_loss_stats = np.empty((num_episodes, 3, n_agents))
     actors_loss_stats = np.empty((num_episodes, 3, n_agents))
     # Keep track of accumulated rewards
-    returns = np.empty((num_episodes, step_max, n_agents, 1))
+    returns = np.empty((num_episodes, step_max, n_agents))
     test_penalties = np.empty((num_episodes, step_max, n_agents, 1))
     # Keep track of patch enter events and states of agents
     test_is_in_patch = np.empty((num_episodes, step_max, n_agents))
@@ -262,10 +263,14 @@ def n_agents_ddpg(env, num_episodes, tau=0.01, gamma=0.99, batch_size=30, lr_a=2
                 for i_a in range(n_agents):
                     # Add states info to buffer
                     buffers[i_a].add(states[i_a], actions[i_a], rewards[i_a], next_states[i_a], terminated)
+                welfare = compute_welfare(buffers, s_i)
+                for i_a in range(n_agents):
                     # Sample batch from buffer
                     (b_states, b_actions, b_rewards, b_next_states, b_dones), ind = buffers[i_a].sample(batch_size)
+                    # Modify rewards with welfare signal
+                    b_rewards = jnp.multiply(b_rewards, 1-p_welfare) + jnp.multiply(welfare, p_welfare)
                     # Update critic
-                    ys = compute_targets(critics_t[i_a], actors[i_a], b_rewards, b_next_states, b_dones, gamma)
+                    ys = compute_targets(critics_t[i_a], actors_t[i_a], b_rewards, b_next_states, b_dones, gamma)
                     c_loss, grads = MSE_optimize_critic(optim_critics[i_a], critics[i_a], b_states, b_actions, ys)
                     # Update policy
                     a_loss, grads = mean_optimize_actor(optim_actors[i_a], actors[i_a], critics[i_a], b_states)
@@ -293,141 +298,6 @@ def n_agents_ddpg(env, num_episodes, tau=0.01, gamma=0.99, batch_size=30, lr_a=2
         # Test agent
         done = False
         env_state, states = env.reset(seed=seed)
-        for i_t in range(step_max):
-            actions = [jnp.array(actors_t[i_a](states[i_a])) for i_a in range(n_agents)]
-            step_idx = env_state[2]
-            env_state,next_states,(rewards,(penalties, is_in_patch)), terminated, truncated, _ = env.step(env_state, *actions)
-            agent_states[i, i_t] = env_state[0]
-            patch_states[i, i_t] = env_state[1][-1]
-            test_penalties[i,step_idx,:] = penalties
-            test_is_in_patch[i,step_idx] = is_in_patch
-            states = next_states
-            done = terminated or truncated
-            returns[i,step_idx] = rewards
-            if done:
-                break
-        # Log the important variables to some logger
-        (agents_state, patch_state, step_idx) = env_state
-        end_energy = agents_state[:, -1]
-        log_fun(i, returns[i], end_energy)
-        # Compute relevant information
-        patch_info = (patch_state[:-1], patch_states)
-        env_info = (test_penalties, test_is_in_patch, agent_states, patch_info)
-        
-    buffer_tuple = zip(*[buffer.get_all() for buffer in buffers])
-    buffer_data = [np.concatenate(tuple, axis=0) for tuple in buffer_tuple]
-    return returns, ((actors_t, actor_weights), (critics_t, critic_weights)), (actors_loss_stats, critics_loss_stats), env_info, metadata, buffer_data
-
-# TODO: Implement a welfare version of the DDPG algorithm defined above
-# Use the Welfare Q-learning algorithm as inspiration
-def n_agents_welfare_ddpg(env, num_episodes, tau=0.01, gamma=0.99, batch_size=30, lr_a=2e-4, lr_c=8e-4, seed=0, action_dim=2, state_dim=3, action_max=0.2, hidden_dim=[16,16], log_fun=print_log_ddpg_n_agents):
-    # Initialize metadata object for keeping track of (hyper-)parameters and/or additional settings of the environment
-    hidden_dims = [str(h_dim) for h_dim in hidden_dim]
-    warmup_size = 2*batch_size
-    metadata = dict(n_episodes=num_episodes, tau=tau, gamma=gamma, 
-                    batch_size=batch_size, lr_actor=lr_a, lr_critic=lr_c, 
-                    seed=seed, action_dim=action_dim, state_dim=state_dim,
-                    action_max=action_max, hidden_dims=hidden_dims,
-                    warmup_size=warmup_size, alg_name="Welfare DDPG", **env.get_params())
-    # Initialize neural networks
-    n_agents = env.n_agents
-    step_max = env.step_max
-    actor_dim = action_dim
-    
-    actors = [Actor(state_dim,actor_dim,action_max,seed+i,hidden_dim=hidden_dim) for i in range(n_agents)]
-    actors_t = [Actor(state_dim,actor_dim,action_max,seed+i,hidden_dim=hidden_dim) for i in range(n_agents)]
-    critics = [Critic(state_dim+actor_dim,seed+i,out_dim=n_agents,hidden_dim=hidden_dim) for i in range(n_agents)]
-    critics_t = [Critic(state_dim+actor_dim,seed+i,out_dim=n_agents,hidden_dim=hidden_dim) for i in range(n_agents)]
-    
-    optim_actors = [nnx.Optimizer(actors[i], optax.adam(lr_a)) for i in range(n_agents)]
-    optim_critics = [nnx.Optimizer(critics[i], optax.adam(lr_c)) for i in range(n_agents)]
-    # Add seperate experience replay buffer for each agent 
-    buffer_size = num_episodes*env.step_max+warmup_size # Ensure every step is kept in the replay buffer
-    buffers = [Buffer(buffer_size, state_dim, actor_dim, reward_dim=n_agents) for i in range(n_agents)]
-    # Initialize environment
-    key = jax.random.PRNGKey(seed)
-    # Keep track of neural network weights (assumes homogeneous networks across agents!)
-    critic_weights = [np.empty((num_episodes, n_agents, *shape)) for shape in get_network_shape(critics_t[0])]
-    actor_weights = [np.empty((num_episodes, n_agents, *shape)) for shape in get_network_shape(actors_t[0])]
-    # Keep track of important loss variables (3 is for [avg,min,max] stats)
-    critics_loss_stats = np.empty((num_episodes, 3, n_agents))
-    actors_loss_stats = np.empty((num_episodes, 3, n_agents))
-    # Keep track of accumulated rewards
-    returns = np.empty((num_episodes, step_max, n_agents, 1))
-    test_penalties = np.empty((num_episodes, step_max, n_agents, 1))
-    # Keep track of patch enter events and states of agents
-    test_is_in_patch = np.empty((num_episodes, step_max, n_agents))
-    (agents_state, patch_state, step_idx), states = env.reset(seed=seed)
-    agent_states = np.empty((num_episodes, step_max, *agents_state.shape))
-    patch_states = np.empty((num_episodes, step_max, 1))
-    # Warm-up round
-    env_state, states = env.reset(seed=seed)
-    for s_i in range(warmup_size):
-        # Sample action, execute it, and add to buffer
-        actions = list(range(n_agents))
-        for i_a,actor in enumerate(actors):
-            action_key, key = jax.random.split(key)
-            actions[i_a] = jnp.array(sample_action(action_key, actor, states[i_a], -action_max, action_max, actor_dim)) 
-        env_state, next_states, (rewards, penalties), terminated, truncated, _ = env.step(env_state, *actions)
-        (agents_state, patch_state, step_idx) = env_state
-        for i_a in range(n_agents):
-            buffers[i_a].add(states[i_a], actions[i_a], rewards, next_states[i_a], terminated)
-        states = next_states
-    
-    # Run episodes
-    for i in range(num_episodes):
-        done = False
-        env_state, states = env.reset(seed=seed)
-        r_acc = 0
-        c = 0
-        # Initialize loss temp variables
-        cs_loss = np.empty((n_agents,step_max))
-        as_loss = np.empty((n_agents,step_max))
-        # Train agent
-        for s_i in range(step_max):
-            # Sample action, execute it, and add to buffer
-            actions = list(range(n_agents))
-            for i_a,actor in enumerate(actors):
-                action_key, key = jax.random.split(key)
-                actions[i_a] = jnp.array(sample_action(action_key, actor, states[i_a], -action_max, action_max, actor_dim)) 
-            env_state, next_states, (rewards, penalties), terminated, truncated, _ = env.step(env_state, *actions)
-            (agents_state, patch_state, step_idx) = env_state
-            done = truncated or terminated
-            if not terminated:
-                for i_a in range(n_agents):
-                    # Add states info to buffer
-                    buffers[i_a].add(states[i_a], actions[i_a], rewards, next_states[i_a], terminated)
-                    # Sample batch from buffer
-                    (b_states, b_actions, b_rewards, b_next_states, b_dones), ind = buffers[i_a].sample(batch_size)
-                    # Update critic
-                    ys = compute_welfare_targets(critics_t[i_a], actors[i_a], b_rewards, b_next_states, b_dones, gamma)
-                    c_loss, grads = optimize_welfare_critic(optim_critics[i_a], critics[i_a], b_states, b_actions, ys)
-                    # Update policy
-                    a_loss, grads = optimize_welfare_actor(optim_actors[i_a], actors[i_a], critics[i_a], b_states)
-                    # Update targets (critic and policy)
-                    nnx.update(critics_t[i_a], polyak_update(tau, critics_t[i_a], critics[i_a]))
-                    nnx.update(actors_t[i_a], polyak_update(tau, actors_t[i_a], actors[i_a]))
-                    # Store actor and critic loss 
-                    as_loss[i_a,step_idx-1] = a_loss
-                    cs_loss[i_a,step_idx-1] = c_loss
-            else:
-                break
-            # Update state of agents
-            states = next_states
-        # Save training results
-        step_idx = env_state[2]
-        actors_loss_stats[i,:,:] = [np.mean(as_loss, axis=1), np.min(as_loss, axis=1), np.max(as_loss, axis=1)]
-        critics_loss_stats[i,:,:] = [np.mean(cs_loss, axis=1), np.min(cs_loss, axis=1), np.max(cs_loss, axis=1)]
-        for i_a in range(n_agents):
-            c_weights = get_network_weights(critics_t[i_a])
-            a_weights = get_network_weights(actors_t[i_a])
-            for i_w, critic_weight in enumerate(critic_weights):
-                critic_weight[i, i_a] = c_weights[i_w] 
-            for i_w, actor_weight in enumerate(actor_weights):
-                actor_weight[i, i_a] = a_weights[i_w]
-        # Test agent
-        done = False
-        env_state, states = env.reset(seed=seed
         c = 0
         for i_t in range(step_max):
             actions = [jnp.array(actors_t[i_a](states[i_a])) for i_a in range(n_agents)]
@@ -439,7 +309,7 @@ def n_agents_welfare_ddpg(env, num_episodes, tau=0.01, gamma=0.99, batch_size=30
             test_is_in_patch[i,step_idx] = is_in_patch
             states = next_states
             done = terminated or truncated
-            returns[i,step_idx] = np.pow(gamma, c)*rewards
+            returns[i,step_idx] = np.power(gamma, c)*rewards
             c += 1
             if done:
                 break
@@ -454,5 +324,19 @@ def n_agents_welfare_ddpg(env, num_episodes, tau=0.01, gamma=0.99, batch_size=30
     buffer_tuple = zip(*[buffer.get_all() for buffer in buffers])
     buffer_data = [np.concatenate(tuple, axis=0) for tuple in buffer_tuple]
     return returns, ((actors_t, actor_weights), (critics_t, critic_weights)), (actors_loss_stats, critics_loss_stats), env_info, metadata, buffer_data
-        
+
+# TODO: Implement a TD3 version of the DDPG algorithm defined above 
+def n_agents_td3(env, num_episodes, tau=0.01, gamma=0.99, batch_size=30, lr_a=2e-4, lr_c=8e-4, seed=0, action_dim=2, state_dim=3, action_max=0.2, hidden_dim=[16,16], p_welfare=0.0, log_fun=print_log_ddpg_n_agents):
+    # Initialize metadata object for keeping track of (hyper-)parameters and/or additional settings of the environment
+    hidden_dims = [str(h_dim) for h_dim in hidden_dim]
+    warmup_size = 2*batch_size
+    metadata = dict(n_episodes=num_episodes, tau=tau, gamma=gamma, 
+                    batch_size=batch_size, lr_actor=lr_a, lr_critic=lr_c, 
+                    seed=seed, action_dim=action_dim, state_dim=state_dim,
+                    action_max=action_max, hidden_dims=hidden_dims,
+                    warmup_size=warmup_size, p_welfare=p_welfare, alg_name="Normal DDPG", **env.get_params())
+    # Initialize neural networks
+    n_agents = env.n_agents
+    step_max = env.step_max
+    actor_dim = action_dim
             

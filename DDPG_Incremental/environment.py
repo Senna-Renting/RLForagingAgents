@@ -169,7 +169,7 @@ class NAgentsEnv(Environment):
 
     def step(self, env_state, *actions):
         (agents_state, patch_state, step_idx) = env_state
-        rewards = np.empty((self.n_agents, 1))
+        rewards = np.empty(self.n_agents)
         n_penalties = 1
         penalties = np.empty((self.n_agents, n_penalties))
         is_in_patch = np.empty(self.n_agents)
@@ -185,7 +185,7 @@ class NAgentsEnv(Environment):
             is_in_patch[i] = s_eaten != 0
             penalties[i,:] = penalty
             # Add agent reward to reward vector
-            rewards[i,:] = reward
+            rewards[i] = reward
             tot_eaten += s_eaten
             agents_state[i] = agent_state
         # Update patch resources
