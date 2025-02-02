@@ -38,8 +38,12 @@ def save_metadata_readme(path, metadata):
         f.write(f"Number of episodes: {metadata["n_episodes"]}\n\n")
         f.write(f"Batch size: {metadata["batch_size"]}\n\n")
         f.write(f"Warmup size: {metadata["warmup_size"]}\n\n")
-        f.write(f"Proportion of welfare metric (p_welfare) used: {metadata["p_welfare"]}")
-        f.write(f"Action step noise: {metadata["act_noise"]}")
+        f.write(f"Proportion of welfare metric (p_welfare) used: {metadata["p_welfare"]} \n\n")
+        f.write(f"Action step noise: {metadata["act_noise"]} \n\n")
+        if metadata["alg_name"] == "Normal TD3":
+            f.write(f"Target noise: {metadata["target_noise"]}\n\n")
+            f.write(f"Noise clip: {metadata["noise_clip"]}\n\n")
+            f.write(f"Policy delay: {metadata["policy_delay"]}\n\n")
         f.write("## Environment parameters:\n\n")
         f.write(f"Number of agents: {metadata["n_agents"]}\n\n")
         f.write(f"Range of x-axis: [0, {metadata["x_max"]}]\n\n")
@@ -193,7 +197,7 @@ def experiment1(num_episodes, num_runs, test=False):
         print(f"Run {i+1} has been started")
         env = NAgentsEnv(n_agents=1)
         train_args = dict(seed=i)
-        run_ddpg(env, num_episodes, n_agents_ddpg, path, train_args, skip_vid=True)
+        run_ddpg(env, num_episodes, n_agents_td3, path, train_args, skip_vid=True)
 
 """
 For this experiment we test the two-agent one-patch environment
@@ -250,4 +254,4 @@ def experiment6(num_episodes, num_runs, test=False):
 
 if __name__ == "__main__":
     # Experiments can be run below
-    experiment1(80,1)
+    experiment1(4,1,test=True)

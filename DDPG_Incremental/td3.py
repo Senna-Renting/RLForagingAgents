@@ -36,6 +36,25 @@ def MSE_optimize_critic(optimizer: nnx.Optimizer, critic: nnx.Module, states: jn
     return loss, grads
 
 @nnx.jit
+def MSE_optimize_td3(optimizer: nnx.Optimizer, critic: nnx.Module, states: jnp.array, actions: jnp.array, ys: jnp.array):
+    loss_fn = lambda critic: ((critic(states, actions) - ys) ** 2).mean()
+    loss = [None, None]
+    grads = [None, None]
+    for i in range(2):
+        l, g = nnx.value_and_grad(loss_fn)(critic[i])
+        loss[i] = l
+        grads[i] = g
+        optimizer[i].update(g)
+    return loss, grads
+
+@nnx.jit
+def compute_targets_td3(critic: nnx.Module, actor: nnx.Module, rs: jnp.array, states: jnp.array, done: jnp.array, gamma: float, key, target_noise, noise_clip):
+    actions = actor(states)
+    as_noisy = actions + jnp.clip(jax.random.normal(key, actions.shape)*target_noise, min=-noise_clip, max=noise_clip)
+    c_min = jnp.stack([critic[i](states, as_noisy) for i in range(2)], axis=0).min(axis=0)
+    return rs + gamma*(1-done)*(c_min)    
+
+@nnx.jit
 def compute_targets(critic: nnx.Module, actor: nnx.Module, rs: jnp.array, states: jnp.array, done: jnp.array, gamma: float):
     return rs + gamma*(1-done)*(critic(states, actor(states)))
 
@@ -327,7 +346,7 @@ def n_agents_ddpg(env, num_episodes, tau=0.01, gamma=0.985, batch_size=60, lr_a=
     return returns, ((actors_t, actor_weights), (critics_t, critic_weights)), (actors_loss_stats, critics_loss_stats), env_info, metadata, buffer_data
 
 # TODO: Implement a TD3 version of the DDPG algorithm defined above 
-def n_agents_td3(env, num_episodes, tau=0.01, gamma=0.99, batch_size=30, lr_a=2e-4, lr_c=8e-4, seed=0, action_dim=2, state_dim=3, action_max=0.2, hidden_dim=[16,16], p_welfare=0.0, act_noise=0.05, target_noise=0.2, noise_clip=0.5, policy_delay=2, log_fun=print_log_ddpg_n_agents):
+def n_agents_td3(env, num_episodes, tau=0.01, gamma=0.99, batch_size=30, lr_a=2e-4, lr_c=8e-4, seed=0, action_dim=2, state_dim=3, action_max=0.2, hidden_dim=[16,16], p_welfare=0.0, act_noise=0.13, target_noise=0.26, noise_clip=0.6, policy_delay=2, log_fun=print_log_ddpg_n_agents):
     # Initialize metadata object for keeping track of (hyper-)parameters and/or additional settings of the environment
     hidden_dims = [str(h_dim) for h_dim in hidden_dim]
     warmup_size = 2*batch_size
@@ -335,7 +354,9 @@ def n_agents_td3(env, num_episodes, tau=0.01, gamma=0.99, batch_size=30, lr_a=2e
                     batch_size=batch_size, lr_actor=lr_a, lr_critic=lr_c, 
                     seed=seed, action_dim=action_dim, state_dim=state_dim,
                     action_max=action_max, hidden_dims=hidden_dims,
-                    warmup_size=warmup_size, p_welfare=p_welfare, alg_name="Normal TD3", **env.get_params())
+                    warmup_size=warmup_size, p_welfare=p_welfare, 
+                    act_noise=act_noise, target_noise=target_noise, 
+                    noise_clip=noise_clip, policy_delay=policy_delay, alg_name="Normal TD3", **env.get_params())
     # Initialize neural networks
     n_agents = env.n_agents
     step_max = env.step_max
@@ -346,17 +367,17 @@ def n_agents_td3(env, num_episodes, tau=0.01, gamma=0.99, batch_size=30, lr_a=2e
     optim_actors = [nnx.Optimizer(actors[i], optax.adam(lr_a)) for i in range(n_agents)]
     ## First dimension for TD3 critic index 
     critics = [[Critic(state_dim+actor_dim,seed+i*j,out_dim=1,hidden_dim=hidden_dim) 
-                  for i in range(n_agents)] for j in range(2)]
+                  for i in range(2)] for j in range(n_agents)]
     critics_t = [[Critic(state_dim+actor_dim,seed+i*j,out_dim=1,hidden_dim=hidden_dim) 
-                  for i in range(n_agents)] for j in range(2)]
-    optim_critics = [[nnx.Optimizer(critics[j][i], optax.adam(lr_c)) for i in range(n_agents)] for j in range(2)]
+                  for i in range(2)] for j in range(n_agents)]
+    optim_critics = [[nnx.Optimizer(critics[j][i], optax.adam(lr_c)) for i in range(2)] for j in range(n_agents)]
     # Add seperate experience replay buffer for each agent 
     buffer_size = num_episodes*env.step_max+warmup_size # Ensure every step is kept in the replay buffer
     buffers = [Buffer(buffer_size, state_dim, actor_dim) for i in range(n_agents)]
     # Initialize environment
     key = jax.random.PRNGKey(seed)
     # Keep track of neural network weights (assumes homogeneous networks across agents!)
-    critic_weights = [np.empty((num_episodes, n_agents, *shape)) for shape in get_network_shape(critics_t[0])]
+    critic_weights = [np.empty((num_episodes, n_agents, *shape)) for shape in get_network_shape(critics_t[0][0])]
     actor_weights = [np.empty((num_episodes, n_agents, *shape)) for shape in get_network_shape(actors_t[0])]
     # Keep track of important loss variables (3 is for [avg,min,max] stats)
     critics_loss_stats = np.empty((num_episodes, 3, n_agents))
@@ -387,15 +408,15 @@ def n_agents_td3(env, num_episodes, tau=0.01, gamma=0.99, batch_size=30, lr_a=2e
         done = False
         env_state, states = env.reset(seed=seed)
         # Initialize loss temp variables
-        cs_loss = np.empty((n_agents,step_max))
-        as_loss = np.empty((n_agents,step_max))
+        cs_loss = np.empty((2,n_agents,step_max))
+        as_loss = np.empty((n_agents,step_max//policy_delay))
         # Train agent
         for s_i in range(step_max):
             # Sample action, execute it, and add to buffer
             actions = list(range(n_agents))
             for i_a,actor in enumerate(actors):
                 action_key, key = jax.random.split(key)
-                actions[i_a] = jnp.array(sample_action(action_key, actor, states[i_a], -action_max, action_max, actor_dim)) 
+                actions[i_a] = jnp.array(sample_action(action_key, actor, states[i_a], -action_max, action_max, actor_dim, act_noise)) 
             env_state, next_states, (rewards, penalties), terminated, truncated, _ = env.step(env_state, *actions)
             (agents_state, patch_state, step_idx) = env_state
             done = truncated or terminated
@@ -410,16 +431,20 @@ def n_agents_td3(env, num_episodes, tau=0.01, gamma=0.99, batch_size=30, lr_a=2e
                     # Modify rewards with welfare signal
                     b_rewards = jnp.multiply(b_rewards, 1-p_welfare) + jnp.multiply(welfare, p_welfare)
                     # Update critic
-                    ys = compute_targets(critics_t[i_a], actors_t[i_a], b_rewards, b_next_states, b_dones, gamma)
-                    c_loss, grads = MSE_optimize_critic(optim_critics[i_a], critics[i_a], b_states, b_actions, ys)
-                    # Update policy
-                    a_loss, grads = mean_optimize_actor(optim_actors[i_a], actors[i_a], critics[i_a], b_states)
-                    # Update targets (critic and policy)
-                    nnx.update(critics_t[i_a], polyak_update(tau, critics_t[i_a], critics[i_a]))
-                    nnx.update(actors_t[i_a], polyak_update(tau, actors_t[i_a], actors[i_a]))
-                    # Store actor and critic loss 
-                    as_loss[i_a,step_idx-1] = a_loss
-                    cs_loss[i_a,step_idx-1] = c_loss
+                    action_key, key = jax.random.split(key)
+                    ys = compute_targets_td3(critics_t[i_a], actors_t[i_a], b_rewards, b_next_states, b_dones, gamma, key, target_noise, noise_clip)
+                    c_loss, grads = MSE_optimize_td3(optim_critics[i_a], critics[i_a], b_states, b_actions, ys)
+                    # Store critic loss
+                    cs_loss[:,i_a,step_idx-1] = c_loss
+                    if s_i % policy_delay == 0:
+                        # Update policy
+                        a_loss, grads = mean_optimize_actor(optim_actors[i_a], actors[i_a], critics[i_a][0], b_states)
+                        # Update targets (critic and policy)
+                        [nnx.update(critics_t[i_a][j], 
+                                    polyak_update(tau, critics_t[i_a][j], critics[i_a][j])) for j in range(2)]
+                        nnx.update(actors_t[i_a], polyak_update(tau, actors_t[i_a], actors[i_a]))
+                        # Store actor loss 
+                        as_loss[i_a,step_idx//policy_delay-1] = a_loss
             else:
                 break
             # Update state of agents
@@ -427,9 +452,10 @@ def n_agents_td3(env, num_episodes, tau=0.01, gamma=0.99, batch_size=30, lr_a=2e
         # Save training results
         step_idx = env_state[2]
         actors_loss_stats[i,:,:] = [np.mean(as_loss, axis=1), np.min(as_loss, axis=1), np.max(as_loss, axis=1)]
-        critics_loss_stats[i,:,:] = [np.mean(cs_loss, axis=1), np.min(cs_loss, axis=1), np.max(cs_loss, axis=1)]
+        # Stores only critic 1 for now!
+        critics_loss_stats[i,:,:] = [np.mean(cs_loss[0], axis=1), np.min(cs_loss[0], axis=1), np.max(cs_loss[0], axis=1)]
         for i_a in range(n_agents):
-            c_weights = get_network_weights(critics_t[i_a])
+            c_weights = get_network_weights(critics_t[i_a][0]) # Only save critic 1's target
             a_weights = get_network_weights(actors_t[i_a])
             for i_w, critic_weight in enumerate(critic_weights):
                 critic_weight[i, i_a] = c_weights[i_w] 
