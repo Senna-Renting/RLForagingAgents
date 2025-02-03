@@ -8,7 +8,7 @@ from functools import partial
 
 # TODO: create an abstract class for the environment from which the specific experiments then can be build
 class Environment(ABC):
-    def __init__(self, patch_radius=2, s_init=10, e_init=1, eta=0.1, beta=0.5, alpha=0.1, gamma=0.01, step_max=400, x_max=5, y_max=5, v_max=0.1):
+    def __init__(self, patch_radius=2, s_init=10, e_init=1, eta=0.1, beta=0.5, alpha=0.5, gamma=0.01, step_max=400, x_max=5, y_max=5, v_max=0.1):
         self.x_max = x_max
         self.y_max = y_max
         self.v_max = v_max
@@ -36,7 +36,7 @@ class Environment(ABC):
 
 # TODO: make a two (or N-) agent version of the single-patch foraging environment
 class NAgentsEnv(Environment):
-    def __init__(self, patch_radius=0.5, s_init=10, e_init=1, eta=0.1, beta=0.5, alpha=0.0025, gamma=0.01, step_max=400, x_max=5, y_max=5, v_max=0.1, n_agents=2, obs_others=False, obs_range=8):
+    def __init__(self, patch_radius=0.5, s_init=10, e_init=1, eta=0.1, beta=0.5, alpha=0.005, gamma=0.01, step_max=400, x_max=5, y_max=5, v_max=0.1, n_agents=2, obs_others=False, obs_range=8, in_patch_only=False):
         super().__init__(patch_radius=patch_radius, s_init=s_init, e_init=e_init, eta=eta, beta=beta, alpha=alpha, gamma=gamma, step_max=step_max, x_max=x_max, y_max=y_max, v_max=v_max)
         beta = beta / n_agents # This adjustment is done to keep the resource dynamics similar across different agent amounts
         self.agents = [Agent(0,0,x_max,y_max,e_init,v_max, alpha=alpha, beta=beta) for i in range(n_agents)]
@@ -46,6 +46,7 @@ class NAgentsEnv(Environment):
         self.e_init = e_init
         self.obs_others = obs_others
         self.obs_range = obs_range
+        self.in_patch_only = in_patch_only
 
     def get_params(self):
         return {
@@ -62,36 +63,16 @@ class NAgentsEnv(Environment):
             "env_gamma": self.gamma,
             "step_max": self.step_max,
             "obs_others": self.obs_others,
-            "obs_range": self.obs_range
+            "obs_range": self.obs_range,
+            "in_patch_only": self.in_patch_only
         }
 
     def size(self):
         return self.x_max, self.y_max
 
-    # TODO: maybe implement a toggle for viewing the energy state of other agents
-    def get_states_v1(self, agents_state, patch_state):
-        energy_toggle = int(self.n_agents>1)*1
-        obs_size = self.n_agents*self.agents[0].num_vars +(self.n_agents-1)*self.comm_dim + self.patch.num_vars - energy_toggle
-        if not self.obs_others:
-            obs_size -= (self.n_agents-1)*self.agents[0].num_vars - energy_toggle
-        agents_obs = np.zeros((self.n_agents, obs_size))
-        state_without_energy = agents_state[:,:agents_state.shape[1]-self.comm_dim-1]
-        comm_vec = agents_state[:,agents_state.shape[1]-self.comm_dim:]
-        energy_vec = agents_state[:,4]
-        a_state = state_without_energy.flatten()
-        for i in range(self.n_agents):
-            if not self.obs_others:
-                a_state = state_without_energy[i,:]
-            # Add communication channels and energy back to the agent's state
-            a_comm_state = np.concatenate([a_state, comm_vec[i,:], [energy_vec[i]]])
-            obs = np.concatenate([patch_state, a_comm_state])
-            # obs = jnp.expand_dims(obs, 0) # May only be necessary for one agent case?
-            agents_obs[i,:] = obs
-        return agents_obs
-
     """
     For the state generator version 2 below, I will make a few major changes.
-    The patch resource state will now only be seen if the agent is in the patch, or if communication is enabled (obs_others) and a close-by agent is in the patch.
+    The patch resource state will now only be seen if the agent is in the patch, or if communication is enabled (obs_others) and a close-by agent is in the patch, and if in_patch_only is false, it will always show the resource state.
     Agents communicate their velocity and position with the other agents only when nearby (within obs_range) if obs_others is enabled.
     When either the patch resource cannot be seen, or other agents are not nearby enough, we will assume zero values for their states, as this should remove dependence on those state values for the neural networks.
     """
@@ -109,7 +90,7 @@ class NAgentsEnv(Environment):
             agents_obs[i, ptr:ptr+self.patch.num_vars-1] = patch_state[:3]
             ptr += self.patch.num_vars-1
             # Add patch resource info to state
-            if (np.any(is_nearby[i] & in_patch) and self.obs_others) or in_patch[i]:
+            if (np.any(is_nearby[i] & in_patch) and self.obs_others) or in_patch[i] or not self.in_patch_only:
                 agents_obs[i, ptr] = patch_state[3]
             ptr += 1
             # Add position and velocity information of nearby agents (including self) to state
