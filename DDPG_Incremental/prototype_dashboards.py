@@ -47,7 +47,7 @@ def plot_rewards(path, rewards, colors=plt.cm.Set1.colors):
         ax.set_title("Nash social welfare obtained through rewards")
         ax.set_xlabel("Episode")
         ax.set_ylabel(f"NSW")
-        nsw_returns = np.prod(returns, axis=1)
+        nsw_returns = np.power(np.prod(returns, axis=1), 1/returns.shape[1])
         ax.plot(nsw_returns)
     # Plot and save return
     ax = plt.subplot(n_axes, 1, n_axes)

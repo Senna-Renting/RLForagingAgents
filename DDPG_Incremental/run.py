@@ -54,6 +54,7 @@ def save_metadata_readme(path, metadata):
         f.write(f"Initial resource amount in patch: {metadata["s_init"]}\n\n")
         f.write(f"Initial energy of agents: {metadata["e_init"]}\n\n")
         f.write(f"Severity of penalties ($\\alpha$): {metadata["alpha"]}\n\n")
+        f.write(f"Patch resource always visible: {'No' if metadata["in_patch_only"] else 'Yes'}\n\n")
         f.write("Resource differential equation used: $s_{t+1} = s_t\\cdot\\eta - s_t\\cdot\\gamma^2 - s_t\\cdot\\beta$\n\n")
         f.write(f"Rate of resource decay ($\\gamma$): {metadata["env_gamma"]}\n\n")
         f.write(f"Rate of consuming resources for agents ($\\beta$): {metadata["beta"]}\n\n")

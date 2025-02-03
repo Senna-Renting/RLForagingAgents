@@ -208,7 +208,7 @@ def wandb_log_ddpg(epoch, critic_loss, actor_loss, returns):
                "Return":returns})
 
 # TODO: Simplify this function by removing the welfare stuff (stuff relating to the p_welfare parameter)
-def n_agents_ddpg(env, num_episodes, tau=0.01, gamma=0.985, batch_size=60, lr_a=2e-4, lr_c=8e-4, seed=0, action_dim=2, state_dim=3, action_max=0.2, hidden_dim=[16,16], act_noise=0.13, p_welfare=0.0, log_fun=print_log_ddpg_n_agents):
+def n_agents_ddpg(env, num_episodes, tau=0.01, gamma=0.99, batch_size=60, lr_a=3e-4, lr_c=1e-3, seed=0, action_dim=2, state_dim=3, action_max=0.2, hidden_dim=[16,16], act_noise=0.13, p_welfare=0.0, log_fun=print_log_ddpg_n_agents):
     # Initialize metadata object for keeping track of (hyper-)parameters and/or additional settings of the environment
     hidden_dims = [str(h_dim) for h_dim in hidden_dim]
     warmup_size = 2*batch_size
