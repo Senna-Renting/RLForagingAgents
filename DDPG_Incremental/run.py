@@ -8,6 +8,7 @@ from datetime import datetime
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 from prototype_dashboards import *
+import json
 
 def create_exp_folder(exp_name, test=False):
     folder_name = "runs"
@@ -64,7 +65,16 @@ def save_metadata_readme(path, metadata):
         has_obs = "Yes" if metadata["obs_others"] else "No"
         f.write(f"Observe other agents (our form of communication): {has_obs}\n\n")
 
-def run_ddpg(env, num_episodes, train_fun, path, train_args=dict(), skip_vid=False):
+def save_metadata(metadata, path):
+    with open(os.path.join(path, "metadata.json"), 'w') as f:
+        metadata = {key:(str(value) if not isinstance(value, list) else value)  for key,value in metadata.items()}
+        return json.dump(metadata, f, indent=4)
+
+def load_metadata(path):
+    with open(os.path.join(path, "metadata.json"), 'r') as f:
+        return json.load(f)
+
+def run_ddpg(env, num_episodes, train_fun, path, train_args=dict(), prev_path=None, skip_vid=False):
     # Extract/define initial variables
     episodes = np.arange(1,num_episodes+1)
     action_dim, a_range = env.get_action_space()
@@ -72,8 +82,15 @@ def run_ddpg(env, num_episodes, train_fun, path, train_args=dict(), skip_vid=Fal
         "state_dim":env.get_state_space(),
         "action_dim":action_dim,
         "action_max":a_range[1],
+        "current_path":path,
         **train_args
     }
+    if prev_path is not None:
+        metadata = load_metadata(prev_path)
+        metadata["previous_path"] = prev_path
+        metadata["seed"] = metadata["seed"] + metadata["n_episodes"]
+        train_args = metadata
+        
     # Train agent(s)
     rewards, networks, (as_loss, cs_loss), agents_info, metadata, buffer_data = train_fun(env, episodes[-1], **train_args)
     ((actors, a_weights), (critics, c_weights)) = networks
@@ -94,10 +111,9 @@ def run_ddpg(env, num_episodes, train_fun, path, train_args=dict(), skip_vid=Fal
     np.savez(os.path.join(path, "data"), **data)
     np.savez(os.path.join(path, "actor_weights"), *a_weights)
     np.savez(os.path.join(path, "critic_weights"), *c_weights)
-    
+    # Save metadata
+    save_metadata(metadata, path)
 
-    # Generate README
-    save_metadata_readme(path, metadata)
     
     # Plot a few informative plots
     plot_rewards(path, rewards)
@@ -255,4 +271,4 @@ def experiment6(num_episodes, num_runs, test=False):
 
 if __name__ == "__main__":
     # Experiments can be run below
-    experiment1(80,1)
+    experiment1(5,1,test=True)

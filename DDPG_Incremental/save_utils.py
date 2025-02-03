@@ -1,5 +1,6 @@
 import orbax.checkpoint
 from flax import nnx
+import os
 orbax_checkpointer = orbax.checkpoint.PyTreeCheckpointer()
 
 def load_policy(model, wandb_code):
@@ -10,4 +11,27 @@ def load_policy(model, wandb_code):
 def save_policy(model, wandb_code):
     state = nnx.state(model)
     orbax_checkpointer.save(wandb_code, state)
+
+def getRoot(file=None):
+  if file is None:
+      file='.'
+  me=os.path.abspath(file)
+  drive,path=os.path.splitdrive(me)
+  while 1:
+    path,folder=os.path.split(path)
+    if not folder:
+       break
+  return drive+path
+
+# Below two functions will be used for our re-train implementation
+def save_policies(models, type, path):
+    for i, model in enumerate(models):
+        state = nnx.state(model)
+        orbax_checkpointer.save(os.path.join(getRoot(), path, type, f"A{i}"), state)
+
+def load_policies(models, type, path):
+    for i, model in enumerate(models):
+        state = nnx.state(model)
+        orbax_checkpointer.restore(os.path.join(getRoot(), path, type, f"A{i}"), item=state)
+        
     

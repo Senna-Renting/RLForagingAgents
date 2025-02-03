@@ -36,7 +36,7 @@ class Environment(ABC):
 
 # TODO: make a two (or N-) agent version of the single-patch foraging environment
 class NAgentsEnv(Environment):
-    def __init__(self, patch_radius=0.5, s_init=10, e_init=1, eta=0.1, beta=0.5, alpha=0.005, gamma=0.01, step_max=400, x_max=5, y_max=5, v_max=0.1, n_agents=2, obs_others=False, obs_range=8, in_patch_only=False):
+    def __init__(self, patch_radius=0.5, s_init=10, e_init=1, eta=0.1, beta=0.5, alpha=0.005, gamma=0.01, step_max=400, x_max=5, y_max=5, v_max=0.1, n_agents=2, obs_others=False, obs_range=8, in_patch_only=False, **kwargs):
         super().__init__(patch_radius=patch_radius, s_init=s_init, e_init=e_init, eta=eta, beta=beta, alpha=alpha, gamma=gamma, step_max=step_max, x_max=x_max, y_max=y_max, v_max=v_max)
         beta = beta / n_agents # This adjustment is done to keep the resource dynamics similar across different agent amounts
         self.agents = [Agent(0,0,x_max,y_max,e_init,v_max, alpha=alpha, beta=beta) for i in range(n_agents)]

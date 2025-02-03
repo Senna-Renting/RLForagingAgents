@@ -5,7 +5,7 @@ import numpy as np
 import optax
 import wandb
 from environment import *
-from save_utils import save_policy
+from save_utils import save_policy, save_policies, load_policies
 from functools import partial
 
 # TODO: Implement the four new functions added, allowing multi-objective RL updates:
@@ -208,7 +208,7 @@ def wandb_log_ddpg(epoch, critic_loss, actor_loss, returns):
                "Return":returns})
 
 # TODO: Simplify this function by removing the welfare stuff (stuff relating to the p_welfare parameter)
-def n_agents_ddpg(env, num_episodes, tau=0.01, gamma=0.99, batch_size=60, lr_a=3e-4, lr_c=1e-3, seed=0, action_dim=2, state_dim=3, action_max=0.2, hidden_dim=[16,16], act_noise=0.13, p_welfare=0.0, log_fun=print_log_ddpg_n_agents):
+def n_agents_ddpg(env, num_episodes, tau=0.005, gamma=0.99, batch_size=100, lr_a=1e-4, lr_c=1e-3, seed=0, action_dim=2, state_dim=3, action_max=0.2, hidden_dim=[16,16], act_noise=0.13, p_welfare=0.0, log_fun=print_log_ddpg_n_agents, current_path="", **kwargs):
     # Initialize metadata object for keeping track of (hyper-)parameters and/or additional settings of the environment
     hidden_dims = [str(h_dim) for h_dim in hidden_dim]
     warmup_size = 2*batch_size
@@ -217,16 +217,22 @@ def n_agents_ddpg(env, num_episodes, tau=0.01, gamma=0.99, batch_size=60, lr_a=3
                     seed=seed, action_dim=action_dim, state_dim=state_dim,
                     action_max=action_max, hidden_dims=hidden_dims,
                     warmup_size=warmup_size, p_welfare=p_welfare, 
-                    act_noise=act_noise, alg_name="Normal DDPG", **env.get_params())
+                    act_noise=act_noise, alg_name="Normal DDPG", current_path=current_path, **env.get_params())
     # Initialize neural networks
     n_agents = env.n_agents
     step_max = env.step_max
     actor_dim = action_dim
-    
+
     actors = [Actor(state_dim,actor_dim,action_max,seed+i,hidden_dim=hidden_dim) for i in range(n_agents)]
     actors_t = [Actor(state_dim,actor_dim,action_max,seed+i,hidden_dim=hidden_dim) for i in range(n_agents)]
     critics = [Critic(state_dim+actor_dim,seed+i,out_dim=1,hidden_dim=hidden_dim) for i in range(n_agents)]
     critics_t = [Critic(state_dim+actor_dim,seed+i,out_dim=1,hidden_dim=hidden_dim) for i in range(n_agents)]
+    # If using previous networks restore their state
+    if "actors" in kwargs and "critics" in kwargs and "previous_path" in kwargs:
+        [load_policies(actors, "actors", kwargs["previous_path"]) for i in range(n_agents)]
+        [load_policies(actors_t, "actors", kwargs["previous_path"]) for i in range(n_agents)]
+        [load_policies(critics, "critics", kwargs["previous_path"]) for i in range(n_agents)]
+        [load_policies(critics_t, "critics", kwargs["previous_path"]) for i in range(n_agents)]
     
     optim_actors = [nnx.Optimizer(actors[i], optax.adam(lr_a)) for i in range(n_agents)]
     optim_critics = [nnx.Optimizer(critics[i], optax.adam(lr_c)) for i in range(n_agents)]
@@ -265,7 +271,7 @@ def n_agents_ddpg(env, num_episodes, tau=0.01, gamma=0.99, batch_size=60, lr_a=3
     # Run episodes
     for i in range(num_episodes):
         done = False
-        env_state, states = env.reset(seed=seed)
+        env_state, states = env.reset(seed=seed+i) # We initialize randomly each episode to allow more exploration
         # Initialize loss temp variables
         cs_loss = np.empty((n_agents,step_max))
         as_loss = np.empty((n_agents,step_max))
@@ -317,7 +323,7 @@ def n_agents_ddpg(env, num_episodes, tau=0.01, gamma=0.99, batch_size=60, lr_a=3
                 actor_weight[i, i_a] = a_weights[i_w]
         # Test agent
         done = False
-        env_state, states = env.reset(seed=seed)
+        env_state, states = env.reset(seed=seed+i) # Make sure the reset seed is the same as for training
         c = 0
         for i_t in range(step_max):
             actions = [jnp.array(actors_t[i_a](states[i_a])) for i_a in range(n_agents)]
@@ -340,9 +346,14 @@ def n_agents_ddpg(env, num_episodes, tau=0.01, gamma=0.99, batch_size=60, lr_a=3
         # Compute relevant information
         patch_info = (patch_state[:-1], patch_states)
         env_info = (test_penalties, test_is_in_patch, agent_states, patch_info)
-        
     buffer_tuple = zip(*[buffer.get_all() for buffer in buffers])
     buffer_data = [np.concatenate(tuple, axis=0) for tuple in buffer_tuple]
+
+    # Save learned actor and critic
+    if current_path != "":
+        save_policies(actors_t, "actors", current_path)
+        save_policies(critics_t, "critics", current_path)
+    
     return returns, ((actors_t, actor_weights), (critics_t, critic_weights)), (actors_loss_stats, critics_loss_stats), env_info, metadata, buffer_data
 
 # TODO: Implement a TD3 version of the DDPG algorithm defined above 
