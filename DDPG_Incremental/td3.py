@@ -212,7 +212,7 @@ def n_agents_ddpg(env, num_episodes, tau=0.005, gamma=0.99, batch_size=100, lr_a
     # Initialize metadata object for keeping track of (hyper-)parameters and/or additional settings of the environment
     hidden_dims = [str(h_dim) for h_dim in hidden_dim]
     warmup_size = 2*batch_size
-    metadata = dict(n_episodes=num_episodes, tau=tau, gamma=gamma, 
+    metadata = dict(n_episodes=num_episodes.item(), tau=tau, gamma=gamma, 
                     batch_size=batch_size, lr_actor=lr_a, lr_critic=lr_c, 
                     seed=seed, action_dim=action_dim, state_dim=state_dim,
                     action_max=action_max, hidden_dims=hidden_dims,

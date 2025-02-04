@@ -67,7 +67,6 @@ def save_metadata_readme(path, metadata):
 
 def save_metadata(metadata, path):
     with open(os.path.join(path, "metadata.json"), 'w') as f:
-        metadata = {key:(str(value) if not isinstance(value, list) else value)  for key,value in metadata.items()}
         return json.dump(metadata, f, indent=4)
 
 def load_metadata(path):
@@ -271,4 +270,4 @@ def experiment6(num_episodes, num_runs, test=False):
 
 if __name__ == "__main__":
     # Experiments can be run below
-    experiment1(5,1,test=True)
+    experiment1(int(5),1,test=True)
