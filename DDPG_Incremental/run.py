@@ -89,6 +89,7 @@ def run_ddpg(env, num_episodes, train_fun, path, train_args=dict(), prev_path=No
         metadata["previous_path"] = prev_path
         metadata["seed"] = metadata["seed"] + metadata["n_episodes"]
         train_args = metadata
+        train_args["current_path"] = path
         
     # Train agent(s)
     rewards, networks, (as_loss, cs_loss), agents_info, metadata, buffer_data = train_fun(env, episodes[-1], **train_args)
@@ -207,51 +208,51 @@ def patch_test_saved_policy(env, path, hidden_dim=32):
 For this experiment we test the single-agent one-patch environment
 Later I will extend this to multiple runs and use those to generate statistics for significance testing
 """
-def experiment1(num_episodes, num_runs, test=False):
+def experiment1(num_episodes, num_runs, prev_path=None, test=False):
     for i in range(num_runs):
         path = create_exp_folder("Experiment1", test=test)
         print(f"Run {i+1} has been started")
         env = NAgentsEnv(n_agents=1, alpha=0.1)
         train_args = dict(seed=i)
-        run_ddpg(env, num_episodes, n_agents_ddpg, path, train_args, skip_vid=False)
+        run_ddpg(env, num_episodes, n_agents_ddpg, path, train_args, prev_path=prev_path, skip_vid=False)
 
 """
 For this experiment we test the two-agent one-patch environment
 The agents don't observe each other, and do not communicate.
 Later I will extend this to multiple runs and use those to generate statistics for significance testing
 """
-def experiment2(num_episodes, num_runs, test=False):
+def experiment2(num_episodes, num_runs, prev_path=None, test=False):
     for i in range(num_runs):
         path = create_exp_folder("Experiment2", test=test)
         print(f"Run {i+1} has been started")
         env = NAgentsEnv(n_agents=2)
         train_args = dict(seed=i)
-        run_ddpg(env, num_episodes, n_agents_ddpg, path, train_args, skip_vid=False)
+        run_ddpg(env, num_episodes, n_agents_ddpg, path, train_args, prev_path=prev_path, skip_vid=False)
 
 """
 For this experiment we test the two-agent one-patch environment
 The agents observe each other, but do not communicate.
 Later I will extend this to multiple runs and use those to generate statistics for significance testing
 """
-def experiment3(num_episodes, num_runs, test=False):
+def experiment3(num_episodes, num_runs, prev_path=None, test=False):
     for i in range(num_runs):
         path = create_exp_folder("Experiment3", test=test)
         print(f"Run {i+1} has been started")
         env = NAgentsEnv(n_agents=2, obs_others=True)
         train_args = dict(seed=i)
-        run_ddpg(env, num_episodes, n_agents_ddpg, path, train_args, skip_vid=True)
+        run_ddpg(env, num_episodes, n_agents_ddpg, path, train_args, prev_path=prev_path, skip_vid=True)
 
 """
 For this experiment we test the two-agent one-patch environment
 The agents observe each other, and communicate via a social welfare function provided as a reward signal.
 Later I will extend this to multiple runs and use those to generate statistics for significance testing
 """
-def experiment4(num_episodes, num_runs, test=False):
+def experiment4(num_episodes, num_runs, prev_path=None, test=False):
     for i in range(num_runs):
         path = create_exp_folder("Experiment4", test=test)
         env = NAgentsEnv(n_agents=2, obs_others=True, obs_range=8)
         train_args = dict(seed=i, p_welfare=0.0)
-        run_ddpg(env, num_episodes, n_agents_ddpg, path, train_args, skip_vid=False)
+        run_ddpg(env, num_episodes, n_agents_ddpg, path, train_args, prev_path=prev_path, skip_vid=False)
 
 """
 For this experiment we test the single-agent one-patch environment
@@ -270,4 +271,4 @@ def experiment6(num_episodes, num_runs, test=False):
 
 if __name__ == "__main__":
     # Experiments can be run below
-    experiment1(int(5),1,test=True)
+    experiment1(150,1)
