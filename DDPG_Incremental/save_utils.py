@@ -27,11 +27,11 @@ def getRoot(file=None):
 def save_policies(models, type, path):
     for i, model in enumerate(models):
         state = nnx.state(model)
-        orbax_checkpointer.save(os.path.join(getRoot(), path, type, f"A{i}"), state)
+        orbax_checkpointer.save(os.path.abspath(os.path.join(path, type, f"A{i}")), state)
 
 def load_policies(models, type, path):
     for i, model in enumerate(models):
         state = nnx.state(model)
-        orbax_checkpointer.restore(os.path.join(getRoot(), path, type, f"A{i}"), item=state)
+        orbax_checkpointer.restore(os.path.join(path, type, f"A{i}"), item=state)
         
     
