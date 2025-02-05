@@ -21,6 +21,7 @@ def save_policies(models, type, path):
 def load_policies(models, type, path):
     for i, model in enumerate(models):
         state = nnx.state(model)
-        orbax_checkpointer.restore(os.path.join(path, type, f"A{i}"), item=state)
+        restored_model = orbax_checkpointer.restore(os.path.join(path, type, f"A{i}"), item=state)
+        nnx.update(model, restored_model)
         
     

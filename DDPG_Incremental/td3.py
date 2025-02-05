@@ -85,6 +85,14 @@ def sample_action(rng, actor, state, action_min, action_max, action_dim, act_noi
     eps = jax.random.normal(rng, (action_dim,))*act_noise
     return jnp.clip(mu_action + eps, action_min, action_max)
 
+def sample_action_beta(rng, actor, state, action_min, action_max, action_dim, act_noise=0.1):
+    alpha_beta = lambda s: (1-4*s)/(8*s) # Equation that approximates normal distribution std parameters needed for beta dist.
+    ab = alpha_beta(act_noise)
+    eps = (jax.random.beta(rng, ab, ab, (action_dim,)) - 0.5)*2*action_max # - 0.5 to ensure zero mean
+    mu_action = actor(state)
+    return mu_action + eps
+    
+
 @nnx.jit
 def polyak_update(tau: float, net_target: nnx.Module, net_normal: nnx.Module):
     params_t = nnx.state(net_target)
@@ -208,10 +216,10 @@ def wandb_log_ddpg(epoch, critic_loss, actor_loss, returns):
                "Return":returns})
 
 # TODO: Simplify this function by removing the welfare stuff (stuff relating to the p_welfare parameter)
-def n_agents_ddpg(env, num_episodes, tau=0.005, gamma=0.99, batch_size=100, lr_a=1e-4, lr_c=1e-3, seed=0, action_dim=2, state_dim=3, action_max=0.2, hidden_dim=[16,16], act_noise=0.13, p_welfare=0.0, log_fun=print_log_ddpg_n_agents, current_path="", **kwargs):
+def n_agents_ddpg(env, num_episodes, tau=0.005, gamma=0.99, batch_size=60, lr_a=2e-4, lr_c=1e-3, seed=0, action_dim=2, state_dim=3, action_max=0.2, hidden_dim=[16,16], act_noise=0.13, p_welfare=0.0, log_fun=print_log_ddpg_n_agents, current_path="", **kwargs):
     # Initialize metadata object for keeping track of (hyper-)parameters and/or additional settings of the environment
     hidden_dims = [str(h_dim) for h_dim in hidden_dim]
-    warmup_size = 2*batch_size
+    warmup_size = 5*batch_size
     metadata = dict(n_episodes=num_episodes.item(), tau=tau, gamma=gamma, 
                     batch_size=batch_size, lr_actor=lr_a, lr_critic=lr_c, 
                     seed=seed, action_dim=action_dim, state_dim=state_dim,
@@ -228,7 +236,10 @@ def n_agents_ddpg(env, num_episodes, tau=0.005, gamma=0.99, batch_size=100, lr_a
     critics = [Critic(state_dim+actor_dim,seed+i,out_dim=1,hidden_dim=hidden_dim) for i in range(n_agents)]
     critics_t = [Critic(state_dim+actor_dim,seed+i,out_dim=1,hidden_dim=hidden_dim) for i in range(n_agents)]
     # If using previous networks restore their state
-    if "actors" in kwargs and "critics" in kwargs and "previous_path" in kwargs:
+    #print(f"Checks: {'actors' in kwargs}, {'critics' in kwargs}, {'previous_path' in kwargs}")
+    if "previous_path" in kwargs:
+        print("Loading previous trained actor and critic networks...")
+        metadata["previous_path"] = kwargs["previous_path"]
         [load_policies(actors, "actors", kwargs["previous_path"]) for i in range(n_agents)]
         [load_policies(actors_t, "actors", kwargs["previous_path"]) for i in range(n_agents)]
         [load_policies(critics, "critics", kwargs["previous_path"]) for i in range(n_agents)]
@@ -256,6 +267,7 @@ def n_agents_ddpg(env, num_episodes, tau=0.005, gamma=0.99, batch_size=100, lr_a
     agent_states = np.empty((num_episodes, step_max, *agents_state.shape))
     patch_states = np.empty((num_episodes, step_max, 1))
     # Warm-up round
+    print("Filling buffer with warmup samples...")
     env_state, states = env.reset(seed=seed)
     for s_i in range(warmup_size):
         # Sample action, execute it, and add to buffer
@@ -269,6 +281,7 @@ def n_agents_ddpg(env, num_episodes, tau=0.005, gamma=0.99, batch_size=100, lr_a
             buffers[i_a].add(states[i_a], actions[i_a], rewards[i_a], next_states[i_a], terminated)
         states = next_states
     # Run episodes
+    print("Training started...")
     for i in range(num_episodes):
         done = False
         env_state, states = env.reset(seed=seed+i) # We initialize randomly each episode to allow more exploration
@@ -281,7 +294,7 @@ def n_agents_ddpg(env, num_episodes, tau=0.005, gamma=0.99, batch_size=100, lr_a
             actions = list(range(n_agents))
             for i_a,actor in enumerate(actors):
                 action_key, key = jax.random.split(key)
-                actions[i_a] = jnp.array(sample_action(action_key, actor, states[i_a], -action_max, action_max, actor_dim, act_noise)) 
+                actions[i_a] = jnp.array(sample_action_beta(action_key, actor, states[i_a], -action_max, action_max, actor_dim, act_noise)) 
             env_state, next_states, (rewards, penalties), terminated, truncated, _ = env.step(env_state, *actions)
             (agents_state, patch_state, step_idx) = env_state
             done = truncated or terminated
@@ -351,8 +364,10 @@ def n_agents_ddpg(env, num_episodes, tau=0.005, gamma=0.99, batch_size=100, lr_a
 
     # Save learned actor and critic
     if current_path != "":
+        print("Saving actor and critic networks of agents...")
         save_policies(actors_t, "actors", current_path)
         save_policies(critics_t, "critics", current_path)
+        metadata["current_path"] = os.path.abspath(current_path)
     
     return returns, ((actors_t, actor_weights), (critics_t, critic_weights)), (actors_loss_stats, critics_loss_stats), env_info, metadata, buffer_data
 

@@ -36,7 +36,7 @@ class Environment(ABC):
 
 # TODO: make a two (or N-) agent version of the single-patch foraging environment
 class NAgentsEnv(Environment):
-    def __init__(self, patch_radius=0.5, s_init=10, e_init=1, eta=0.1, beta=0.5, alpha=0.005, gamma=0.01, step_max=400, x_max=5, y_max=5, v_max=0.1, n_agents=2, obs_others=False, obs_range=8, in_patch_only=False, **kwargs):
+    def __init__(self, patch_radius=0.5, s_init=10, e_init=1, eta=0.1, beta=0.5, alpha=0.05, gamma=0.01, step_max=400, x_max=5, y_max=5, v_max=0.1, n_agents=2, obs_others=False, obs_range=8, in_patch_only=False, **kwargs):
         super().__init__(patch_radius=patch_radius, s_init=s_init, e_init=e_init, eta=eta, beta=beta, alpha=alpha, gamma=gamma, step_max=step_max, x_max=x_max, y_max=y_max, v_max=v_max)
         beta = beta / n_agents # This adjustment is done to keep the resource dynamics similar across different agent amounts
         self.agents = [Agent(0,0,x_max,y_max,e_init,v_max, alpha=alpha, beta=beta) for i in range(n_agents)]
@@ -197,12 +197,13 @@ class Agent:
         self.num_vars = 5 # Variables of interest: (x,y,v_x,v_y,e)
     
     def reset(self,x,y,seed=0):
-        v_key, theta_key = jax.random.split(jax.random.PRNGKey(seed))
+        #vx_key, vy_key = jax.random.split(jax.random.PRNGKey(seed))
         agent_state = np.zeros(self.num_vars)
         agent_state[:2] = np.array([x,y])
-        x_dot = jax.random.uniform(v_key, minval=-self.v_max, maxval=self.v_max)
-        y_dot = jax.random.uniform(v_key, minval=-self.v_max, maxval=self.v_max)
-        agent_state[2:4] = np.array([x_dot, y_dot])
+        # Test what happens when velocity is zero in both directions (better result or not?)
+        #x_dot = jax.random.uniform(vx_key, minval=-self.v_max, maxval=self.v_max)
+        #y_dot = jax.random.uniform(vy_key, minval=-self.v_max, maxval=self.v_max)
+        agent_state[2:4] = np.array([0, 0])
         agent_state[4] = self.e_init
         return agent_state
     

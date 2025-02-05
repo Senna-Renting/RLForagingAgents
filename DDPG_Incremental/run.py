@@ -212,9 +212,9 @@ def experiment1(num_episodes, num_runs, prev_path=None, test=False):
     for i in range(num_runs):
         path = create_exp_folder("Experiment1", test=test)
         print(f"Run {i+1} has been started")
-        env = NAgentsEnv(n_agents=1, alpha=0.1)
+        env = NAgentsEnv(n_agents=1)
         train_args = dict(seed=i)
-        run_ddpg(env, num_episodes, n_agents_ddpg, path, train_args, prev_path=prev_path, skip_vid=False)
+        run_ddpg(env, num_episodes, n_agents_ddpg, path, train_args, prev_path=prev_path, skip_vid=True)
 
 """
 For this experiment we test the two-agent one-patch environment
@@ -271,4 +271,4 @@ def experiment6(num_episodes, num_runs, test=False):
 
 if __name__ == "__main__":
     # Experiments can be run below
-    experiment1(150,1)
+    experiment1(60,1)
