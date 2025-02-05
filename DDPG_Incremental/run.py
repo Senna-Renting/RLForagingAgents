@@ -251,7 +251,7 @@ def experiment4(num_episodes, num_runs, prev_path=None, test=False):
     for i in range(num_runs):
         path = create_exp_folder("Experiment4", test=test)
         env = NAgentsEnv(n_agents=2, obs_others=True, obs_range=8)
-        train_args = dict(seed=i, p_welfare=0.0)
+        train_args = dict(seed=i, p_welfare=0.2)
         run_ddpg(env, num_episodes, n_agents_ddpg, path, train_args, prev_path=prev_path, skip_vid=False)
 
 """
@@ -271,4 +271,4 @@ def experiment6(num_episodes, num_runs, test=False):
 
 if __name__ == "__main__":
     # Experiments can be run below
-    experiment1(60,1)
+    experiment4(150,1)

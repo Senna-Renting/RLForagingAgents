@@ -120,7 +120,7 @@ def get_network_shape(network):
 # Helper function for computing the Nash Social Welfare function (aka geometric mean)
 def compute_NSW(rewards):
     #print("Rewards: ", rewards)
-    NSW = jnp.power(jnp.prod(rewards, axis=0), 1/rewards.shape[0])
+    NSW = np.power(np.prod(rewards), 1/len(rewards))
     #print("Welfare: ", NSW.item())
     return NSW
 
@@ -302,7 +302,9 @@ def n_agents_ddpg(env, num_episodes, tau=0.005, gamma=0.99, batch_size=60, lr_a=
                 for i_a in range(n_agents):
                     # Add states info to buffer
                     buffers[i_a].add(states[i_a], actions[i_a], rewards[i_a], next_states[i_a], terminated)
-                welfare = compute_welfare(buffers, s_i)
+                # Get current energy of each agent and compute welfare (NSW) from that 
+                energies = [states[i][4]/(s_i+1) for i in range(n_agents)]
+                welfare = compute_NSW(energies)
                 for i_a in range(n_agents):
                     # Sample batch from buffer
                     (b_states, b_actions, b_rewards, b_next_states, b_dones), ind = buffers[i_a].sample(batch_size)
