@@ -6,6 +6,13 @@ import os
 from abc import ABC, abstractmethod
 from functools import partial
 
+# Helper function for computing the Nash Social Welfare function (aka geometric mean)
+def compute_NSW(rewards):
+    #print("Rewards: ", rewards)
+    NSW = np.power(np.prod(rewards), 1/len(rewards))
+    #print("Welfare: ", NSW.item())
+    return NSW
+
 # TODO: create an abstract class for the environment from which the specific experiments then can be build
 class Environment(ABC):
     def __init__(self, patch_radius=2, s_init=10, e_init=1, eta=0.1, beta=0.5, alpha=0.5, gamma=0.01, step_max=400, x_max=5, y_max=5, v_max=0.1):
@@ -36,7 +43,7 @@ class Environment(ABC):
 
 # TODO: make a two (or N-) agent version of the single-patch foraging environment
 class NAgentsEnv(Environment):
-    def __init__(self, patch_radius=0.5, s_init=10, e_init=1, eta=0.1, beta=0.5, alpha=0.05, gamma=0.01, step_max=400, x_max=5, y_max=5, v_max=0.1, n_agents=2, obs_others=False, obs_range=8, in_patch_only=False, **kwargs):
+    def __init__(self, patch_radius=0.5, s_init=10, e_init=1, eta=0.1, beta=0.5, alpha=0.05, gamma=0.01, step_max=400, x_max=5, y_max=5, v_max=0.1, n_agents=2, obs_others=False, obs_range=8, in_patch_only=False, p_welfare=0, **kwargs):
         super().__init__(patch_radius=patch_radius, s_init=s_init, e_init=e_init, eta=eta, beta=beta, alpha=alpha, gamma=gamma, step_max=step_max, x_max=x_max, y_max=y_max, v_max=v_max)
         beta = beta / n_agents # This adjustment is done to keep the resource dynamics similar across different agent amounts
         self.agents = [Agent(0,0,x_max,y_max,e_init,v_max, alpha=alpha, beta=beta) for i in range(n_agents)]
@@ -47,6 +54,7 @@ class NAgentsEnv(Environment):
         self.obs_others = obs_others
         self.obs_range = obs_range
         self.in_patch_only = in_patch_only
+        self.p_welfare = p_welfare
 
     def get_params(self):
         return {
@@ -64,7 +72,8 @@ class NAgentsEnv(Environment):
             "step_max": self.step_max,
             "obs_others": self.obs_others,
             "obs_range": self.obs_range,
-            "in_patch_only": self.in_patch_only
+            "in_patch_only": self.in_patch_only,
+            "p_welfare": self.p_welfare
         }
 
     def size(self):
@@ -155,8 +164,8 @@ class NAgentsEnv(Environment):
     def step(self, env_state, *actions):
         (agents_state, patch_state, step_idx) = env_state
         rewards = np.empty(self.n_agents)
-        n_penalties = 1
-        penalties = np.empty((self.n_agents, n_penalties))
+        welfare = 0
+        penalties = np.empty((self.n_agents, 1))
         is_in_patch = np.empty(self.n_agents)
         tot_eaten = 0
         for i,action in enumerate(actions):
@@ -173,6 +182,10 @@ class NAgentsEnv(Environment):
             rewards[i] = reward
             tot_eaten += s_eaten
             agents_state[i] = agent_state
+        # Compute welfare
+        welfare = compute_NSW([agents_state[i][-1] for i in range(self.n_agents)])
+        # Compute reward with welfare
+        rewards = (1-self.p_welfare)*rewards + self.p_welfare*welfare
         # Update patch resources
         patch_state = self.patch.update_resources(patch_state, tot_eaten, dt=0.1)
         # Update counter

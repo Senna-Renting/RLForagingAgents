@@ -117,13 +117,6 @@ def get_network_shape(network):
     hidden = [state["lhs"][i]["kernel"].value.shape for i in range(len(state["lhs"]))]
     return [input, *hidden, output]
 
-# Helper function for computing the Nash Social Welfare function (aka geometric mean)
-def compute_NSW(rewards):
-    #print("Rewards: ", rewards)
-    NSW = np.power(np.prod(rewards), 1/len(rewards))
-    #print("Welfare: ", NSW.item())
-    return NSW
-
 def compute_welfare(buffers, lookback):
     rewards = np.zeros(len(buffers))
     for i,buffer in enumerate(buffers):
@@ -216,7 +209,7 @@ def wandb_log_ddpg(epoch, critic_loss, actor_loss, returns):
                "Return":returns})
 
 # TODO: Simplify this function by removing the welfare stuff (stuff relating to the p_welfare parameter)
-def n_agents_ddpg(env, num_episodes, tau=0.0025, gamma=0.99, batch_size=120, lr_a=1e-4, lr_c=1e-3, seed=0, action_dim=2, state_dim=3, action_max=0.1, hidden_dim=[32,32], act_noise=0.13, p_welfare=0.0, log_fun=print_log_ddpg_n_agents, current_path="", **kwargs):
+def n_agents_ddpg(env, num_episodes, tau=0.0025, gamma=0.99, batch_size=120, lr_a=1e-4, lr_c=1e-3, seed=0, action_dim=2, state_dim=3, action_max=0.1, hidden_dim=[32,32], act_noise=0.13, log_fun=print_log_ddpg_n_agents, current_path="", **kwargs):
     # Initialize metadata object for keeping track of (hyper-)parameters and/or additional settings of the environment
     hidden_dims = [str(h_dim) for h_dim in hidden_dim]
     warmup_size = 5*batch_size
@@ -224,8 +217,8 @@ def n_agents_ddpg(env, num_episodes, tau=0.0025, gamma=0.99, batch_size=120, lr_
                     batch_size=batch_size, lr_actor=lr_a, lr_critic=lr_c, 
                     seed=seed, action_dim=action_dim, state_dim=state_dim,
                     action_max=action_max, hidden_dims=hidden_dims,
-                    warmup_size=warmup_size, p_welfare=p_welfare, 
-                    act_noise=act_noise, alg_name="Normal DDPG", current_path=current_path, **env.get_params())
+                    warmup_size=warmup_size, act_noise=act_noise, alg_name="Normal DDPG", 
+                    current_path=current_path, **env.get_params())
     # Initialize neural networks
     n_agents = env.n_agents
     step_max = env.step_max
@@ -302,14 +295,8 @@ def n_agents_ddpg(env, num_episodes, tau=0.0025, gamma=0.99, batch_size=120, lr_
                 for i_a in range(n_agents):
                     # Add states info to buffer
                     buffers[i_a].add(states[i_a], actions[i_a], rewards[i_a], next_states[i_a], terminated)
-                # Get current energy of each agent and compute welfare (NSW) from that 
-                energies = [states[i][4]/(s_i+1) for i in range(n_agents)]
-                welfare = compute_NSW(energies)
-                for i_a in range(n_agents):
                     # Sample batch from buffer
                     (b_states, b_actions, b_rewards, b_next_states, b_dones), ind = buffers[i_a].sample(batch_size)
-                    # Modify rewards with welfare signal
-                    b_rewards = jnp.multiply(b_rewards, 1-p_welfare) + jnp.multiply(welfare, p_welfare)
                     # Update critic
                     ys = compute_targets(critics_t[i_a], actors_t[i_a], b_rewards, b_next_states, b_dones, gamma)
                     c_loss, grads = MSE_optimize_critic(optim_critics[i_a], critics[i_a], b_states, b_actions, ys)
