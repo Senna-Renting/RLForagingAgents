@@ -82,6 +82,8 @@ class NAgentsEnv(Environment):
         is_nearby = self.get_nearby_agents(agents_state)
         in_patch = np.array([self.agents[i].is_in_patch(agents_state[i], patch_state) for i in range(self.n_agents)])
         agents_obs = np.zeros((self.n_agents, obs_size))
+        latest_obs = np.array([agents_state[i_a][:4] for i_a in range(self.n_agents)])
+        latest_patch = patch_state[3]
         # Compute components of state
         for i in range(self.n_agents):
             ptr = 0
@@ -91,14 +93,16 @@ class NAgentsEnv(Environment):
             ptr += self.patch.num_vars-1
             # Add patch resource info to state
             if (np.any(is_nearby[i] & in_patch) and self.obs_others) or in_patch[i] or not self.in_patch_only:
-                agents_obs[i, ptr] = patch_state[3]
+                latest_patch = patch_state[3]
+            agents_obs[i, ptr] = latest_patch
             ptr += 1
             # Add position and velocity information of nearby agents (including self) to state
             if self.obs_others:
                 for j in range(self.n_agents):
                     if is_nearby[i,j] and i != j:
-                        agents_obs[i, ptr:ptr+4] = agents_state[j][:4]
+                        latest_obs[j] = agents_state[j][:4] # We only provide the agent with the latest observed information  
                     if i != j:
+                        agents_obs[i, ptr:ptr+4] = latest_obs[j]
                         ptr += 4
         return agents_obs
 

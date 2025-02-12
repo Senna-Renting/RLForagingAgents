@@ -214,7 +214,7 @@ def experiment1(num_episodes, num_runs, prev_path=None, test=False):
         print(f"Run {i+1} has been started")
         env = NAgentsEnv(n_agents=1)
         train_args = dict(seed=i)
-        run_ddpg(env, num_episodes, n_agents_ddpg, path, train_args, prev_path=prev_path, skip_vid=True)
+        run_ddpg(env, num_episodes, n_agents_ddpg, path, train_args, prev_path=prev_path, skip_vid=False)
 
 """
 For this experiment we test the two-agent one-patch environment
@@ -225,7 +225,7 @@ def experiment2(num_episodes, num_runs, prev_path=None, test=False):
     for i in range(num_runs):
         path = create_exp_folder("Experiment2", test=test)
         print(f"Run {i+1} has been started")
-        env = NAgentsEnv(n_agents=2)
+        env = NAgentsEnv(n_agents=2, in_patch_only=True)
         train_args = dict(seed=i)
         run_ddpg(env, num_episodes, n_agents_ddpg, path, train_args, prev_path=prev_path, skip_vid=False)
 
@@ -250,8 +250,8 @@ Later I will extend this to multiple runs and use those to generate statistics f
 def experiment4(num_episodes, num_runs, prev_path=None, test=False):
     for i in range(num_runs):
         path = create_exp_folder("Experiment4", test=test)
-        env = NAgentsEnv(n_agents=2, obs_others=True, obs_range=8)
-        train_args = dict(seed=i, p_welfare=0.2)
+        env = NAgentsEnv(n_agents=2, obs_others=True, in_patch_only=True, obs_range=0.75)
+        train_args = dict(seed=i, p_welfare=0.2, hidden_dim=[32,32], action_max=0.1)
         run_ddpg(env, num_episodes, n_agents_ddpg, path, train_args, prev_path=prev_path, skip_vid=False)
 
 """
@@ -271,4 +271,4 @@ def experiment6(num_episodes, num_runs, test=False):
 
 if __name__ == "__main__":
     # Experiments can be run below
-    experiment4(150,1)
+    experiment2(100,1)
