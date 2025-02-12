@@ -183,7 +183,7 @@ class NAgentsEnv(Environment):
             tot_eaten += s_eaten
             agents_state[i] = agent_state
         # Compute welfare
-        welfare = compute_NSW([agents_state[i][-1] for i in range(self.n_agents)])
+        welfare = compute_NSW([agents_state[i][-1] for i in range(self.n_agents)])/(step_idx+1)
         # Compute reward with welfare
         rewards = (1-self.p_welfare)*rewards + self.p_welfare*welfare
         # Update patch resources
@@ -234,10 +234,10 @@ class Agent:
         s_eaten = (self.is_in_patch(agent_state,patch_state)).astype(int)*self.beta*patch_state[3]
         # Penalty terms for the environment (inverted for minimization instead of maximization)
         max_penalty = np.linalg.norm(np.array([self.v_max]*2)) 
-        action_penalty = (np.linalg.norm(action.at[:2].get())/max_penalty)*self.alpha
+        action_penalty = ((np.linalg.norm(action.at[:2].get())/max_penalty)+0.01)*self.alpha
         # Update step (differential equation)
         de = dt*(s_eaten - action_penalty)
-        reward = de + 1*self.alpha # Ensure positive reward for algorithm
+        reward = de
         # If agent has negative or zero energy, put the energy value at zero and consider the agent dead
         agent_state[-1] = np.max([0., agent_state[-1] + de])
         penalties = action_penalty
