@@ -28,7 +28,7 @@ class Environment(ABC):
 
     def get_action_space(self):
         action_dim = 2 # We use two acceleration terms (one for x and one for y)
-        action_range = [-2*self.v_max, 2*self.v_max]
+        action_range = [-self.v_max, self.v_max]
         return action_dim, action_range
 
     @abstractmethod
@@ -43,7 +43,7 @@ class Environment(ABC):
 
 # TODO: make a two (or N-) agent version of the single-patch foraging environment
 class NAgentsEnv(Environment):
-    def __init__(self, patch_radius=0.5, s_init=10, e_init=1, eta=0.1, beta=0.5, alpha=0.05, gamma=0.01, step_max=400, x_max=5, y_max=5, v_max=0.1, n_agents=2, obs_others=False, obs_range=8, in_patch_only=False, p_welfare=0, **kwargs):
+    def __init__(self, patch_radius=0.5, s_init=10, e_init=1, eta=0.1, beta=0.5, alpha=0.1, gamma=0.01, step_max=400, x_max=5, y_max=5, v_max=0.1, n_agents=2, obs_others=False, obs_range=8, in_patch_only=False, p_welfare=0, **kwargs):
         super().__init__(patch_radius=patch_radius, s_init=s_init, e_init=e_init, eta=eta, beta=beta, alpha=alpha, gamma=gamma, step_max=step_max, x_max=x_max, y_max=y_max, v_max=v_max)
         beta = beta / n_agents # This adjustment is done to keep the resource dynamics similar across different agent amounts
         self.agents = [Agent(0,0,x_max,y_max,e_init,v_max, alpha=alpha, beta=beta) for i in range(n_agents)]
@@ -55,6 +55,9 @@ class NAgentsEnv(Environment):
         self.obs_range = obs_range
         self.in_patch_only = in_patch_only
         self.p_welfare = p_welfare
+        # Initialize latest observation states
+        self.latest_obs = np.zeros((self.n_agents, self.n_agents, self.agents[0].num_vars-1))
+        self.latest_patch = 0
 
     def get_params(self):
         return {
@@ -91,8 +94,6 @@ class NAgentsEnv(Environment):
         is_nearby = self.get_nearby_agents(agents_state)
         in_patch = np.array([self.agents[i].is_in_patch(agents_state[i], patch_state) for i in range(self.n_agents)])
         agents_obs = np.zeros((self.n_agents, obs_size))
-        latest_obs = np.array([agents_state[i_a][:4] for i_a in range(self.n_agents)])
-        latest_patch = patch_state[3]
         # Compute components of state
         for i in range(self.n_agents):
             ptr = 0
@@ -102,16 +103,16 @@ class NAgentsEnv(Environment):
             ptr += self.patch.num_vars-1
             # Add patch resource info to state
             if (np.any(is_nearby[i] & in_patch) and self.obs_others) or in_patch[i] or not self.in_patch_only:
-                latest_patch = patch_state[3]
-            agents_obs[i, ptr] = latest_patch
+                self.latest_patch = patch_state[3]
+            agents_obs[i, ptr] = self.latest_patch
             ptr += 1
             # Add position and velocity information of nearby agents (including self) to state
             if self.obs_others:
                 for j in range(self.n_agents):
                     if is_nearby[i,j] and i != j:
-                        latest_obs[j] = agents_state[j][:4] # We only provide the agent with the latest observed information  
+                        self.latest_obs[i,j] = agents_state[j][:4] # We only provide the agent with the latest observed information  
                     if i != j:
-                        agents_obs[i, ptr:ptr+4] = latest_obs[j]
+                        agents_obs[i, ptr:ptr+4] = self.latest_obs[i,j]
                         ptr += 4
         return agents_obs
 
@@ -183,7 +184,7 @@ class NAgentsEnv(Environment):
             tot_eaten += s_eaten
             agents_state[i] = agent_state
         # Compute welfare
-        welfare = compute_NSW([agents_state[i][-1] for i in range(self.n_agents)])/(step_idx+1)
+        welfare = compute_NSW([agents_state[i][-1] for i in range(self.n_agents)])/(step_idx+1) 
         # Compute reward with welfare
         rewards = (1-self.p_welfare)*rewards + self.p_welfare*welfare
         # Update patch resources
@@ -234,7 +235,7 @@ class Agent:
         s_eaten = (self.is_in_patch(agent_state,patch_state)).astype(int)*self.beta*patch_state[3]
         # Penalty terms for the environment (inverted for minimization instead of maximization)
         max_penalty = np.linalg.norm(np.array([self.v_max]*2)) 
-        action_penalty = ((np.linalg.norm(action.at[:2].get())/max_penalty)+0.01)*self.alpha
+        action_penalty = (0.9*(np.linalg.norm(action.at[:2].get())/max_penalty)+0.1)*self.alpha
         # Update step (differential equation)
         de = dt*(s_eaten - action_penalty)
         reward = de

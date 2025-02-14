@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 from prototype_dashboards import *
 import json
+import argparse
 
 def create_exp_folder(exp_name, test=False):
     folder_name = "runs"
@@ -19,51 +20,6 @@ def create_exp_folder(exp_name, test=False):
     if not os.path.exists(path):
         os.makedirs(path)
     return path
-
-def save_metadata_readme(path, metadata):
-    with open(os.path.join(path, "README.md"), "a") as f:
-        f.write("# Run information\n\n")
-        f.write("## Algorithm (DDPG) hyperparameters:\n\n")
-        f.write(f"State dimension: {metadata["state_dim"]}\n\n")
-        f.write(f"Action dimension: {metadata["action_dim"]}\n\n")
-        a_max = metadata["action_max"]
-        f.write(f"Action range [min, max]: [-{a_max}, {a_max}]\n\n")
-        f.write(f"Size of each hidden layer: {', '.join(metadata["hidden_dims"])}\n\n")
-        f.write(f"Tau: {metadata["tau"]}\n\n")
-        f.write(f"Learning rate (actor): {metadata["lr_actor"]}\n\n")
-        f.write(f"Learning rate (critic): {metadata["lr_critic"]}\n\n")
-        f.write(f"Gamma ($\\gamma$): {metadata["gamma"]}\n\n")
-        f.write("## Training parameters:\n\n")
-        f.write(f"Algorithm name: {metadata["alg_name"]}\n\n")
-        f.write(f"Seed: {metadata["seed"]}\n\n")
-        f.write(f"Number of episodes: {metadata["n_episodes"]}\n\n")
-        f.write(f"Batch size: {metadata["batch_size"]}\n\n")
-        f.write(f"Warmup size: {metadata["warmup_size"]}\n\n")
-        f.write(f"Proportion of welfare metric (p_welfare) used: {metadata["p_welfare"]} \n\n")
-        f.write(f"Action step noise: {metadata["act_noise"]} \n\n")
-        if metadata["alg_name"] == "Normal TD3":
-            f.write(f"Target noise: {metadata["target_noise"]}\n\n")
-            f.write(f"Noise clip: {metadata["noise_clip"]}\n\n")
-            f.write(f"Policy delay: {metadata["policy_delay"]}\n\n")
-        f.write("## Environment parameters:\n\n")
-        f.write(f"Number of agents: {metadata["n_agents"]}\n\n")
-        f.write(f"Range of x-axis: [0, {metadata["x_max"]}]\n\n")
-        f.write(f"Range of y-axis: [0, {metadata["y_max"]}]\n\n")
-        f.write(f"Maximum amount of steps allowed in environment (training horizon): {metadata["step_max"]}\n\n")
-        f.write(f"Maximum allowed velocity: {metadata["v_max"]}\n\n")
-        f.write(f"Patch radius: {metadata["patch_radius"]}\n\n")
-        f.write(f"Initial resource amount in patch: {metadata["s_init"]}\n\n")
-        f.write(f"Initial energy of agents: {metadata["e_init"]}\n\n")
-        f.write(f"Severity of penalties ($\\alpha$): {metadata["alpha"]}\n\n")
-        f.write(f"Patch resource always visible: {'No' if metadata["in_patch_only"] else 'Yes'}\n\n")
-        f.write("Resource differential equation used: $s_{t+1} = s_t\\cdot\\eta - s_t\\cdot\\gamma^2 - s_t\\cdot\\beta$\n\n")
-        f.write(f"Rate of resource decay ($\\gamma$): {metadata["env_gamma"]}\n\n")
-        f.write(f"Rate of consuming resources for agents ($\\beta$): {metadata["beta"]}\n\n")
-        f.write(f"Rate of resource growth ($\\eta$): {metadata["eta"]}\n\n")
-        f.write("## General remaining parameters:\n\n")
-        f.write(f"Distance below which we allow information sharing: {metadata["obs_range"]}\n\n")
-        has_obs = "Yes" if metadata["obs_others"] else "No"
-        f.write(f"Observe other agents (our form of communication): {has_obs}\n\n")
 
 def save_metadata(metadata, path):
     with open(os.path.join(path, "metadata.json"), 'w') as f:
@@ -250,8 +206,8 @@ Later I will extend this to multiple runs and use those to generate statistics f
 def experiment4(num_episodes, num_runs, prev_path=None, test=False):
     for i in range(num_runs):
         path = create_exp_folder("Experiment4", test=test)
-        env = NAgentsEnv(n_agents=2, obs_others=False, p_welfare=0.2, in_patch_only=True)
-        train_args = dict(seed=i, hidden_dim=[32,32], action_max=0.1)
+        env = NAgentsEnv(n_agents=2, obs_others=False, p_welfare=0.5, in_patch_only=True)
+        train_args = dict(seed=400)
         run_ddpg(env, num_episodes, n_agents_ddpg, path, train_args, prev_path=prev_path, skip_vid=False)
 
 """
@@ -269,6 +225,35 @@ Two agents who don't observe each other but do observe their own state as well a
 def experiment6(num_episodes, num_runs, test=False):
     pass
 
+def run_experiment(**kwargs):
+    print(kwargs)
+    s = kwargs["seed"]
+    e = kwargs["episodes"]
+    env = NAgentsEnv(n_agents=kwargs["n_agents"], obs_others=kwargs["obs"], p_welfare=kwargs["pw"], obs_range=kwargs["obsrange"], in_patch_only=kwargs["ipo"])
+    for i_r in range(kwargs["runs"]):
+        path = create_exp_folder(kwargs["out"])
+        train_args=dict(seed=s+i_r*e, tau=kwargs["tau"], gamma=kwargs["gamma"], batch_size=kwargs["bsize"], lr_c=kwargs["lrc"], lr_a=kwargs["lra"], act_noise=kwargs["act_noise"])
+        run_ddpg(env, e, n_agents_ddpg, path, train_args, skip_vid=not kwargs["video"])
+
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("episodes", type=int, help="Number of episodes")
+    parser.add_argument("runs", type=int, help="Number of runs")
+    parser.add_argument("out", type=str, help="Output folder for results")
+    parser.add_argument("-na", "--n-agents", type=int, default=1)
+    parser.add_argument("--obs", action=argparse.BooleanOptionalAction, default=False, help="Toggle to allow agents to observe each other")
+    parser.add_argument("--ipo", action=argparse.BooleanOptionalAction, default=True, help="Toggle for agents to only observe the state of the patch when inside")
+    parser.add_argument("-or", "--obsrange", type=float, default=8.0, help="Adjusts the distance below which agents observe each other")
+    parser.add_argument("--pw", type=float, default=0.0, help="Adjusts the proportion of Nash Social Welfare (NSW) used in the reward of agents")
+    parser.add_argument("-s", "--seed", type=int, default=0, help="General seed on which we generate our random numbers for the script")
+    parser.add_argument("-t", "--tau", type=float, default=0.02, help="Polyak parameter (between 0 and 1) for updating the neural networks")
+    parser.add_argument("-g", "--gamma", type=float, default=0.99, help="Discount parameter for Bellman updates of networks")
+    parser.add_argument("--bsize", type=int, default=60, help="Size of the batches used for training updates")
+    parser.add_argument("--lra", type=float, default=2e-4, help="Learning rate for the actor network")
+    parser.add_argument("--lrc", type=float, default=1e-3, help="Learning rate for the critic network")
+    parser.add_argument("-an", "--act-noise", type=float, default=0.3, help="Adjust the exploration noise added to actions of agents")
+    parser.add_argument("--video", action=argparse.BooleanOptionalAction, help="Toggle for video generation of episodes")
+    args = parser.parse_args()
+    run_experiment(**vars(args))
     # Experiments can be run below
-    experiment4(100,1)
+    # experiment4(100,1)

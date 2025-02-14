@@ -40,15 +40,6 @@ def plot_rewards(path, rewards, colors=plt.cm.Set1.colors):
     n_agents = rewards.shape[2]
     n_axes = 1
     fig = plt.figure()
-    # Plot and save social welfare when multiple agents in environment
-    if n_agents > 1:
-        n_axes = 2
-        ax = plt.subplot(n_axes, 1, 1)
-        ax.set_title("Nash social welfare obtained through rewards")
-        ax.set_xlabel("Episode")
-        ax.set_ylabel(f"NSW")
-        nsw_returns = np.power(np.prod(returns, axis=1), 1/returns.shape[1])
-        ax.plot(nsw_returns)
     # Plot and save return
     ax = plt.subplot(n_axes, 1, n_axes)
     ax.set_title("Return over episodes")

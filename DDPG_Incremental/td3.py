@@ -209,7 +209,7 @@ def wandb_log_ddpg(epoch, critic_loss, actor_loss, returns):
                "Return":returns})
 
 # TODO: Simplify this function by removing the welfare stuff (stuff relating to the p_welfare parameter)
-def n_agents_ddpg(env, num_episodes, tau=0.0025, gamma=0.99, batch_size=120, lr_a=1e-4, lr_c=1e-3, seed=0, action_dim=2, state_dim=3, action_max=0.1, hidden_dim=[32,32], act_noise=0.13, log_fun=print_log_ddpg_n_agents, current_path="", **kwargs):
+def n_agents_ddpg(env, num_episodes, tau=0.0025, gamma=0.99, batch_size=120, lr_a=1e-4, lr_c=1e-3, seed=0, action_dim=2, state_dim=9, action_max=0.1, hidden_dim=[32,32], act_noise=0.13, log_fun=print_log_ddpg_n_agents, current_path="", **kwargs):
     # Initialize metadata object for keeping track of (hyper-)parameters and/or additional settings of the environment
     hidden_dims = [str(h_dim) for h_dim in hidden_dim]
     warmup_size = 5*batch_size
@@ -277,7 +277,7 @@ def n_agents_ddpg(env, num_episodes, tau=0.0025, gamma=0.99, batch_size=120, lr_
     print("Training started...")
     for i in range(num_episodes):
         done = False
-        env_state, states = env.reset(seed=seed+i) # We initialize randomly each episode to allow more exploration
+        env_state, states = env.reset(seed=seed) # We initialize randomly each episode to allow more exploration
         # Initialize loss temp variables
         cs_loss = np.empty((n_agents,step_max))
         as_loss = np.empty((n_agents,step_max))
@@ -325,7 +325,7 @@ def n_agents_ddpg(env, num_episodes, tau=0.0025, gamma=0.99, batch_size=120, lr_
                 actor_weight[i, i_a] = a_weights[i_w]
         # Test agent
         done = False
-        env_state, states = env.reset(seed=seed+i) # Make sure the reset seed is the same as for training
+        env_state, states = env.reset(seed=seed) # Make sure the reset seed is the same as for training
         c = 0
         for i_t in range(step_max):
             actions = [jnp.array(actors_t[i_a](states[i_a])) for i_a in range(n_agents)]
