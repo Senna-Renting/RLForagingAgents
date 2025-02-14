@@ -277,7 +277,7 @@ def n_agents_ddpg(env, num_episodes, tau=0.0025, gamma=0.99, batch_size=120, lr_
     print("Training started...")
     for i in range(num_episodes):
         done = False
-        env_state, states = env.reset(seed=seed) # We initialize randomly each episode to allow more exploration
+        env_state, states = env.reset(seed=seed+i) # We initialize randomly each episode to allow more exploration
         # Initialize loss temp variables
         cs_loss = np.empty((n_agents,step_max))
         as_loss = np.empty((n_agents,step_max))
@@ -325,7 +325,7 @@ def n_agents_ddpg(env, num_episodes, tau=0.0025, gamma=0.99, batch_size=120, lr_
                 actor_weight[i, i_a] = a_weights[i_w]
         # Test agent
         done = False
-        env_state, states = env.reset(seed=seed) # Make sure the reset seed is the same as for training
+        env_state, states = env.reset(seed=seed+i) # Make sure the reset seed is the same as for training
         c = 0
         for i_t in range(step_max):
             actions = [jnp.array(actors_t[i_a](states[i_a])) for i_a in range(n_agents)]
@@ -421,7 +421,7 @@ def n_agents_td3(env, num_episodes, tau=0.01, gamma=0.99, batch_size=30, lr_a=2e
     # Run episodes
     for i in range(num_episodes):
         done = False
-        env_state, states = env.reset(seed=seed)
+        env_state, states = env.reset(seed=seed+i)
         # Initialize loss temp variables
         cs_loss = np.empty((2,n_agents,step_max))
         as_loss = np.empty((n_agents,step_max//policy_delay))

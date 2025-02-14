@@ -133,27 +133,18 @@ class NAgentsEnv(Environment):
         return obs_size 
     
     def reset(self, seed=0):
+        rng = np.random.default_rng(seed=seed)
         # Initialize rng_key and state arrays
-        a_keys = jax.random.split(jax.random.PRNGKey(seed), self.n_agents)
         agents_state = np.zeros((self.n_agents, self.agents[0].num_vars))
         # Reset the patch
         patch_state = self.patch.reset()
         # Generate random position for each agent
         for i in range(self.n_agents):
-            def is_in_patch(a):
-                (pos, _) = a
-                x_diff = pos[0] - patch_state[0]
-                y_diff = pos[1] - patch_state[1]
-                dist = jnp.sqrt(x_diff**2 + y_diff**2)
-                return dist <= patch_state[2]
-            def get_coordinates(a):
-                (_, key) = a
-                subkey, key = jax.random.split(key)
-                x = jax.random.uniform(subkey, minval=0,maxval=self.x_max)
-                y = jax.random.uniform(key, minval=0,maxval=self.y_max)
-                return ([x,y], key)
-            (pos,key) = jax.lax.while_loop(is_in_patch, get_coordinates, get_coordinates((0,a_keys[i])))
-            agents_state[i] = self.agents[i].reset(*pos)
+            x = rng.random()*self.x_max
+            y = rng.random()*self.y_max
+            pos = [x,y]
+            agents_state[i] = self.agents[i].reset(*pos, rng)
+            print(f"State A{i}: {agents_state[i]}")
         # Reset counter
         step_idx = 0
         # Store agents' observations
@@ -214,14 +205,11 @@ class Agent:
         self.e_init = e_init
         self.num_vars = 5 # Variables of interest: (x,y,v_x,v_y,e)
     
-    def reset(self,x,y,seed=0):
-        #vx_key, vy_key = jax.random.split(jax.random.PRNGKey(seed))
+    def reset(self,x,y,rng):
         agent_state = np.zeros(self.num_vars)
         agent_state[:2] = np.array([x,y])
-        # Test what happens when velocity is zero in both directions (better result or not?)
-        #x_dot = jax.random.uniform(vx_key, minval=-self.v_max, maxval=self.v_max)
-        #y_dot = jax.random.uniform(vy_key, minval=-self.v_max, maxval=self.v_max)
-        agent_state[2:4] = np.array([0, 0])
+        vs = 2*self.v_max*rng.random(size=2) - self.v_max
+        agent_state[2:4] = vs
         agent_state[4] = self.e_init
         return agent_state
     
