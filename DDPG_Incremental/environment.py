@@ -242,17 +242,13 @@ class Agent:
         x_acc = action.at[0].get()
         y_acc = action.at[1].get()
         damp = 0.3
-        """"
-        x_new = x + dt*x_dot
-        x_dot_new = x_dot + dt*(x_acc - damp*x_dot) 
-        """"
-        n_updates = int(1/dt)
-        for i in range(n_updates):
-            x_dot = v_bounded((1-damp)*x_dot + dt*x_acc)
-            y_dot = v_bounded((1-damp)*y_dot + dt*y_acc)
-            # Update position
-            x = (x + dt*x_dot) % self.x_max
-            y = (y + dt*y_dot) % self.y_max
+        # Update position
+        x = (x + dt*x_dot) % self.x_max
+        y = (y + dt*y_dot) % self.y_max
+        # Update velocity
+        x_dot = v_bounded(x_dot + dt*(x_acc-damp*x_dot))
+        y_dot = v_bounded(y_dot + dt*(y_acc-damp*y_dot))
+        
         agent_state[:2] = [x,y]
         agent_state[2:4] = [x_dot,y_dot]
         return agent_state
