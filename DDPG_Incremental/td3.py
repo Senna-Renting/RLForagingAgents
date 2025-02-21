@@ -7,11 +7,7 @@ import wandb
 from environment import *
 from save_utils import save_policy, save_policies, load_policies
 from functools import partial
-
-# TODO: Implement the four new functions added, allowing multi-objective RL updates:
-# 2. compute_welfare_targets
-# 3. optimize_welfare_critic
-# 4. optimize_welfare_actor
+import os
 
 
 ## Critic network and it's complementary functions
@@ -209,7 +205,7 @@ def wandb_log_ddpg(epoch, critic_loss, actor_loss, returns):
                "Return":returns})
 
 # TODO: Simplify this function by removing the welfare stuff (stuff relating to the p_welfare parameter)
-def n_agents_ddpg(env, num_episodes, tau=0.0025, gamma=0.99, batch_size=240, lr_a=1e-4, lr_c=1e-3, seed=0, action_dim=2, state_dim=9, action_max=0.1, hidden_dim=[64,64], act_noise=0.13, log_fun=print_log_ddpg_n_agents, current_path="", **kwargs):
+def n_agents_ddpg(env, num_episodes, tau=0.0025, gamma=0.99, batch_size=240, lr_a=1e-4, lr_c=1e-3, seed=0, action_dim=2, state_dim=9, action_max=1, hidden_dim=[32,32], act_noise=0.13, log_fun=print_log_ddpg_n_agents, current_path="", **kwargs):
     # Initialize metadata object for keeping track of (hyper-)parameters and/or additional settings of the environment
     hidden_dims = [str(h_dim) for h_dim in hidden_dim]
     warmup_size = 5*batch_size
@@ -249,16 +245,18 @@ def n_agents_ddpg(env, num_episodes, tau=0.0025, gamma=0.99, batch_size=240, lr_
     critic_weights = [np.empty((num_episodes, n_agents, *shape)) for shape in get_network_shape(critics_t[0])]
     actor_weights = [np.empty((num_episodes, n_agents, *shape)) for shape in get_network_shape(actors_t[0])]
     # Keep track of important loss variables (3 is for [avg,min,max] stats)
-    critics_loss_stats = np.empty((num_episodes, 3, n_agents))
-    actors_loss_stats = np.empty((num_episodes, 3, n_agents))
+    data_path = os.path.abspath(os.path.join(current_path, "data"))
+    critics_loss_stats = np.memmap(os.path.join(data_path, "critics_loss.dat"), dtype="float32", mode="w+", shape=(num_episodes, 3, n_agents))
+    actors_loss_stats = np.memmap(os.path.join(data_path, "actors_loss.dat"), dtype="float32", mode="w+", shape=(num_episodes, 3, n_agents))
     # Keep track of accumulated rewards
-    returns = np.empty((num_episodes, step_max, n_agents))
-    test_penalties = np.empty((num_episodes, step_max, n_agents, 1))
+    returns = np.memmap(os.path.join(data_path, "returns.dat"), dtype="float32", mode="w+", shape=(num_episodes, step_max, n_agents))
+    test_penalties = np.memmap(os.path.join(data_path, "test_penalties.dat"), dtype="float32", mode="w+", shape=(num_episodes, step_max, n_agents, 1))
+    #test_penalties = np.empty((num_episodes, step_max, n_agents, 1))
     # Keep track of patch enter events and states of agents
-    test_is_in_patch = np.empty((num_episodes, step_max, n_agents))
+    test_is_in_patch = np.memmap(os.path.join(data_path, "is_in_patch.dat"), dtype="float32", mode="w+", shape=(num_episodes, step_max, n_agents))
     (agents_state, patch_state, step_idx), states = env.reset(seed=seed)
-    agent_states = np.empty((num_episodes, step_max, *agents_state.shape))
-    patch_states = np.empty((num_episodes, step_max, 1))
+    agent_states = np.memmap(os.path.join(data_path, "agent_states.dat"), dtype="float32", mode="w+", shape=(num_episodes, step_max+1, *agents_state.shape))
+    patch_states = np.memmap(os.path.join(data_path, "patch_states.dat"), dtype="float32", mode="w+", shape=(num_episodes, step_max+1, 1))
     # Warm-up round
     print("Filling buffer with warmup samples...")
     env_state, states = env.reset(seed=seed)
@@ -326,14 +324,16 @@ def n_agents_ddpg(env, num_episodes, tau=0.0025, gamma=0.99, batch_size=240, lr_
         # Test agent
         done = False
         env_state, states = env.reset(seed=seed+i) # Make sure the reset seed is the same as for training
+        agent_states[i, 0] = env_state[0]
+        patch_states[i, 0] = env_state[1][-1]
         c = 0
         for i_t in range(step_max):
             actions = [jnp.array(actors_t[i_a](states[i_a])) for i_a in range(n_agents)]
             step_idx = env_state[2]
             env_state,next_states,(rewards,(penalties, is_in_patch)), terminated, truncated, _ = env.step(env_state, *actions)
-            agent_states[i, i_t] = env_state[0]
-            patch_states[i, i_t] = env_state[1][-1]
-            test_penalties[i,step_idx,:] = penalties
+            agent_states[i, i_t+1] = env_state[0]
+            patch_states[i, i_t+1] = env_state[1][-1]
+            test_penalties[i,step_idx] = penalties
             test_is_in_patch[i,step_idx] = is_in_patch
             states = next_states
             done = terminated or truncated
@@ -348,9 +348,16 @@ def n_agents_ddpg(env, num_episodes, tau=0.0025, gamma=0.99, batch_size=240, lr_
         # Compute relevant information
         patch_info = (patch_state[:-1], patch_states)
         env_info = (test_penalties, test_is_in_patch, agent_states, patch_info)
+        # Save all written data to disk indefinitely
+        agent_states.flush()
+        patch_states.flush()
+        test_penalties.flush()
+        test_is_in_patch.flush()
+        actors_loss_stats.flush()
+        critics_loss_stats.flush()
+    # Gather buffer data for storing purposes
     buffer_tuple = zip(*[buffer.get_all() for buffer in buffers])
     buffer_data = [np.concatenate(tuple, axis=0) for tuple in buffer_tuple]
-
     # Save learned actor and critic
     if current_path != "":
         print("Saving actor and critic networks of agents...")

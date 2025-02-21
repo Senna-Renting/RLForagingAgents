@@ -160,71 +160,6 @@ def patch_test_saved_policy(env, path, hidden_dim=32):
             break
     env.render()
 
-"""
-For this experiment we test the single-agent one-patch environment
-Later I will extend this to multiple runs and use those to generate statistics for significance testing
-"""
-def experiment1(num_episodes, num_runs, prev_path=None, test=False):
-    for i in range(num_runs):
-        path = create_exp_folder("Experiment1", test=test)
-        print(f"Run {i+1} has been started")
-        env = NAgentsEnv(n_agents=1)
-        train_args = dict(seed=i)
-        run_ddpg(env, num_episodes, n_agents_ddpg, path, train_args, prev_path=prev_path, skip_vid=False)
-
-"""
-For this experiment we test the two-agent one-patch environment
-The agents don't observe each other, and do not communicate.
-Later I will extend this to multiple runs and use those to generate statistics for significance testing
-"""
-def experiment2(num_episodes, num_runs, prev_path=None, test=False):
-    for i in range(num_runs):
-        path = create_exp_folder("Experiment2", test=test)
-        print(f"Run {i+1} has been started")
-        env = NAgentsEnv(n_agents=2, in_patch_only=True)
-        train_args = dict(seed=i)
-        run_ddpg(env, num_episodes, n_agents_ddpg, path, train_args, prev_path=prev_path, skip_vid=False)
-
-"""
-For this experiment we test the two-agent one-patch environment
-The agents observe each other, but do not communicate.
-Later I will extend this to multiple runs and use those to generate statistics for significance testing
-"""
-def experiment3(num_episodes, num_runs, prev_path=None, test=False):
-    for i in range(num_runs):
-        path = create_exp_folder("Experiment3", test=test)
-        print(f"Run {i+1} has been started")
-        env = NAgentsEnv(n_agents=2, obs_others=True)
-        train_args = dict(seed=i)
-        run_ddpg(env, num_episodes, n_agents_ddpg, path, train_args, prev_path=prev_path, skip_vid=True)
-
-"""
-For this experiment we test the two-agent one-patch environment
-The agents observe each other, and communicate via a social welfare function provided as a reward signal.
-Later I will extend this to multiple runs and use those to generate statistics for significance testing
-"""
-def experiment4(num_episodes, num_runs, prev_path=None, test=False):
-    for i in range(num_runs):
-        path = create_exp_folder("Experiment4", test=test)
-        env = NAgentsEnv(n_agents=2, obs_others=False, p_welfare=0.5, in_patch_only=True)
-        train_args = dict(seed=400)
-        run_ddpg(env, num_episodes, n_agents_ddpg, path, train_args, prev_path=prev_path, skip_vid=False)
-
-"""
-For this experiment we test the single-agent one-patch environment
-The agents observe each other, and communicate via by providing a message in addition to an action for their policy.
-We will use the messages as state inputs, to train the critic on
-Later I will extend this to multiple runs and use those to generate statistics for significance testing
-"""
-def experiment5(num_episodes, num_runs, test=False):
-    pass
-
-"""
-Two agents who don't observe each other but do observe their own state as well as the patch's state. They are given a global reward signal in the form of nash social welfare (product of their returns as computed from the sample batches)
-"""
-def experiment6(num_episodes, num_runs, test=False):
-    pass
-
 def run_experiment(**kwargs):
     print(kwargs)
     s = kwargs["seed"]
@@ -232,6 +167,7 @@ def run_experiment(**kwargs):
     env = NAgentsEnv(n_agents=kwargs["n_agents"], obs_others=kwargs["obs"], p_welfare=kwargs["pw"], obs_range=kwargs["obsrange"], in_patch_only=kwargs["ipo"])
     for i_r in range(kwargs["runs"]):
         path = create_exp_folder(kwargs["out"])
+        os.mkdir(os.path.join(path, "data"))
         train_args=dict(seed=s+i_r*e, tau=kwargs["tau"], gamma=kwargs["gamma"], batch_size=kwargs["bsize"], lr_c=kwargs["lrc"], lr_a=kwargs["lra"], act_noise=kwargs["act_noise"])
         run_ddpg(env, e, n_agents_ddpg, path, train_args, skip_vid=not kwargs["video"])
 
@@ -243,15 +179,15 @@ if __name__ == "__main__":
     parser.add_argument("-na", "--n-agents", type=int, default=1)
     parser.add_argument("--obs", action=argparse.BooleanOptionalAction, default=False, help="Toggle to allow agents to observe each other")
     parser.add_argument("--ipo", action=argparse.BooleanOptionalAction, default=True, help="Toggle for agents to only observe the state of the patch when inside")
-    parser.add_argument("-or", "--obsrange", type=float, default=8.0, help="Adjusts the distance below which agents observe each other")
+    parser.add_argument("-or", "--obsrange", type=float, default=80, help="Adjusts the distance below which agents observe each other")
     parser.add_argument("--pw", type=float, default=0.0, help="Adjusts the proportion of Nash Social Welfare (NSW) used in the reward of agents")
     parser.add_argument("-s", "--seed", type=int, default=0, help="General seed on which we generate our random numbers for the script")
-    parser.add_argument("-t", "--tau", type=float, default=0.02, help="Polyak parameter (between 0 and 1) for updating the neural networks")
-    parser.add_argument("-g", "--gamma", type=float, default=0.99, help="Discount parameter for Bellman updates of networks")
-    parser.add_argument("--bsize", type=int, default=120, help="Size of the batches used for training updates")
-    parser.add_argument("--lra", type=float, default=2e-4, help="Learning rate for the actor network")
+    parser.add_argument("-t", "--tau", type=float, default=0.0025, help="Polyak parameter (between 0 and 1) for updating the neural networks")
+    parser.add_argument("-g", "--gamma", type=float, default=0.995, help="Discount parameter for Bellman updates of networks")
+    parser.add_argument("--bsize", type=int, default=60, help="Size of the batches used for training updates")
+    parser.add_argument("--lra", type=float, default=3e-4, help="Learning rate for the actor network")
     parser.add_argument("--lrc", type=float, default=1e-3, help="Learning rate for the critic network")
-    parser.add_argument("-an", "--act-noise", type=float, default=0.13, help="Adjust the exploration noise added to actions of agents")
+    parser.add_argument("-an", "--act-noise", type=float, default=0.15, help="Adjust the exploration noise added to actions of agents")
     parser.add_argument("--video", action=argparse.BooleanOptionalAction, help="Toggle for video generation of episodes")
     args = parser.parse_args()
     run_experiment(**vars(args))

@@ -63,10 +63,12 @@ def plot_env(path, env_shape, patch_info, agents_state):
     patch_energy = patch_info[1]
     agent_size = env_shape[0]/100
     s_max = np.max(patch_info[1][-1])
+    print(s_max)
     patch_pos = patch_info[0][:2]
     patch_radius = patch_info[0][2]
     agent_pos = lambda frame, i_a: agents_state[int(frame/step_max),frame%step_max, i_a, :2]
     norm = lambda frame: patch_energy[int(frame/step_max), frame%step_max,0]/s_max
+    print(norm(0))
     patch_color = lambda norm: (0.2,0.3+0.7*norm,0.2)
     fig = plt.figure()
     ax = plt.subplot(1,1,1)
