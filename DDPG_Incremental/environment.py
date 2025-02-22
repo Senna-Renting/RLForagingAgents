@@ -12,10 +12,9 @@ def compute_NSW(rewards):
     NSW = np.power(np.prod(rewards), 1/len(rewards))
     #print("Welfare: ", NSW.item())
     return NSW
-
-# TODO: create an abstract class for the environment from which the specific experiments then can be build
-class Environment(ABC):
-    def __init__(self, patch_radius=5, s_init=10, e_init=1, eta=0.1, beta=0.5, alpha=0.5, gamma=0.01, step_max=400, x_max=50, y_max=50, v_max=1):
+    
+class NAgentsEnv():
+    def __init__(self, patch_radius=10,s_init=10, e_init=5, eta=0.1, beta=0.1, alpha=0.5, gamma=0.01, step_max=400, x_max=50, y_max=50, v_max=4, n_agents=2, obs_others=False, obs_range=80, in_patch_only=False, p_welfare=0, **kwargs):
         self.x_max = x_max
         self.y_max = y_max
         self.v_max = v_max
@@ -25,26 +24,6 @@ class Environment(ABC):
         self.step_max = step_max
         self.step_idx = 0
         self.patch = Patch(x_max/2, y_max/2, patch_radius, s_init, eta=eta, gamma=gamma)
-
-    def get_action_space(self):
-        action_dim = 2 # We use two acceleration terms (one for x and one for y)
-        action_range = [-self.v_max, self.v_max]
-        return action_dim, action_range
-
-    @abstractmethod
-    def step(self, action):
-        ...
-    @abstractmethod
-    def reset(self, seed=0):
-        ...
-    @abstractmethod
-    def get_state_space(self):
-        ...
-
-# TODO: make a two (or N-) agent version of the single-patch foraging environment
-class NAgentsEnv(Environment):
-    def __init__(self, patch_radius=10,s_init=10, e_init=5, eta=0.1, beta=0.5, alpha=0.5, gamma=0.01, step_max=400, x_max=50, y_max=50, v_max=1, n_agents=2, obs_others=False, obs_range=80, in_patch_only=False, p_welfare=0, **kwargs):
-        super().__init__(patch_radius=patch_radius, s_init=s_init, e_init=e_init, eta=eta, beta=beta, alpha=alpha, gamma=gamma, step_max=step_max, x_max=x_max, y_max=y_max, v_max=v_max)
         self.agents = [Agent(0,0,x_max,y_max,e_init,v_max, alpha=alpha, beta=beta) for i in range(n_agents)]
         self.n_agents = n_agents
         self.alpha = alpha
@@ -58,6 +37,11 @@ class NAgentsEnv(Environment):
         self.latest_obs = np.zeros((self.n_agents, self.n_agents, self.agents[0].num_vars-1))
         self.latest_patch = 0
 
+    def get_action_space(self):
+        action_dim = 2 # We use two acceleration terms (one for x and one for y)
+        action_range = [-self.v_max, self.v_max]
+        return action_dim, action_range
+    
     def get_params(self):
         return {
             "n_agents": self.n_agents, 
@@ -201,6 +185,7 @@ class Agent:
         self.x_max = x_max
         self.y_max = y_max
         self.e_init = e_init
+        self.max_penalty = np.linalg.norm(np.array([self.v_max]*2))
         self.num_vars = 5 # Variables of interest: (x,y,v_x,v_y,e)
     
     def reset(self,x,y,rng):
@@ -212,45 +197,40 @@ class Agent:
         return agent_state
     
     def is_in_patch(self,agent_state,patch_state):
-        x_diff = agent_state[0] - patch_state[0]
-        y_diff = agent_state[1] - patch_state[1]
-        dist = np.sqrt(x_diff**2 + y_diff**2)
+        diff = agent_state[:2] - patch_state[:2]
+        dist = np.linalg.norm(diff, 2)
         return dist <= patch_state[2]
 
     def update_energy(self,agent_state,patch_state,action,dt=0.1):
         s_eaten = (self.is_in_patch(agent_state,patch_state)).astype(int)*self.beta*patch_state[3]
-        # Penalty terms for the environment (inverted for minimization instead of maximization)
-        max_penalty = np.linalg.norm(np.array([self.v_max]*2)) 
-        action_penalty = (0.9*(np.linalg.norm(action.at[:2].get())/max_penalty)+0.1)*self.alpha
+        # Penalty terms for the environment (inverted for minimization instead of maximization) 
+        p_still = 0.2
+        action_penalty = ((1-p_still)*(np.linalg.norm(action.at[:2].get())/self.max_penalty)+p_still)*self.alpha
         # Update step (differential equation)
-        de = s_eaten -dt*action_penalty
+        de = s_eaten - dt*action_penalty
         # If agent has negative or zero energy, put the energy value at zero and consider the agent dead
         # Also agent can't have more energy than it's initial energy value
-        agent_state[-1] = np.min([np.max([0., agent_state[-1] + de]),self.e_init])
+        agent_state[-1] = np.clip(agent_state[-1]+de, 0, self.e_init)
         reward = agent_state[-1]/self.e_init
         penalties = action_penalty
         return agent_state, reward, s_eaten, penalties
         
     def update_position(self,agent_state,action, dt=0.1):
         # Functions needed to bound the allowed actions
-        v_bounded = lambda v: max(min(v, self.v_max), -self.v_max)
+        v_bounded = lambda v: np.clip(v, -self.v_max, self.v_max)
         # Compute action values
-        x = agent_state[0]
-        y = agent_state[1]
-        x_dot = agent_state[2]
-        y_dot = agent_state[3]
-        x_acc = action.at[0].get()
-        y_acc = action.at[1].get()
+        pos = agent_state[:2].copy()
+        vel = agent_state[2:4].copy()
+        acc = action.at[:2].get()
         damp = 0.3
         # Update position
-        x = (x + dt*x_dot) % self.x_max
-        y = (y + dt*y_dot) % self.y_max
+        pos += dt*vel 
+        pos[0] = pos[0] % self.x_max
+        pos[1] = pos[1] % self.y_max
         # Update velocity
-        x_dot = v_bounded(x_dot + dt*(x_acc-damp*x_dot))
-        y_dot = v_bounded(y_dot + dt*(y_acc-damp*y_dot))
-        
-        agent_state[:2] = [x,y]
-        agent_state[2:4] = [x_dot,y_dot]
+        vel = v_bounded(vel + dt*(acc-damp*vel))
+        agent_state[:2] = pos
+        agent_state[2:4] = vel
         return agent_state
 
 class Patch:
@@ -267,10 +247,10 @@ class Patch:
         return self.radius
     def update_resources(self, patch_state, eaten, dt=0.1):
         resources = patch_state[3]
-        s_growth = np.multiply(self.eta,resources)
-        s_decay = np.multiply(self.gamma,np.power(resources,2))
-        ds = dt*(s_growth - s_decay) - eaten
-        patch_state[3] = np.array(max(0,resources + ds), dtype=np.float32)
+        scalars = np.array([dt*self.eta, -dt*self.gamma, -1])
+        values = np.array([resources,np.power(resources,2),eaten])
+        ds = np.dot(scalars.T, values)
+        patch_state[3] = np.max([0.,resources + ds]) 
         return patch_state
     def reset(self):
         patch_state = np.zeros(self.num_vars)
