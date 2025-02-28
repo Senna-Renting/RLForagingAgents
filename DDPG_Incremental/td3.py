@@ -12,7 +12,7 @@ import os
 
 ## Critic network and it's complementary functions
 class Critic(nnx.Module):
-    def __init__(self, in_dim, seed, out_dim=1, hidden_dim=[16,32,16]):
+    def __init__(self, in_dim, seed, out_dim=1, hidden_dim=[32,32]):
         rngs = nnx.Rngs(seed)
         self.input = nnx.Linear(in_dim, hidden_dim[0], rngs=rngs)
         self.lhs = tuple([nnx.Linear(hidden_dim[i], hidden_dim[i+1], rngs=rngs) for i in range(len(hidden_dim) - 1)])
@@ -21,7 +21,7 @@ class Critic(nnx.Module):
         x = jnp.concatenate([state, action], axis=-1)
         x = nnx.relu(self.input(x))
         for lh in self.lhs:
-            x = nnx.leaky_relu(lh(x))
+            x = nnx.relu(lh(x))
         return self.out(x)
 
 @nnx.jit
@@ -65,7 +65,7 @@ class Actor(nnx.Module):
     def __call__(self, state):
         x = nnx.relu(self.input(state))
         for lh in self.lhs:
-            x = nnx.leaky_relu(lh(x))
+            x = nnx.relu(lh(x))
         x = self.out(x)
         return self.a_max * nnx.tanh(x)
 
@@ -205,7 +205,7 @@ def wandb_log_ddpg(epoch, critic_loss, actor_loss, returns):
                "Return":returns})
 
 # TODO: Simplify this function by removing the welfare stuff (stuff relating to the p_welfare parameter)
-def n_agents_ddpg(env, num_episodes, tau=0.0025, gamma=0.99, batch_size=240, lr_a=3e-4, lr_c=1e-3, seed=0, action_dim=2, state_dim=9, action_max=1, hidden_dim=[64,64], act_noise=0.13, log_fun=print_log_ddpg_n_agents, current_path="", **kwargs):
+def n_agents_ddpg(env, num_episodes, tau=0.0025, gamma=0.99, batch_size=240, lr_a=3e-4, lr_c=1e-3, seed=0, action_dim=2, state_dim=9, action_max=1, hidden_dim=[32,32], act_noise=0.13, log_fun=print_log_ddpg_n_agents, current_path="", **kwargs):
     # Initialize metadata object for keeping track of (hyper-)parameters and/or additional settings of the environment
     hidden_dims = [str(h_dim) for h_dim in hidden_dim]
     warmup_size = 5*batch_size
@@ -326,7 +326,6 @@ def n_agents_ddpg(env, num_episodes, tau=0.0025, gamma=0.99, batch_size=240, lr_
         env_state, states = env.reset(seed=seed+i) # Make sure the reset seed is the same as for training
         agent_states[i, 0] = env_state[0]
         patch_states[i, 0] = env_state[1][-1]
-        c = 0
         for i_t in range(step_max):
             actions = [jnp.array(actors_t[i_a](states[i_a])) for i_a in range(n_agents)]
             step_idx = env_state[2]
@@ -337,8 +336,7 @@ def n_agents_ddpg(env, num_episodes, tau=0.0025, gamma=0.99, batch_size=240, lr_
             test_is_in_patch[i,step_idx] = is_in_patch
             states = next_states
             done = terminated or truncated
-            returns[i,step_idx] = np.power(gamma, c)*rewards
-            c += 1
+            returns[i,step_idx] = rewards
             if done:
                 break
         # Log the important variables to some logger

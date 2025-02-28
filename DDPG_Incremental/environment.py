@@ -14,7 +14,7 @@ def compute_NSW(rewards):
     return NSW
     
 class NAgentsEnv():
-    def __init__(self, patch_radius=10,s_init=10, e_init=5, eta=0.1, beta=0.1, alpha=0.5, gamma=0.01, step_max=400, x_max=50, y_max=50, v_max=4, n_agents=2, obs_others=False, obs_range=80, in_patch_only=False, p_welfare=0, **kwargs):
+    def __init__(self, patch_radius=10,s_init=10, e_init=5, eta=0.1, beta=0.5, alpha=0.5, gamma=0, step_max=400, x_max=50, y_max=50, v_max=4, n_agents=2, obs_others=False, obs_range=80, in_patch_only=False, p_welfare=0, **kwargs):
         self.x_max = x_max
         self.y_max = y_max
         self.v_max = v_max
@@ -182,8 +182,7 @@ class Agent:
         self.beta = beta # amount of eating per timestep
         # General variables
         self.v_max = v_max
-        self.x_max = x_max
-        self.y_max = y_max
+        self.size = [x_max, y_max]
         self.e_init = e_init
         self.max_penalty = np.linalg.norm(np.array([self.v_max]*2))
         self.num_vars = 5 # Variables of interest: (x,y,v_x,v_y,e)
@@ -204,7 +203,7 @@ class Agent:
     def update_energy(self,agent_state,patch_state,action,dt=0.1):
         s_eaten = (self.is_in_patch(agent_state,patch_state)).astype(int)*self.beta*patch_state[3]
         # Penalty terms for the environment (inverted for minimization instead of maximization) 
-        p_still = 0.2
+        p_still = 0.1
         action_penalty = ((1-p_still)*(np.linalg.norm(action.at[:2].get())/self.max_penalty)+p_still)*self.alpha
         # Update step (differential equation)
         de = s_eaten - dt*action_penalty
@@ -225,8 +224,7 @@ class Agent:
         damp = 0.3
         # Update position
         pos += dt*vel 
-        pos[0] = pos[0] % self.x_max
-        pos[1] = pos[1] % self.y_max
+        pos = np.mod(pos, self.size)
         # Update velocity
         vel = v_bounded(vel + dt*(acc-damp*vel))
         agent_state[:2] = pos
@@ -247,10 +245,13 @@ class Patch:
         return self.radius
     def update_resources(self, patch_state, eaten, dt=0.1):
         resources = patch_state[3]
+        # Lotka volterra dynamics
         scalars = np.array([dt*self.eta, -dt*self.gamma, -1])
         values = np.array([resources,np.power(resources,2),eaten])
-        ds = np.dot(scalars.T, values)
-        patch_state[3] = np.max([0.,resources + ds]) 
+        #ds = np.dot(scalars.T, values)
+        # Linear dynamics
+        ds = dt*self.eta - eaten
+        patch_state[3] = np.clip(resources + ds, 0, 10) 
         return patch_state
     def reset(self):
         patch_state = np.zeros(self.num_vars)
