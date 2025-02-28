@@ -14,7 +14,7 @@ def compute_NSW(rewards):
     return NSW
     
 class NAgentsEnv():
-    def __init__(self, patch_radius=10,s_init=10, e_init=5, eta=0.1, beta=0.5, alpha=0.5, gamma=0, step_max=400, x_max=50, y_max=50, v_max=4, n_agents=2, obs_others=False, obs_range=80, in_patch_only=False, p_welfare=0, **kwargs):
+    def __init__(self, patch_radius=10,s_init=10, e_init=5, eta=0.1, beta=0.3, alpha=6.5, gamma=0, step_max=400, x_max=50, y_max=50, v_max=4, n_agents=2, obs_others=False, obs_range=80, in_patch_only=False, p_welfare=0, rof=2, **kwargs):
         self.x_max = x_max
         self.y_max = y_max
         self.v_max = v_max
@@ -23,7 +23,8 @@ class NAgentsEnv():
         self.gamma = gamma
         self.step_max = step_max
         self.step_idx = 0
-        self.patch = Patch(x_max/2, y_max/2, patch_radius, s_init, eta=eta, gamma=gamma)
+        self.rof = rof
+        self.patch = Patch(x_max/2, y_max/2, patch_radius, s_init, eta=eta, gamma=gamma, rof=rof)
         self.agents = [Agent(0,0,x_max,y_max,e_init,v_max, alpha=alpha, beta=beta) for i in range(n_agents)]
         self.n_agents = n_agents
         self.alpha = alpha
@@ -59,7 +60,8 @@ class NAgentsEnv():
             "obs_others": self.obs_others,
             "obs_range": self.obs_range,
             "in_patch_only": self.in_patch_only,
-            "p_welfare": self.p_welfare
+            "p_welfare": self.p_welfare,
+            "rof":self.rof
         }
 
     def size(self):
@@ -82,11 +84,11 @@ class NAgentsEnv():
             ptr = 0
             agents_obs[i, ptr:self.agents[i].num_vars] = agents_state[i]
             ptr += self.agents[i].num_vars
-            agents_obs[i, ptr:ptr+self.patch.num_vars-1] = patch_state[:3]
+            agents_obs[i, ptr:ptr+self.patch.num_vars-1] = patch_state[:-1]
             ptr += self.patch.num_vars-1
             # Add patch resource info to state
             if (np.any(is_nearby[i] & in_patch) and self.obs_others) or in_patch[i] or not self.in_patch_only:
-                self.latest_patch = patch_state[3]
+                self.latest_patch = patch_state[-1]
             agents_obs[i, ptr] = self.latest_patch
             ptr += 1
             # Add position and velocity information of nearby agents (including self) to state
@@ -194,19 +196,28 @@ class Agent:
         agent_state[2:4] = vs
         agent_state[4] = self.e_init
         return agent_state
+
+    def dist_to_patch(self,agent_state, patch_state):
+        diff = agent_state[:2] - patch_state[:2]
+        return np.linalg.norm(diff, 2)
     
     def is_in_patch(self,agent_state,patch_state):
-        diff = agent_state[:2] - patch_state[:2]
-        dist = np.linalg.norm(diff, 2)
+        dist = self.dist_to_patch(agent_state, patch_state)
         return dist <= patch_state[2]
+
+    def is_in_rof(self,agent_state,patch_state):
+        dist = self.dist_to_patch(agent_state, patch_state)
+        return dist > patch_state[2] and dist <= (patch_state[2] + patch_state[3])
+        
 
     def update_energy(self,agent_state,patch_state,action,dt=0.1):
         s_eaten = (self.is_in_patch(agent_state,patch_state)).astype(int)*self.beta*patch_state[3]
         # Penalty terms for the environment (inverted for minimization instead of maximization) 
-        p_still = 0.1
+        p_still = 0.2
         action_penalty = ((1-p_still)*(np.linalg.norm(action.at[:2].get())/self.max_penalty)+p_still)*self.alpha
+        rof_penalty = (self.is_in_rof(agent_state,patch_state)).astype(int)*self.alpha
         # Update step (differential equation)
-        de = s_eaten - dt*action_penalty
+        de = s_eaten - dt*(action_penalty + rof_penalty)
         # If agent has negative or zero energy, put the energy value at zero and consider the agent dead
         # Also agent can't have more energy than it's initial energy value
         agent_state[-1] = np.clip(agent_state[-1]+de, 0, self.e_init)
@@ -232,30 +243,34 @@ class Agent:
         return agent_state
 
 class Patch:
-    def __init__(self, x,y,radius,s_init, eta=0.1, gamma=0.01):
+    def __init__(self, x,y,radius,s_init, eta=0.1, gamma=0.01, rof=0):
         # Hyperparameters of dynamical system
         self.eta = eta # regeneration rate of resources
         self.gamma = gamma # decay rate of resources
         # General variables
         self.pos = np.array([x,y])
+        self.rof = rof
         self.radius = radius
         self.s_init = s_init
-        self.num_vars = 4 # Variables of interest: (x,y,r,s)
+        self.num_vars = 5 # Variables of interest: (x,y,r,rof,s)
     def get_radius(self):
         return self.radius
     def update_resources(self, patch_state, eaten, dt=0.1):
-        resources = patch_state[3]
+        resources = patch_state[4]
+        
         # Lotka volterra dynamics
-        scalars = np.array([dt*self.eta, -dt*self.gamma, -1])
-        values = np.array([resources,np.power(resources,2),eaten])
+        #scalars = np.array([dt*self.eta, -dt*self.gamma, -1])
+        #values = np.array([resources,np.power(resources,2),eaten])
         #ds = np.dot(scalars.T, values)
+        
         # Linear dynamics
         ds = dt*self.eta - eaten
-        patch_state[3] = np.clip(resources + ds, 0, 10) 
+        patch_state[4] = np.clip(resources + ds, 0, 10) 
         return patch_state
     def reset(self):
         patch_state = np.zeros(self.num_vars)
         patch_state[:2] = self.pos
         patch_state[2] = self.radius
-        patch_state[3] = self.s_init
+        patch_state[3] = self.rof
+        patch_state[4] = self.s_init
         return patch_state
