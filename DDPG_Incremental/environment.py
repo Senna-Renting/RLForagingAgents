@@ -9,12 +9,12 @@ from functools import partial
 # Helper function for computing the Nash Social Welfare function (aka geometric mean)
 def compute_NSW(rewards):
     #print("Rewards: ", rewards)
-    NSW = np.power(np.prod(rewards), 1/len(rewards))
+    NSW = np.power(np.prod(rewards), 1/rewards.shape[0])
     #print("Welfare: ", NSW.item())
     return NSW
     
 class NAgentsEnv():
-    def __init__(self, patch_radius=10,s_init=10, e_init=5, eta=0.1, beta=0.3, alpha=6.5, gamma=0, step_max=400, x_max=50, y_max=50, v_max=4, n_agents=2, obs_others=False, obs_range=80, in_patch_only=False, p_welfare=0, rof=2, **kwargs):
+    def __init__(self, patch_radius=10,s_init=10, e_init=5, eta=0.1, beta=0.1, alpha=1, gamma=0, step_max=400, x_max=50, y_max=50, v_max=4, n_agents=2, obs_others=False, obs_range=80, in_patch_only=False, p_welfare=0, rof=0, patch_resize=False, **kwargs):
         self.x_max = x_max
         self.y_max = y_max
         self.v_max = v_max
@@ -24,7 +24,7 @@ class NAgentsEnv():
         self.step_max = step_max
         self.step_idx = 0
         self.rof = rof
-        self.patch = Patch(x_max/2, y_max/2, patch_radius, s_init, eta=eta, gamma=gamma, rof=rof)
+        self.patch = Patch(x_max/2, y_max/2, patch_radius, s_init, eta=eta, gamma=gamma, rof=rof, patch_resize=patch_resize)
         self.agents = [Agent(0,0,x_max,y_max,e_init,v_max, alpha=alpha, beta=beta) for i in range(n_agents)]
         self.n_agents = n_agents
         self.alpha = alpha
@@ -33,6 +33,7 @@ class NAgentsEnv():
         self.obs_others = obs_others
         self.obs_range = obs_range
         self.in_patch_only = in_patch_only
+        self.patch_resize = patch_resize
         self.p_welfare = p_welfare
         # Initialize latest observation states
         self.latest_obs = np.zeros((self.n_agents, self.n_agents, self.agents[0].num_vars-1))
@@ -61,7 +62,8 @@ class NAgentsEnv():
             "obs_range": self.obs_range,
             "in_patch_only": self.in_patch_only,
             "p_welfare": self.p_welfare,
-            "rof":self.rof
+            "rof":self.rof,
+            "patch_resize":self.patch_resize
         }
 
     def size(self):
@@ -159,7 +161,7 @@ class NAgentsEnv():
             tot_eaten += s_eaten
             agents_state[i] = agent_state
         # Compute welfare
-        welfare = compute_NSW([agents_state[i][-1] for i in range(self.n_agents)])/(step_idx+1) 
+        welfare = compute_NSW(rewards) 
         # Compute reward with welfare
         rewards = (1-self.p_welfare)*rewards + self.p_welfare*welfare
         # Update patch resources
@@ -203,11 +205,11 @@ class Agent:
     
     def is_in_patch(self,agent_state,patch_state):
         dist = self.dist_to_patch(agent_state, patch_state)
-        return dist <= patch_state[2]
+        return dist <= patch_state[3]
 
     def is_in_rof(self,agent_state,patch_state):
         dist = self.dist_to_patch(agent_state, patch_state)
-        return dist > patch_state[2] and dist <= (patch_state[2] + patch_state[3])
+        return dist > patch_state[3] and dist <= (patch_state[3] + patch_state[2])
         
 
     def update_energy(self,agent_state,patch_state,action,dt=0.1):
@@ -220,8 +222,10 @@ class Agent:
         de = s_eaten - dt*(action_penalty + rof_penalty)
         # If agent has negative or zero energy, put the energy value at zero and consider the agent dead
         # Also agent can't have more energy than it's initial energy value
+        #print("Start: ", agent_state[-1])
         agent_state[-1] = np.clip(agent_state[-1]+de, 0, self.e_init)
-        reward = agent_state[-1]/self.e_init
+        #print("End: ", agent_state[-1])
+        reward = np.clip(agent_state[-1]/self.e_init, 0, 1)
         penalties = action_penalty
         return agent_state, reward, s_eaten, penalties
         
@@ -243,7 +247,7 @@ class Agent:
         return agent_state
 
 class Patch:
-    def __init__(self, x,y,radius,s_init, eta=0.1, gamma=0.01, rof=0):
+    def __init__(self, x,y,radius,s_init, eta=0.1, gamma=0.01, rof=0, patch_resize=False):
         # Hyperparameters of dynamical system
         self.eta = eta # regeneration rate of resources
         self.gamma = gamma # decay rate of resources
@@ -251,6 +255,7 @@ class Patch:
         self.pos = np.array([x,y])
         self.rof = rof
         self.radius = radius
+        self.patch_resize = patch_resize
         self.s_init = s_init
         self.num_vars = 5 # Variables of interest: (x,y,r,rof,s)
     def get_radius(self):
@@ -265,12 +270,14 @@ class Patch:
         
         # Linear dynamics
         ds = dt*self.eta - eaten
-        patch_state[4] = np.clip(resources + ds, 0, 10) 
+        patch_state[4] = np.clip(resources + ds, 0, self.s_init) 
+        if self.patch_resize:
+            patch_state[3] = self.radius*0.5 + 0.5*self.radius*(patch_state[4]/self.s_init)
         return patch_state
     def reset(self):
         patch_state = np.zeros(self.num_vars)
         patch_state[:2] = self.pos
-        patch_state[2] = self.radius
-        patch_state[3] = self.rof
+        patch_state[2] = self.rof
+        patch_state[3] = self.radius
         patch_state[4] = self.s_init
         return patch_state

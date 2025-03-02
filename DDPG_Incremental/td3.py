@@ -205,7 +205,7 @@ def wandb_log_ddpg(epoch, critic_loss, actor_loss, returns):
                "Return":returns})
 
 # TODO: Simplify this function by removing the welfare stuff (stuff relating to the p_welfare parameter)
-def n_agents_ddpg(env, num_episodes, tau=0.0025, gamma=0.99, batch_size=240, lr_a=3e-4, lr_c=1e-3, seed=0, action_dim=2, state_dim=9, action_max=1, hidden_dim=[32,32], act_noise=0.13, log_fun=print_log_ddpg_n_agents, current_path="", **kwargs):
+def n_agents_ddpg(env, num_episodes, tau=0.0025, gamma=0.99, batch_size=240, lr_a=3e-4, lr_c=1e-3, seed=0, action_dim=2, state_dim=9, action_max=1, hidden_dim=[64,64,64], act_noise=0.13, log_fun=print_log_ddpg_n_agents, current_path="", **kwargs):
     # Initialize metadata object for keeping track of (hyper-)parameters and/or additional settings of the environment
     hidden_dims = [str(h_dim) for h_dim in hidden_dim]
     warmup_size = 5*batch_size
@@ -218,6 +218,7 @@ def n_agents_ddpg(env, num_episodes, tau=0.0025, gamma=0.99, batch_size=240, lr_
     # Initialize neural networks
     n_agents = env.n_agents
     step_max = env.step_max
+    patch_resize = env.patch_resize
     actor_dim = action_dim
 
     actors = [Actor(state_dim,actor_dim,action_max,seed+i,hidden_dim=hidden_dim) for i in range(n_agents)]
@@ -256,7 +257,7 @@ def n_agents_ddpg(env, num_episodes, tau=0.0025, gamma=0.99, batch_size=240, lr_
     test_is_in_patch = np.memmap(os.path.join(data_path, "is_in_patch.dat"), dtype="float32", mode="w+", shape=(num_episodes, step_max, n_agents))
     (agents_state, patch_state, step_idx), states = env.reset(seed=seed)
     agent_states = np.memmap(os.path.join(data_path, "agent_states.dat"), dtype="float32", mode="w+", shape=(num_episodes, step_max+1, *agents_state.shape))
-    patch_states = np.memmap(os.path.join(data_path, "patch_states.dat"), dtype="float32", mode="w+", shape=(num_episodes, step_max+1, 1))
+    patch_states = np.memmap(os.path.join(data_path, "patch_states.dat"), dtype="float32", mode="w+", shape=(num_episodes, step_max+1, 1+env.patch_resize))
     # Warm-up round
     print("Filling buffer with warmup samples...")
     env_state, states = env.reset(seed=seed)
@@ -331,7 +332,7 @@ def n_agents_ddpg(env, num_episodes, tau=0.0025, gamma=0.99, batch_size=240, lr_
             step_idx = env_state[2]
             env_state,next_states,(rewards,(penalties, is_in_patch)), terminated, truncated, _ = env.step(env_state, *actions)
             agent_states[i, i_t+1] = env_state[0]
-            patch_states[i, i_t+1] = env_state[1][-1]
+            patch_states[i, i_t+1] = env_state[1][-1-patch_resize:]
             test_penalties[i,step_idx] = penalties
             test_is_in_patch[i,step_idx] = is_in_patch
             states = next_states
@@ -409,7 +410,7 @@ def n_agents_td3(env, num_episodes, tau=0.01, gamma=0.99, batch_size=30, lr_a=2e
     test_is_in_patch = np.empty((num_episodes, step_max, n_agents))
     (agents_state, patch_state, step_idx), states = env.reset(seed=seed)
     agent_states = np.empty((num_episodes, step_max, *agents_state.shape))
-    patch_states = np.empty((num_episodes, step_max, 1))
+    patch_states = np.empty((num_episodes, step_max, 1+patch_resize))
     # Warm-up round
     env_state, states = env.reset(seed=seed)
     for s_i in range(warmup_size):
@@ -490,7 +491,7 @@ def n_agents_td3(env, num_episodes, tau=0.01, gamma=0.99, batch_size=30, lr_a=2e
             step_idx = env_state[2]
             env_state,next_states,(rewards,(penalties, is_in_patch)), terminated, truncated, _ = env.step(env_state, *actions)
             agent_states[i, i_t] = env_state[0]
-            patch_states[i, i_t] = env_state[1][-1]
+            patch_states[i, i_t] = env_state[1][-1-patch_resize:]
             test_penalties[i,step_idx,:] = penalties
             test_is_in_patch[i,step_idx] = is_in_patch
             states = next_states

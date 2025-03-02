@@ -65,9 +65,10 @@ def plot_env(path, env_shape, patch_info, agents_state):
     s_max = np.max(patch_info[1][-1])
     print(s_max)
     patch_pos = patch_info[0][:2]
-    patch_radius = patch_info[0][2]
+    patch_radius = patch_info[0][3]
     agent_pos = lambda frame, i_a: agents_state[int(frame/step_max),frame%step_max, i_a, :2]
-    norm = lambda frame: patch_energy[int(frame/step_max), frame%step_max,0]/s_max
+    agent_radius = lambda frame: patch_energy[int(frame/step_max), frame%step_max,0]
+    norm = lambda frame: patch_energy[int(frame/step_max), frame%step_max,-1]/s_max
     print(norm(0))
     patch_color = lambda norm: (0.2,0.3+0.7*norm,0.2)
     fig = plt.figure()
@@ -85,7 +86,8 @@ def plot_env(path, env_shape, patch_info, agents_state):
     def update(frame):
         frame_text.set_text(f"Timestep: {(frame%step_max)+1}/{step_max}")
         episode_text.set_text(f"Episode: {int(frame/step_max)+1}/{n_episodes}")
-        patch.set(color = patch_color(norm(frame)))
+        radius = patch_radius if patch_energy.shape[-1] == 1 else agent_radius(frame)
+        patch.set(color = patch_color(norm(frame)), radius = radius)
         for i_a, agent in enumerate(agents):
             agent.set(center = agent_pos(frame,i_a))
     fps = 24

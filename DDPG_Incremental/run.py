@@ -164,7 +164,7 @@ def run_experiment(**kwargs):
     print(kwargs)
     s = kwargs["seed"]
     e = kwargs["episodes"]
-    env = NAgentsEnv(n_agents=kwargs["n_agents"], obs_others=kwargs["obs"], p_welfare=kwargs["pw"], obs_range=kwargs["obsrange"], in_patch_only=kwargs["ipo"])
+    env = NAgentsEnv(n_agents=kwargs["n_agents"], obs_others=kwargs["obs"], p_welfare=kwargs["pw"], obs_range=kwargs["obsrange"], in_patch_only=kwargs["ipo"], patch_resize=kwargs["patch_resize"])
     for i_r in range(kwargs["runs"]):
         path = create_exp_folder(kwargs["out"])
         os.mkdir(os.path.join(path, "data"))
@@ -184,10 +184,12 @@ if __name__ == "__main__":
     parser.add_argument("-s", "--seed", type=int, default=0, help="General seed on which we generate our random numbers for the script")
     parser.add_argument("-t", "--tau", type=float, default=0.005, help="Polyak parameter (between 0 and 1) for updating the neural networks")
     parser.add_argument("-g", "--gamma", type=float, default=0.995, help="Discount parameter for Bellman updates of networks")
-    parser.add_argument("--bsize", type=int, default=120, help="Size of the batches used for training updates")
+    parser.add_argument("--bsize", type=int, default=40, help="Size of the batches used for training updates")
     parser.add_argument("--lra", type=float, default=3e-4, help="Learning rate for the actor network")
     parser.add_argument("--lrc", type=float, default=1e-3, help="Learning rate for the critic network")
     parser.add_argument("-an", "--act-noise", type=float, default=0.13, help="Adjust the exploration noise added to actions of agents")
+    parser.add_argument("--rof", type=int, default=0, help="Size of ring of fire around patch")
+    parser.add_argument("--patch-resize", action=argparse.BooleanOptionalAction, default=False, help="Allow the patch to resize based on the amount of resources present")
     parser.add_argument("--video", action=argparse.BooleanOptionalAction, help="Toggle for video generation of episodes")
     args = parser.parse_args()
     run_experiment(**vars(args))
