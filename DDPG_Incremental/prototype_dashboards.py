@@ -56,7 +56,7 @@ def plot_rewards(path, rewards, colors=plt.cm.Set1.colors):
 """
 The agent_state and the patch_state of the NAgentsEnv class are used as input here
 agent_state's shape: [n_episodes, step_max, n_agents, dim(x,y,x_dot,y_dot,e)]
-patch_info's shape: ([dim(x,y,r)], [n_episodes, step_max, dim(s))])
+patch_info's shape: ([dim(x,y,rof,r)], [n_episodes, step_max, dim(s))])
 """
 def plot_env(path, env_shape, patch_info, agents_state):
     n_episodes, step_max, n_agents, *_ = agents_state.shape
@@ -66,6 +66,8 @@ def plot_env(path, env_shape, patch_info, agents_state):
     print(s_max)
     patch_pos = patch_info[0][:2]
     patch_radius = patch_info[0][3]
+    rof = patch_info[0][2]
+    
     agent_pos = lambda frame, i_a: agents_state[int(frame/step_max),frame%step_max, i_a, :2]
     agent_radius = lambda frame: patch_energy[int(frame/step_max), frame%step_max,0]
     norm = lambda frame: patch_energy[int(frame/step_max), frame%step_max,-1]/s_max
@@ -78,6 +80,7 @@ def plot_env(path, env_shape, patch_info, agents_state):
     ax.set_aspect('equal')
     ax.set_xticks([])
     ax.set_yticks([])
+    rof = ax.add_patch(plt.Circle(patch_pos, patch_radius+rof, color=(0.5,0.3,1)))
     patch = ax.add_patch(plt.Circle(patch_pos, patch_radius, color=patch_color(norm(0))))
     agents = [ax.add_patch(plt.Circle(agent_pos(0, i_a), agent_size, color='r')) for i_a in range(n_agents)]
     episode_text = ax.text(0.05,0.1, f"Episode: 1/{n_episodes}", transform=ax.transAxes)

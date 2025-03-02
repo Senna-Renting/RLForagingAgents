@@ -164,7 +164,7 @@ def run_experiment(**kwargs):
     print(kwargs)
     s = kwargs["seed"]
     e = kwargs["episodes"]
-    env = NAgentsEnv(n_agents=kwargs["n_agents"], obs_others=kwargs["obs"], p_welfare=kwargs["pw"], obs_range=kwargs["obsrange"], in_patch_only=kwargs["ipo"], patch_resize=kwargs["patch_resize"])
+    env = NAgentsEnv(n_agents=kwargs["n_agents"], obs_others=kwargs["obs"], p_welfare=kwargs["pw"], obs_range=kwargs["obsrange"], in_patch_only=kwargs["ipo"], patch_resize=kwargs["patch_resize"], rof=kwargs["rof"])
     for i_r in range(kwargs["runs"]):
         path = create_exp_folder(kwargs["out"])
         os.mkdir(os.path.join(path, "data"))

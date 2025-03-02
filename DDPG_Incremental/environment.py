@@ -14,7 +14,7 @@ def compute_NSW(rewards):
     return NSW
     
 class NAgentsEnv():
-    def __init__(self, patch_radius=10,s_init=10, e_init=5, eta=0.1, beta=0.1, alpha=1, gamma=0, step_max=400, x_max=50, y_max=50, v_max=4, n_agents=2, obs_others=False, obs_range=80, in_patch_only=False, p_welfare=0, rof=0, patch_resize=False, **kwargs):
+    def __init__(self, patch_radius=10,s_init=10, e_init=5, eta=0.05, beta=0.05, alpha=2, gamma=0, step_max=400, x_max=50, y_max=50, v_max=4, n_agents=2, obs_others=False, obs_range=80, in_patch_only=False, p_welfare=0, rof=0, patch_resize=False, **kwargs):
         self.x_max = x_max
         self.y_max = y_max
         self.v_max = v_max
@@ -25,7 +25,7 @@ class NAgentsEnv():
         self.step_idx = 0
         self.rof = rof
         self.patch = Patch(x_max/2, y_max/2, patch_radius, s_init, eta=eta, gamma=gamma, rof=rof, patch_resize=patch_resize)
-        self.agents = [Agent(0,0,x_max,y_max,e_init,v_max, alpha=alpha, beta=beta) for i in range(n_agents)]
+        self.agents = [Agent(0,0,x_max,y_max,e_init,v_max, alpha=alpha, beta=beta, id=i) for i in range(n_agents)]
         self.n_agents = n_agents
         self.alpha = alpha
         self.beta = beta
@@ -153,7 +153,7 @@ class NAgentsEnv():
             a_state = agents_state[i]
             agents_state[i, :agents_state.shape[1]] = self.agents[i].update_position(a_state, action)
             # Update agent energy
-            agent_state, reward, s_eaten, penalty = self.agents[i].update_energy(a_state, patch_state, action, dt=0.1)
+            agent_state, reward, s_eaten, penalty = self.agents[i].update_energy(agents_state, patch_state, action, dt=0.1)
             is_in_patch[i] = s_eaten != 0
             penalties[i,:] = penalty
             # Add agent reward to reward vector
@@ -180,7 +180,7 @@ class NAgentsEnv():
 
 
 class Agent:
-    def __init__(self,x,y,x_max,y_max,e_init,v_max,alpha=0.4, beta=0.25):
+    def __init__(self,x,y,x_max,y_max,e_init,v_max,alpha=0.4, beta=0.25, id=0):
         # Hyperparameters of dynamical system
         self.alpha = alpha # penalizing coëfficient for movement
         self.beta = beta # amount of eating per timestep
@@ -188,6 +188,7 @@ class Agent:
         self.v_max = v_max
         self.size = [x_max, y_max]
         self.e_init = e_init
+        self.id = id
         self.max_penalty = np.linalg.norm(np.array([self.v_max]*2))
         self.num_vars = 5 # Variables of interest: (x,y,v_x,v_y,e)
     
@@ -212,8 +213,13 @@ class Agent:
         return dist > patch_state[3] and dist <= (patch_state[3] + patch_state[2])
         
 
-    def update_energy(self,agent_state,patch_state,action,dt=0.1):
-        s_eaten = (self.is_in_patch(agent_state,patch_state)).astype(int)*self.beta*patch_state[3]
+    def update_energy(self,agents_state,patch_state,action,dt=0.1):
+        # Amount eaten depends on other agents in patch
+        agent_state = agents_state[self.id]
+        who_in = [self.is_in_patch(agents_state[i], patch_state) for i in range(len(agents_state))]
+        s_eaten = who_in[self.id]*self.beta*patch_state[3]
+        if np.any(who_in):
+            s_eaten /= np.sum(who_in)
         # Penalty terms for the environment (inverted for minimization instead of maximization) 
         p_still = 0.2
         action_penalty = ((1-p_still)*(np.linalg.norm(action.at[:2].get())/self.max_penalty)+p_still)*self.alpha
