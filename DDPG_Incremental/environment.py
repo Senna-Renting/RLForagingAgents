@@ -14,7 +14,7 @@ def compute_NSW(rewards):
     return NSW
     
 class NAgentsEnv():
-    def __init__(self, patch_radius=10,s_init=10, e_init=5, eta=0.05, beta=0.05, alpha=2, gamma=0, step_max=400, x_max=50, y_max=50, v_max=4, n_agents=2, obs_others=False, obs_range=80, in_patch_only=False, p_welfare=0, rof=0, patch_resize=False, **kwargs):
+    def __init__(self, patch_radius=10,s_init=10, e_init=10, eta=0.05, beta=0.05, alpha=4, gamma=0, step_max=400, x_max=50, y_max=50, v_max=4, n_agents=2, obs_others=False, obs_range=80, in_patch_only=False, p_welfare=0, rof=0, patch_resize=False, **kwargs):
         self.x_max = x_max
         self.y_max = y_max
         self.v_max = v_max

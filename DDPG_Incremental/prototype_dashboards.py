@@ -58,10 +58,10 @@ The agent_state and the patch_state of the NAgentsEnv class are used as input he
 agent_state's shape: [n_episodes, step_max, n_agents, dim(x,y,x_dot,y_dot,e)]
 patch_info's shape: ([dim(x,y,rof,r)], [n_episodes, step_max, dim(s))])
 """
-def plot_env(path, env_shape, patch_info, agents_state):
+def plot_env(path, env_shape, patch_info, agents_state, a_colors=plt.cm.Set1.colors):
     n_episodes, step_max, n_agents, *_ = agents_state.shape
     patch_energy = patch_info[1]
-    agent_size = env_shape[0]/100
+    agent_size = env_shape[0]/70
     s_max = np.max(patch_info[1][-1])
     print(s_max)
     patch_pos = patch_info[0][:2]
@@ -82,7 +82,7 @@ def plot_env(path, env_shape, patch_info, agents_state):
     ax.set_yticks([])
     rof = ax.add_patch(plt.Circle(patch_pos, patch_radius+rof, color=(0.5,0.3,1)))
     patch = ax.add_patch(plt.Circle(patch_pos, patch_radius, color=patch_color(norm(0))))
-    agents = [ax.add_patch(plt.Circle(agent_pos(0, i_a), agent_size, color='r')) for i_a in range(n_agents)]
+    agents = [ax.add_patch(plt.Circle(agent_pos(0, i_a), agent_size, facecolor=a_colors[i_a], linewidth=1, edgecolor=(0.9,0.9,0.9))) for i_a in range(n_agents)]
     episode_text = ax.text(0.05,0.1, f"Episode: 1/{n_episodes}", transform=ax.transAxes)
     frame_text = ax.text(0.05,0.05, f"Timestep: 1/{step_max}", transform=ax.transAxes)
     plt.tight_layout()
