@@ -164,11 +164,12 @@ def run_experiment(**kwargs):
     print(kwargs)
     s = kwargs["seed"]
     e = kwargs["episodes"]
-    env = NAgentsEnv(n_agents=kwargs["n_agents"], obs_others=kwargs["obs"], p_welfare=kwargs["pw"], obs_range=kwargs["obsrange"], in_patch_only=kwargs["ipo"], patch_resize=kwargs["patch_resize"], rof=kwargs["rof"])
+    env = NAgentsEnv(**kwargs)
     for i_r in range(kwargs["runs"]):
         path = create_exp_folder(kwargs["out"])
         os.mkdir(os.path.join(path, "data"))
-        train_args=dict(seed=s+i_r*e, tau=kwargs["tau"], gamma=kwargs["gamma"], batch_size=kwargs["bsize"], lr_c=kwargs["lrc"], lr_a=kwargs["lra"], act_noise=kwargs["act_noise"])
+        train_args=dict(**kwargs)
+        train_args["seed"] = s+i_r*e
         run_ddpg(env, e, n_agents_ddpg, path, train_args, skip_vid=not kwargs["video"])
 
 if __name__ == "__main__":
@@ -177,19 +178,20 @@ if __name__ == "__main__":
     parser.add_argument("runs", type=int, help="Number of runs")
     parser.add_argument("out", type=str, help="Output folder for results")
     parser.add_argument("-na", "--n-agents", type=int, default=1)
-    parser.add_argument("--obs", action=argparse.BooleanOptionalAction, default=False, help="Toggle to allow agents to observe each other")
-    parser.add_argument("--ipo", action=argparse.BooleanOptionalAction, default=True, help="Toggle for agents to only observe the state of the patch when inside")
+    parser.add_argument("--obs-others", action=argparse.BooleanOptionalAction, default=False, help="Toggle to allow agents to observe each other")
+    parser.add_argument("-ipo", "--in-patch-only", action=argparse.BooleanOptionalAction, default=True, help="Toggle for agents to only observe the state of the patch when inside")
     parser.add_argument("-or", "--obsrange", type=float, default=80, help="Adjusts the distance below which agents observe each other")
-    parser.add_argument("--pw", type=float, default=0.0, help="Adjusts the proportion of Nash Social Welfare (NSW) used in the reward of agents")
+    parser.add_argument("-pw","--p-welfare", type=float, default=0.0, help="Adjusts the proportion of Nash Social Welfare (NSW) used in the reward of agents")
     parser.add_argument("-s", "--seed", type=int, default=0, help="General seed on which we generate our random numbers for the script")
     parser.add_argument("-t", "--tau", type=float, default=0.005, help="Polyak parameter (between 0 and 1) for updating the neural networks")
-    parser.add_argument("-g", "--gamma", type=float, default=0.995, help="Discount parameter for Bellman updates of networks")
-    parser.add_argument("--bsize", type=int, default=40, help="Size of the batches used for training updates")
-    parser.add_argument("--lra", type=float, default=3e-4, help="Learning rate for the actor network")
-    parser.add_argument("--lrc", type=float, default=1e-3, help="Learning rate for the critic network")
-    parser.add_argument("-an", "--act-noise", type=float, default=0.13, help="Adjust the exploration noise added to actions of agents")
+    parser.add_argument("-g", "--gamma", type=float, default=0.99, help="Discount parameter for Bellman updates of networks")
+    parser.add_argument("-b","--batch-size", type=int, default=80, help="Size of the batches used for training updates")
+    parser.add_argument("-lra","--lr-a", type=float, default=3e-4, help="Learning rate for the actor network")
+    parser.add_argument("-lrc","--lr-c", type=float, default=1e-3, help="Learning rate for the critic network")
+    parser.add_argument("-an", "--act-noise", type=float, default=0.2, help="Adjust the exploration noise added to actions of agents")
     parser.add_argument("--rof", type=int, default=0, help="Size of ring of fire around patch")
     parser.add_argument("--patch-resize", action=argparse.BooleanOptionalAction, default=False, help="Allow the patch to resize based on the amount of resources present")
+    parser.add_argument("--var-pw", action=argparse.BooleanOptionalAction, default=False, help="Let agents control the proportion of welfare used in their rewards")
     parser.add_argument("--video", action=argparse.BooleanOptionalAction, help="Toggle for video generation of episodes")
     args = parser.parse_args()
     run_experiment(**vars(args))

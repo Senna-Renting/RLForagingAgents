@@ -14,17 +14,18 @@ def compute_NSW(rewards):
     return NSW
     
 class NAgentsEnv():
-    def __init__(self, patch_radius=10,s_init=10, e_init=10, eta=0.05, beta=0.05, alpha=4, gamma=0, step_max=400, x_max=50, y_max=50, v_max=4, n_agents=2, obs_others=False, obs_range=80, in_patch_only=False, p_welfare=0, rof=0, patch_resize=False, **kwargs):
+    def __init__(self, patch_radius=10,s_init=10, e_init=5, eta=0.1, beta=0.03, alpha=3, env_gamma=0.01, step_max=400, x_max=50, y_max=50, v_max=4, n_agents=2, obs_others=False, obs_range=80, in_patch_only=False, p_welfare=0, rof=0, patch_resize=False, var_pw=False, **kwargs):
         self.x_max = x_max
         self.y_max = y_max
         self.v_max = v_max
         # Eta and gamma are used for computing the rendering (don't remove them!!)
         self.eta = eta
-        self.gamma = gamma
+        self.env_gamma = env_gamma
         self.step_max = step_max
         self.step_idx = 0
         self.rof = rof
-        self.patch = Patch(x_max/2, y_max/2, patch_radius, s_init, eta=eta, gamma=gamma, rof=rof, patch_resize=patch_resize)
+        self.var_pw = var_pw
+        self.patch = Patch(x_max/2, y_max/2, patch_radius, s_init, eta=eta, gamma=env_gamma, rof=rof, patch_resize=patch_resize)
         self.agents = [Agent(0,0,x_max,y_max,e_init,v_max, alpha=alpha, beta=beta, id=i) for i in range(n_agents)]
         self.n_agents = n_agents
         self.alpha = alpha
@@ -45,26 +46,14 @@ class NAgentsEnv():
         return action_dim, action_range
     
     def get_params(self):
-        return {
-            "n_agents": self.n_agents, 
-            "x_max": self.x_max,
-            "y_max": self.y_max,
-            "v_max": self.v_max,
-            "patch_radius": self.patch.get_radius(),
-            "s_init": self.patch.s_init,
-            "e_init": self.e_init,
-            "eta": self.eta,
-            "beta": self.beta,
-            "alpha": self.alpha,
-            "env_gamma": self.gamma,
-            "step_max": self.step_max,
-            "obs_others": self.obs_others,
-            "obs_range": self.obs_range,
-            "in_patch_only": self.in_patch_only,
-            "p_welfare": self.p_welfare,
-            "rof":self.rof,
-            "patch_resize":self.patch_resize
-        }
+        params = dict(**self.__dict__)
+        params["patch_radius"] = self.patch.get_radius()
+        params["s_init"] = self.patch.s_init
+        del params["patch"]
+        del params["agents"]
+        del params["latest_obs"]
+        del params["latest_patch"]
+        return params
 
     def size(self):
         return self.x_max, self.y_max
@@ -148,7 +137,7 @@ class NAgentsEnv():
         tot_eaten = 0
         for i,action in enumerate(actions):
             # Flatten array if needed
-            action = action.flatten()
+            action = action[:action.shape[0]-self.var_pw].flatten()
             # Update agent position
             a_state = agents_state[i]
             agents_state[i, :agents_state.shape[1]] = self.agents[i].update_position(a_state, action)
@@ -163,7 +152,13 @@ class NAgentsEnv():
         # Compute welfare
         welfare = compute_NSW(rewards) 
         # Compute reward with welfare
-        rewards = (1-self.p_welfare)*rewards + self.p_welfare*welfare
+        pw_control = self.p_welfare
+        if self.var_pw:
+            pw_control = np.mean([action[-1] for action in actions])
+            # Transform pw action output to range [0,1]
+            pw_control = (pw_control+self.v_max)/(2*self.v_max)
+        #print("PW control after: ", pw_control)
+        rewards = (1-pw_control)*rewards + pw_control*welfare
         # Update patch resources
         patch_state = self.patch.update_resources(patch_state, tot_eaten, dt=0.1)
         # Update counter
@@ -217,10 +212,9 @@ class Agent:
         # Amount eaten depends on other agents in patch
         agent_state = agents_state[self.id]
         who_in = [self.is_in_patch(agents_state[i], patch_state) for i in range(len(agents_state))]
-        s_eaten = who_in[self.id]*self.beta*patch_state[3]
+        s_eaten = who_in[self.id]*self.beta*patch_state[4]
         if np.any(who_in):
-            s_eaten /= np.sum(who_in)
-        # Penalty terms for the environment (inverted for minimization instead of maximization) 
+            s_eaten /= np.sum(who_in) 
         p_still = 0.2
         action_penalty = ((1-p_still)*(np.linalg.norm(action.at[:2].get())/self.max_penalty)+p_still)*self.alpha
         rof_penalty = (self.is_in_rof(agent_state,patch_state)).astype(int)*self.alpha
@@ -270,12 +264,12 @@ class Patch:
         resources = patch_state[4]
         
         # Lotka volterra dynamics
-        #scalars = np.array([dt*self.eta, -dt*self.gamma, -1])
-        #values = np.array([resources,np.power(resources,2),eaten])
-        #ds = np.dot(scalars.T, values)
+        scalars = np.array([dt*self.eta, -dt*self.gamma, -1])
+        values = np.array([resources,np.power(resources,2),eaten])
+        ds = np.dot(scalars.T, values)
         
         # Linear dynamics
-        ds = dt*self.eta - eaten
+        # ds = dt*self.eta - eaten
         patch_state[4] = np.clip(resources + ds, 0, self.s_init) 
         if self.patch_resize:
             patch_state[3] = self.radius*0.5 + 0.5*self.radius*(patch_state[4]/self.s_init)

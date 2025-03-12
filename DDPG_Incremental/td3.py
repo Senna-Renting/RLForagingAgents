@@ -86,7 +86,7 @@ def sample_action_beta(rng, actor, state, action_min, action_max, action_dim, ac
     ab = alpha_beta(act_noise)
     eps = (jax.random.beta(rng, ab, ab, (action_dim,)) - 0.5)*2*action_max # - 0.5 to ensure zero mean
     mu_action = actor(state)
-    return mu_action + eps
+    return jnp.clip(mu_action + eps, action_min, action_max)
     
 
 @nnx.jit
@@ -204,8 +204,7 @@ def wandb_log_ddpg(epoch, critic_loss, actor_loss, returns):
                "Actor loss":actor_loss,
                "Return":returns})
 
-# TODO: Simplify this function by removing the welfare stuff (stuff relating to the p_welfare parameter)
-def n_agents_ddpg(env, num_episodes, tau=0.0025, gamma=0.99, batch_size=240, lr_a=3e-4, lr_c=1e-3, seed=0, action_dim=2, state_dim=9, action_max=1, hidden_dim=[64,64,64], act_noise=0.13, log_fun=print_log_ddpg_n_agents, current_path="", **kwargs):
+def n_agents_ddpg(env, num_episodes, tau=0.0025, gamma=0.99, batch_size=240, lr_a=3e-4, lr_c=1e-3, seed=0, action_dim=2, state_dim=9, action_max=1, hidden_dim=[64,64], act_noise=0.13, log_fun=print_log_ddpg_n_agents, current_path="", **kwargs):
     # Initialize metadata object for keeping track of (hyper-)parameters and/or additional settings of the environment
     hidden_dims = [str(h_dim) for h_dim in hidden_dim]
     warmup_size = 5*batch_size
@@ -219,7 +218,8 @@ def n_agents_ddpg(env, num_episodes, tau=0.0025, gamma=0.99, batch_size=240, lr_
     n_agents = env.n_agents
     step_max = env.step_max
     patch_resize = env.patch_resize
-    actor_dim = action_dim
+    var_pw = env.var_pw
+    actor_dim = action_dim + var_pw
 
     actors = [Actor(state_dim,actor_dim,action_max,seed+i,hidden_dim=hidden_dim) for i in range(n_agents)]
     actors_t = [Actor(state_dim,actor_dim,action_max,seed+i,hidden_dim=hidden_dim) for i in range(n_agents)]
@@ -266,7 +266,7 @@ def n_agents_ddpg(env, num_episodes, tau=0.0025, gamma=0.99, batch_size=240, lr_
         actions = list(range(n_agents))
         for i_a,actor in enumerate(actors):
             action_key, key = jax.random.split(key)
-            actions[i_a] = jax.random.uniform(action_key, 2, minval=-action_max, maxval=action_max) 
+            actions[i_a] = jax.random.uniform(action_key, actor_dim, minval=-action_max, maxval=action_max) 
         env_state, next_states, (rewards, penalties), terminated, truncated, _ = env.step(env_state, *actions)
         (agents_state, patch_state, step_idx) = env_state
         for i_a in range(n_agents):
@@ -286,7 +286,7 @@ def n_agents_ddpg(env, num_episodes, tau=0.0025, gamma=0.99, batch_size=240, lr_
             actions = list(range(n_agents))
             for i_a,actor in enumerate(actors):
                 action_key, key = jax.random.split(key)
-                actions[i_a] = jnp.array(sample_action_beta(action_key, actor, states[i_a], -action_max, action_max, actor_dim, act_noise)) 
+                actions[i_a] = jnp.array(sample_action(action_key, actor, states[i_a], -action_max, action_max, actor_dim, act_noise)) 
             env_state, next_states, (rewards, penalties), terminated, truncated, _ = env.step(env_state, *actions)
             (agents_state, patch_state, step_idx) = env_state
             done = truncated or terminated
