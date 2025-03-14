@@ -14,7 +14,7 @@ def compute_NSW(rewards):
     return NSW
     
 class NAgentsEnv():
-    def __init__(self, patch_radius=10,s_init=10, e_init=5, eta=0.1, beta=0.03, alpha=0.5, env_gamma=0.01, step_max=800, x_max=50, y_max=50, v_max=4, n_agents=2, obs_others=False, obs_range=80, in_patch_only=False, p_welfare=0, rof=0, patch_resize=False, use_msg=False, **kwargs):
+    def __init__(self, patch_radius=10,s_init=10, e_init=5, eta=0.1, beta=0.03, alpha=0.5, env_gamma=0.01, step_max=400, x_max=50, y_max=50, v_max=4, n_agents=2, obs_others=False, obs_range=80, in_patch_only=False, p_welfare=0, rof=0, patch_resize=False, use_msg=False, **kwargs):
         self.x_max = x_max
         self.y_max = y_max
         self.v_max = v_max
@@ -156,7 +156,9 @@ class NAgentsEnv():
             agents_state[i] = agent_state
             #print("S, A: ", agents_state[i], action)
         # Compute welfare
-        welfare = compute_NSW(agents_state[:,4]) 
+        positive_rewards = rewards.copy()
+        positive_rewards[positive_rewards < 0] = 0
+        welfare = compute_NSW(positive_rewards) 
         # Compute reward with welfare
         rewards = (1-self.p_welfare)*rewards + self.p_welfare*welfare
         # Update patch resources
@@ -223,9 +225,9 @@ class Agent:
         # If agent has negative or zero energy, put the energy value at zero and consider the agent dead
         # Also agent can't have more energy than it's initial energy value
         #print("Start: ", agent_state[-1])
-        agent_state[4] = np.clip(agent_state[4]+de, 0, self.e_init)
+        agent_state[4] = agent_state[4]+de
         #print("End: ", agent_state[-1])
-        reward = np.clip(agent_state[4]/self.e_init, 0, 1)
+        reward = agent_state[4]/self.e_init
         #print("A, Pa, Pr, E, R: ", action_penalty, rof_penalty, s_eaten, reward)
         penalties = action_penalty
         return agent_state, reward, s_eaten, penalties
