@@ -191,7 +191,7 @@ if __name__ == "__main__":
     parser.add_argument("-an", "--act-noise", type=float, default=0.2, help="Adjust the exploration noise added to actions of agents")
     parser.add_argument("--rof", type=int, default=0, help="Size of ring of fire around patch")
     parser.add_argument("--patch-resize", action=argparse.BooleanOptionalAction, default=False, help="Allow the patch to resize based on the amount of resources present")
-    parser.add_argument("--var-pw", action=argparse.BooleanOptionalAction, default=False, help="Let agents control the proportion of welfare used in their rewards")
+    parser.add_argument("--use-msg", action=argparse.BooleanOptionalAction, default=False, help="Let agents pass messages to each other")
     parser.add_argument("--video", action=argparse.BooleanOptionalAction, help="Toggle for video generation of episodes")
     args = parser.parse_args()
     run_experiment(**vars(args))

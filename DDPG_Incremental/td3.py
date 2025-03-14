@@ -218,8 +218,7 @@ def n_agents_ddpg(env, num_episodes, tau=0.0025, gamma=0.99, batch_size=240, lr_
     n_agents = env.n_agents
     step_max = env.step_max
     patch_resize = env.patch_resize
-    var_pw = env.var_pw
-    actor_dim = action_dim + var_pw
+    actor_dim = action_dim
 
     actors = [Actor(state_dim,actor_dim,action_max,seed+i,hidden_dim=hidden_dim) for i in range(n_agents)]
     actors_t = [Actor(state_dim,actor_dim,action_max,seed+i,hidden_dim=hidden_dim) for i in range(n_agents)]
@@ -342,7 +341,7 @@ def n_agents_ddpg(env, num_episodes, tau=0.0025, gamma=0.99, batch_size=240, lr_
                 break
         # Log the important variables to some logger
         (agents_state, patch_state, step_idx) = env_state
-        end_energy = agents_state[:, -1]
+        end_energy = agents_state[:, 4]
         log_fun(i, returns[i], end_energy)
         # Compute relevant information
         patch_info = (patch_state[:-1], patch_states)

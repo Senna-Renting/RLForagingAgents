@@ -14,7 +14,7 @@ def compute_NSW(rewards):
     return NSW
     
 class NAgentsEnv():
-    def __init__(self, patch_radius=10,s_init=10, e_init=5, eta=0.1, beta=0.03, alpha=3, env_gamma=0.01, step_max=400, x_max=50, y_max=50, v_max=4, n_agents=2, obs_others=False, obs_range=80, in_patch_only=False, p_welfare=0, rof=0, patch_resize=False, var_pw=False, **kwargs):
+    def __init__(self, patch_radius=10,s_init=10, e_init=5, eta=0.1, beta=0.03, alpha=0.5, env_gamma=0.01, step_max=800, x_max=50, y_max=50, v_max=4, n_agents=2, obs_others=False, obs_range=80, in_patch_only=False, p_welfare=0, rof=0, patch_resize=False, use_msg=False, **kwargs):
         self.x_max = x_max
         self.y_max = y_max
         self.v_max = v_max
@@ -24,9 +24,10 @@ class NAgentsEnv():
         self.step_max = step_max
         self.step_idx = 0
         self.rof = rof
-        self.var_pw = var_pw
         self.patch = Patch(x_max/2, y_max/2, patch_radius, s_init, eta=eta, gamma=env_gamma, rof=rof, patch_resize=patch_resize)
-        self.agents = [Agent(0,0,x_max,y_max,e_init,v_max, alpha=alpha, beta=beta, id=i) for i in range(n_agents)]
+        self.use_msg = use_msg
+        agent_type = CommsAgent if use_msg else Agent
+        self.agents = [agent_type(0,0,x_max,y_max,e_init,v_max, alpha=alpha, beta=beta, id=i) for i in range(n_agents)]
         self.n_agents = n_agents
         self.alpha = alpha
         self.beta = beta
@@ -41,9 +42,10 @@ class NAgentsEnv():
         self.latest_patch = 0
 
     def get_action_space(self):
+        message_dim = 2*self.use_msg
         action_dim = 2 # We use two acceleration terms (one for x and one for y)
         action_range = [-self.v_max, self.v_max]
-        return action_dim, action_range
+        return action_dim+message_dim, action_range
     
     def get_params(self):
         params = dict(**self.__dict__)
@@ -105,7 +107,7 @@ class NAgentsEnv():
     def get_state_space(self):
         obs_size = self.agents[0].num_vars + self.patch.num_vars
         if self.obs_others:
-            obs_size += 4*(self.n_agents-1) # Add indices for tracking position and velocity of other agents when nearby
+            obs_size += 4*(self.n_agents-1) # Add indices for tracking position and velocity (4 items!) of other agents when nearby
         return obs_size 
     
     def reset(self, seed=0):
@@ -137,10 +139,13 @@ class NAgentsEnv():
         tot_eaten = 0
         for i,action in enumerate(actions):
             # Flatten array if needed
-            action = action[:action.shape[0]-self.var_pw].flatten()
+            action = action.flatten()
             # Update agent position
             a_state = agents_state[i]
             agents_state[i, :agents_state.shape[1]] = self.agents[i].update_position(a_state, action)
+            if self.use_msg:
+                agents_state[1-i, -1] = self.agents[i].update_message(agents_state, action)
+            #print(f"S_{i}, MSG_{i}: {agents_state[i]}, {agents_state[1-i, -1]}")
             # Update agent energy
             agent_state, reward, s_eaten, penalty = self.agents[i].update_energy(agents_state, patch_state, action, dt=0.1)
             is_in_patch[i] = s_eaten != 0
@@ -149,16 +154,11 @@ class NAgentsEnv():
             rewards[i] = reward
             tot_eaten += s_eaten
             agents_state[i] = agent_state
+            #print("S, A: ", agents_state[i], action)
         # Compute welfare
-        welfare = compute_NSW(rewards) 
+        welfare = compute_NSW(agents_state[:,4]) 
         # Compute reward with welfare
-        pw_control = self.p_welfare
-        if self.var_pw:
-            pw_control = np.mean([action[-1] for action in actions])
-            # Transform pw action output to range [0,1]
-            pw_control = (pw_control+self.v_max)/(2*self.v_max)
-        #print("PW control after: ", pw_control)
-        rewards = (1-pw_control)*rewards + pw_control*welfare
+        rewards = (1-self.p_welfare)*rewards + self.p_welfare*welfare
         # Update patch resources
         patch_state = self.patch.update_resources(patch_state, tot_eaten, dt=0.1)
         # Update counter
@@ -175,7 +175,7 @@ class NAgentsEnv():
 
 
 class Agent:
-    def __init__(self,x,y,x_max,y_max,e_init,v_max,alpha=0.4, beta=0.25, id=0):
+    def __init__(self,x,y,x_max,y_max,e_init,v_max,alpha=0.4, beta=0.25, id=0, seed=0):
         # Hyperparameters of dynamical system
         self.alpha = alpha # penalizing coëfficient for movement
         self.beta = beta # amount of eating per timestep
@@ -184,7 +184,6 @@ class Agent:
         self.size = [x_max, y_max]
         self.e_init = e_init
         self.id = id
-        self.max_penalty = np.linalg.norm(np.array([self.v_max]*2))
         self.num_vars = 5 # Variables of interest: (x,y,v_x,v_y,e)
     
     def reset(self,x,y,rng):
@@ -195,16 +194,16 @@ class Agent:
         agent_state[4] = self.e_init
         return agent_state
 
-    def dist_to_patch(self,agent_state, patch_state):
-        diff = agent_state[:2] - patch_state[:2]
+    def dist_to(self,pos1,pos2):
+        diff = pos1 - pos2
         return np.linalg.norm(diff, 2)
     
     def is_in_patch(self,agent_state,patch_state):
-        dist = self.dist_to_patch(agent_state, patch_state)
+        dist = self.dist_to(agent_state[:2], patch_state[:2])
         return dist <= patch_state[3]
 
     def is_in_rof(self,agent_state,patch_state):
-        dist = self.dist_to_patch(agent_state, patch_state)
+        dist = self.dist_to(agent_state[:2], patch_state[:2])
         return dist > patch_state[3] and dist <= (patch_state[3] + patch_state[2])
         
 
@@ -216,16 +215,18 @@ class Agent:
         if np.any(who_in):
             s_eaten /= np.sum(who_in) 
         p_still = 0.2
-        action_penalty = ((1-p_still)*(np.linalg.norm(action.at[:2].get())/self.max_penalty)+p_still)*self.alpha
+        max_penalty = np.linalg.norm(np.full(action.shape, self.v_max))
+        action_penalty = ((1-p_still)*(np.linalg.norm(action)/max_penalty)+p_still)*self.alpha
         rof_penalty = (self.is_in_rof(agent_state,patch_state)).astype(int)*self.alpha
         # Update step (differential equation)
         de = s_eaten - dt*(action_penalty + rof_penalty)
         # If agent has negative or zero energy, put the energy value at zero and consider the agent dead
         # Also agent can't have more energy than it's initial energy value
         #print("Start: ", agent_state[-1])
-        agent_state[-1] = np.clip(agent_state[-1]+de, 0, self.e_init)
+        agent_state[4] = np.clip(agent_state[4]+de, 0, self.e_init)
         #print("End: ", agent_state[-1])
-        reward = np.clip(agent_state[-1]/self.e_init, 0, 1)
+        reward = np.clip(agent_state[4]/self.e_init, 0, 1)
+        #print("A, Pa, Pr, E, R: ", action_penalty, rof_penalty, s_eaten, reward)
         penalties = action_penalty
         return agent_state, reward, s_eaten, penalties
         
@@ -245,6 +246,24 @@ class Agent:
         agent_state[:2] = pos
         agent_state[2:4] = vel
         return agent_state
+
+class CommsAgent(Agent):
+    def __init__(self,x,y,x_max,y_max,e_init,v_max,alpha=0.4, beta=0.25, id=0, seed=0):
+        super().__init__(x,y,x_max,y_max,e_init,v_max,alpha,beta,id)
+        self.noise_rng = np.random.default_rng(seed=seed)
+        self.num_vars = 6
+    
+    # We will add the message as a last term to the agent's state
+    # For now only works with 2 agents
+    def update_message(self,agents_state,action):
+        msg = action.at[3].get()
+        attention = (self.v_max+action.at[2].get())/2 # Bounds attention to [0,4]
+        agents_pos = [a[:2] for a in agents_state]
+        max_dist = np.sqrt(self.size[0]**2+self.size[1]**2)
+        noise_lvl = self.dist_to(*agents_pos)*(self.v_max-attention)/(max_dist*self.v_max) # Bounds noise lvl to [0,1]
+        #print(f"D,A,N: {self.dist_to(*agents_pos):.2f}, {(self.v_max-attention):.2f}, {noise_lvl:.2f}")
+        noise_value = self.noise_rng.normal(0,noise_lvl)
+        return np.clip(msg + noise_value, -self.v_max, self.v_max)
 
 class Patch:
     def __init__(self, x,y,radius,s_init, eta=0.1, gamma=0.01, rof=0, patch_resize=False):
