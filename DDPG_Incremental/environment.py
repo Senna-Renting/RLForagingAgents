@@ -14,7 +14,7 @@ def compute_NSW(rewards):
     return NSW
     
 class NAgentsEnv():
-    def __init__(self, patch_radius=10,s_init=10, e_init=5, eta=0.1, beta=0.03, alpha=0.5, env_gamma=0.01, step_max=400, x_max=50, y_max=50, v_max=4, n_agents=2, obs_others=False, obs_range=80, in_patch_only=False, p_welfare=0, rof=0, patch_resize=False, use_msg=False, **kwargs):
+    def __init__(self, patch_radius=10,s_init=10, e_init=5, eta=0.1, beta=0.1, alpha=0.5, env_gamma=0.01, step_max=400, x_max=50, y_max=50, v_max=4, n_agents=2, obs_others=False, obs_range=80, in_patch_only=False, p_welfare=0, rof=0, patch_resize=False, use_msg=False, **kwargs):
         self.x_max = x_max
         self.y_max = y_max
         self.v_max = v_max
@@ -219,7 +219,7 @@ class Agent:
         p_still = 0.2
         max_penalty = np.linalg.norm(np.full(action.shape, self.v_max))
         action_penalty = ((1-p_still)*(np.linalg.norm(action)/max_penalty)+p_still)*self.alpha
-        rof_penalty = (self.is_in_rof(agent_state,patch_state)).astype(int)*self.alpha
+        rof_penalty = (self.is_in_rof(agent_state,patch_state)).astype(int)*self.alpha*2
         # Update step (differential equation)
         de = s_eaten - dt*(action_penalty + rof_penalty)
         # If agent has negative or zero energy, put the energy value at zero and consider the agent dead
@@ -238,8 +238,8 @@ class Agent:
         # Compute action values
         pos = agent_state[:2].copy()
         vel = agent_state[2:4].copy()
-        acc = action.at[:2].get()
-        damp = 0.3
+        acc = action[:2]
+        damp = 0.4
         # Update position
         pos += dt*vel 
         pos = np.mod(pos, self.size)

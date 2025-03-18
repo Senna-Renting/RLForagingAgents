@@ -1,7 +1,7 @@
 import wandb
 from environment import *
 from save_utils import load_policy, save_policy
-from td3 import Actor, wandb_train_ddpg, n_agents_ddpg, n_agents_td3
+from td3 import Actor, wandb_train_ddpg, n_agents_ddpg
 from welfare_functions import *
 import os
 from datetime import datetime
