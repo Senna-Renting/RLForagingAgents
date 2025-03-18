@@ -53,12 +53,7 @@ def run_ddpg(env, num_episodes, train_fun, path, train_args=dict(), prev_path=No
     (penalties, is_in_patch, agent_states, patch_info) = agents_info
     # Save all data (as efficiently as possible)
     data = {
-        "rewards": rewards,
-        "penalties": penalties,
-        "is_in_patch": is_in_patch,
         "patch_state": patch_info[0],
-        "patch_resource": patch_info[1],
-        "agent_states": agent_states,
         "b_states": buffer_data[0],
         "b_actions": buffer_data[1],
         "b_rewards": buffer_data[2],
@@ -69,15 +64,12 @@ def run_ddpg(env, num_episodes, train_fun, path, train_args=dict(), prev_path=No
     np.savez(os.path.join(path, "critic_weights"), *c_weights)
     # Save metadata
     save_metadata(metadata, path)
-
     
     # Plot a few informative plots
     plot_rewards(path, rewards)
     plot_loss(path, "critic", cs_loss)
     plot_loss(path, "actor", as_loss)
     plot_penalty(path, is_in_patch, penalties[:,:,:,0], "action")
-    if penalties.shape[3] == 2:
-        plot_penalty(path, is_in_patch, penalties[:,:,:,1], "communication")
     
     # Draw run of agents over the episodes and save informative plots of final state environment
     plot_final_states_env(path, is_in_patch, patch_info, agent_states[-1], rewards[-1])

@@ -211,7 +211,7 @@ def create_data_files(path, **info):
         "critics_loss": make_file("critics_loss.dat", (info["num_episodes"], 3, info["n_agents"])),
         "actors_loss": make_file("actors_loss.dat", (info["num_episodes"], 3, info["n_agents"])),
         "returns": make_file("returns.dat", (info["num_episodes"], info["step_max"], info["n_agents"])),
-        "penalties": make_file("test_penalties.dat", (info["num_episodes"], info["step_max"], info["n_agents"], 1)),
+        "penalties": make_file("test_penalties.dat", (info["num_episodes"], info["step_max"], info["n_agents"],1)),
         "is_in_patch": make_file("is_in_patch.dat", (info["num_episodes"], info["step_max"], info["n_agents"])),
         "agent_states": make_file("agent_states.dat", (info["num_episodes"], info["step_max"]+1, *info["agents_state_shape"])),
         "patch_states": make_file("patch_states.dat", (info["num_episodes"], info["step_max"]+1, 1+info["patch_resize"])),
