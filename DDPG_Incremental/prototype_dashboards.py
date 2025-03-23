@@ -31,8 +31,53 @@ test_env_shape = [5,5]
 
 ### Put test functions for plots below (constants defined globally may NOT be IMPLICITLY used in the functions described below)
 #### Not Tested
-def plot_weights(path, weights):
-    pass
+def env_vars_data(patch_info, agents_state, actions):
+    n_agents = actions.shape[2]
+    action_dim = actions.shape[-1]
+    agents_data = []
+    energy_state = np.reshape(agents_state[:,:,:,4], (-1, n_agents))
+    resource_state = patch_info[1][:,:,-1].flatten()
+    action_state = np.linalg.norm(np.reshape(actions[:,:,:,:2], (-1, n_agents, 2)), axis=2)
+    agents_data.append(("Action", action_state))
+    if action_dim >= 3:
+        comms_state = np.reshape(actions[:,:,:,2], (-1, n_agents))
+        agents_data.append(("Comms", comms_state))
+    if action_dim >= 4:
+        attention_state = np.reshape(actions[:,:,:,3], (-1, n_agents))
+        agents_data.append(("Attention", attention_state))
+    agents_data.append(("Energy", energy_state))
+    return resource_state, agents_data
+
+def plot_env_vars(resource_state, agents_data, axes, trail=100, a_colors=plt.cm.Set1.colors):
+    font_size = 11
+    scale_y = lambda ax, data: ax.set_ylim([data.min()-data.max()*0.1, data.max()*1.1])
+    resource = axes[0].plot(resource_state[0], c='g')[0]
+    axes[0].set_ylabel("Patch", fontsize=font_size)
+    axes[0].set_xlim([0,trail])
+    scale_y(axes[0], resource_state)
+    axes[0].tick_params(left = False, right = False , labelleft = False , 
+                labelbottom = False, bottom = False) 
+    agent_plots = []
+    for i,(name,d) in enumerate(agents_data):
+        agent_plots.append([axes[i+1].plot(d[0, i_a], c=a_colors[i_a])[0] for i_a in range(d.shape[-1])])
+        scale_y(axes[i+1], d)
+        axes[i+1].set_xlim([0,trail])
+        axes[i+1].set_ylabel(name, fontsize=font_size)
+        axes[i+1].tick_params(left = False, right = False , labelleft = False , 
+                labelbottom = False, bottom = False) 
+        if i == len(agents_data)-1:
+            axes[i+1].set_xlabel("Time", fontsize=font_size)
+    data = (resource_state, [d for name,d in agents_data])
+    plots = (resource, agent_plots)
+    return data, plots
+
+def update_env_vars(frame, data, plots, trail=100):
+    start = np.max([0, frame-trail])
+    x_range = np.arange(0,frame-start)
+    plots[0].set_data(x_range, data[0][start:frame])
+    for i,d in enumerate(data[1]):
+        for i_a in range(d.shape[-1]):
+            plots[1][i][i_a].set_data(x_range, d[start:frame, i_a])
 
 def plot_rewards(path, rewards, colors=plt.cm.Set1.colors):
     x_range = np.arange(0,rewards.shape[0])
@@ -58,45 +103,50 @@ The agent_state and the patch_state of the NAgentsEnv class are used as input he
 agent_state's shape: [n_episodes, step_max, n_agents, dim(x,y,x_dot,y_dot,e)]
 patch_info's shape: ([dim(x,y,rof,r)], [n_episodes, step_max, dim(s))])
 """
-def plot_env(path, env_shape, patch_info, agents_state, a_colors=plt.cm.Set1.colors):
+def plot_env(path, env_shape, patch_info, agents_state, actions, a_colors=plt.cm.Set1.colors):
+    a_colors=plt.cm.Set1.colors
     n_episodes, step_max, n_agents, *_ = agents_state.shape
+    action_names = ["Horizontal acc", "Vertical acc", "Communication", "Attention"]
     patch_energy = patch_info[1]
     agent_size = env_shape[0]/70
     s_max = np.max(patch_info[1][-1])
-    print(s_max)
     patch_pos = patch_info[0][:2]
     patch_radius = patch_info[0][3]
     rof = patch_info[0][2]
-    
     agent_pos = lambda frame, i_a: agents_state[int(frame/step_max),frame%step_max, i_a, :2]
     agent_radius = lambda frame: patch_energy[int(frame/step_max), frame%step_max,0]
     norm = lambda frame: patch_energy[int(frame/step_max), frame%step_max,-1]/s_max
-    print(norm(0))
     patch_color = lambda norm: (0.2,0.3+0.7*norm,0.2)
     fig = plt.figure()
-    ax = plt.subplot(1,1,1)
+    ax = fig.add_axes([0.05,0.05,0.5,1])
     ax.set_xlim([0,env_shape[0]])
     ax.set_ylim([0,env_shape[1]])
     ax.set_aspect('equal')
     ax.set_xticks([])
     ax.set_yticks([])
+    resource_state, agents_data = env_vars_data(patch_info, agents_state, actions)
+    state_axes = [fig.add_axes([0.6,0.7-i*0.15,0.38,0.15]) for i in range(len(agents_data)+1)]
+    data, plots = plot_env_vars(resource_state, agents_data, state_axes)
     rof = ax.add_patch(plt.Circle(patch_pos, patch_radius+rof, color=(0.5,0.3,1)))
     patch = ax.add_patch(plt.Circle(patch_pos, patch_radius, color=patch_color(norm(0))))
     agents = [ax.add_patch(plt.Circle(agent_pos(0, i_a), agent_size, facecolor=a_colors[i_a], linewidth=1, edgecolor=(0.9,0.9,0.9))) for i_a in range(n_agents)]
     episode_text = ax.text(0.05,0.1, f"Episode: 1/{n_episodes}", transform=ax.transAxes)
     frame_text = ax.text(0.05,0.05, f"Timestep: 1/{step_max}", transform=ax.transAxes)
-    plt.tight_layout()
+
     def update(frame):
+        update_env_vars(frame, data, plots)
         frame_text.set_text(f"Timestep: {(frame%step_max)+1}/{step_max}")
         episode_text.set_text(f"Episode: {int(frame/step_max)+1}/{n_episodes}")
         radius = patch_radius if patch_energy.shape[-1] == 1 else agent_radius(frame)
         patch.set(color = patch_color(norm(frame)), radius = radius)
         for i_a, agent in enumerate(agents):
             agent.set(center = agent_pos(frame,i_a))
+        return [frame_text, episode_text, patch, rof, *agents, ]
+    
     fps = 24
-    anim = FuncAnimation(fig, update, n_episodes*step_max, interval=1000/fps)
+    anim = FuncAnimation(fig,update, n_episodes*step_max, init_func=lambda: update(0), interval=1000/fps, blit=True, cache_frame_data=False)
     anim.save(os.path.join(path, "runs_in_environment.mp4"))
-    plt.close(fig)
+    plt.close(fig) 
 
 def plot_loss(path, name, data, colors=plt.cm.Set1.colors):
     n_episodes, n_stats, n_agents = data.shape

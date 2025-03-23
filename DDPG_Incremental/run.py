@@ -75,8 +75,12 @@ def run_ddpg(env, num_episodes, train_fun, path, train_args=dict(), prev_path=No
     plot_final_states_env(path, is_in_patch, patch_info, agent_states[-1], rewards[-1])
     
     # Toggle for generating video of the training over episodes
+    a_shape = (metadata["n_episodes"], metadata["step_max"], metadata["n_agents"], metadata["action_dim"]+1) # +1 for blank testing
+    d_path = os.path.abspath(os.path.join(metadata["current_path"], "data"))
+    actions = np.memmap(os.path.join(d_path, "actions.dat"), mode="r", dtype="float32", shape=a_shape)
     if not skip_vid:
-        plot_env(path, env.size(), patch_info, agent_states)
+        #plot_env_vars(path, env.size(), patch_info, agent_states, actions)
+        plot_env(path, env.size(), patch_info, agent_states, actions)
     
     
 
@@ -180,7 +184,7 @@ if __name__ == "__main__":
     parser.add_argument("-b","--batch-size", type=int, default=80, help="Size of the batches used for training updates")
     parser.add_argument("-lra","--lr-a", type=float, default=3e-4, help="Learning rate for the actor network")
     parser.add_argument("-lrc","--lr-c", type=float, default=1e-3, help="Learning rate for the critic network")
-    parser.add_argument("-an", "--act-noise", type=float, default=0.2, help="Adjust the exploration noise added to actions of agents")
+    parser.add_argument("-an", "--act-noise", type=float, default=1, help="Adjust the exploration noise added to actions of agents")
     parser.add_argument("--rof", type=int, default=0, help="Size of ring of fire around patch")
     parser.add_argument("--patch-resize", action=argparse.BooleanOptionalAction, default=False, help="Allow the patch to resize based on the amount of resources present")
     parser.add_argument("--use-msg", action=argparse.BooleanOptionalAction, default=False, help="Let agents pass messages to each other")
