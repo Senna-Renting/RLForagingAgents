@@ -17,6 +17,7 @@ class Critic(nnx.Module):
         self.input = nnx.Linear(in_dim, hidden_dim[0], rngs=rngs)
         self.lhs = tuple([nnx.Linear(hidden_dim[i], hidden_dim[i+1], rngs=rngs) for i in range(len(hidden_dim) - 1)])
         self.out = nnx.Linear(hidden_dim[-1], out_dim, rngs=rngs)
+        self.comms_mask = jnp.array([0,0,1,0])
     def __call__(self, state, action):
         x = jnp.concatenate([state, action], axis=-1)
         x = nnx.relu(self.input(x))
@@ -213,13 +214,13 @@ def create_data_files(path, **info):
         "returns": make_file("returns.dat", (info["num_episodes"], info["step_max"], info["n_agents"])),
         "penalties": make_file("test_penalties.dat", (info["num_episodes"], info["step_max"], info["n_agents"],1)),
         "is_in_patch": make_file("is_in_patch.dat", (info["num_episodes"], info["step_max"], info["n_agents"])),
-        "agent_states": make_file("agent_states.dat", (info["num_episodes"], info["step_max"]+1, *info["agents_state_shape"])),
-        "patch_states": make_file("patch_states.dat", (info["num_episodes"], info["step_max"]+1, 1+info["patch_resize"])),
+        "agent_states": make_file("agent_states.dat", (info["num_episodes"], info["step_max"], *info["agents_state_shape"])),
+        "patch_states": make_file("patch_states.dat", (info["num_episodes"], info["step_max"], 1+info["patch_resize"])),
         "actions": make_file("actions.dat", (info["num_episodes"], info["step_max"], info["n_agents"], info["action_dim"])) 
     }
     return data
 
-def n_agents_ddpg(env, num_episodes, tau=0.0025, gamma=0.99, batch_size=240, lr_a=3e-4, lr_c=1e-3, seed=0, action_dim=2, state_dim=9, action_max=1, hidden_dim=[128,32], act_noise=0.13, log_fun=print_log_ddpg_n_agents, current_path="", **kwargs):
+def n_agents_ddpg(env, num_episodes, tau=0.0025, gamma=0.99, batch_size=240, lr_a=3e-4, lr_c=1e-3, seed=0, action_dim=2, state_dim=9, action_max=1, hidden_dim=[256,32], act_noise=0.13, log_fun=print_log_ddpg_n_agents, current_path="", **kwargs):
     # Initialize metadata object for keeping track of (hyper-)parameters and/or additional settings of the environment
     hidden_dims = [str(h_dim) for h_dim in hidden_dim]
     warmup_size = 5*batch_size
@@ -233,7 +234,7 @@ def n_agents_ddpg(env, num_episodes, tau=0.0025, gamma=0.99, batch_size=240, lr_
     n_agents = env.n_agents
     step_max = env.step_max
     patch_resize = env.patch_resize
-    actor_dim = action_dim + 1 # Test blank action
+    actor_dim = action_dim
 
     actors = [Actor(state_dim,actor_dim,action_max,seed+i,hidden_dim=hidden_dim) for i in range(n_agents)]
     actors_t = [Actor(state_dim,actor_dim,action_max,seed+i,hidden_dim=hidden_dim) for i in range(n_agents)]
@@ -329,15 +330,13 @@ def n_agents_ddpg(env, num_episodes, tau=0.0025, gamma=0.99, batch_size=240, lr_
         # Test agent
         done = False
         env_state, states = env.reset(seed=seed+i) # Make sure the reset seed is the same as for training
-        data["agent_states"][i, 0] = env_state[0]
-        data["patch_states"][i, 0] = env_state[1][-1]
         for i_t in range(step_max):
             for i_a in range(n_agents):
                 data["actions"][i,i_t,i_a,:] = actors_t[i_a](states[i_a])
             step_idx = env_state[2]
             env_state,next_states,(rewards,(penalties, is_in_patch)), terminated, truncated, _ = env.step(env_state, *data["actions"][i,i_t])
-            data["agent_states"][i, i_t+1] = env_state[0]
-            data["patch_states"][i, i_t+1] = env_state[1][-1-patch_resize:]
+            data["agent_states"][i, i_t] = env_state[0]
+            data["patch_states"][i, i_t] = env_state[1][-1-patch_resize:]
             data["penalties"][i,step_idx] = penalties
             data["is_in_patch"][i,step_idx] = is_in_patch
             states = next_states

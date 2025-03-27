@@ -75,7 +75,7 @@ def run_ddpg(env, num_episodes, train_fun, path, train_args=dict(), prev_path=No
     plot_final_states_env(path, is_in_patch, patch_info, agent_states[-1], rewards[-1])
     
     # Toggle for generating video of the training over episodes
-    a_shape = (metadata["n_episodes"], metadata["step_max"], metadata["n_agents"], metadata["action_dim"]+1) # +1 for blank testing
+    a_shape = (metadata["n_episodes"], metadata["step_max"], metadata["n_agents"], metadata["action_dim"])
     d_path = os.path.abspath(os.path.join(metadata["current_path"], "data"))
     actions = np.memmap(os.path.join(d_path, "actions.dat"), mode="r", dtype="float32", shape=a_shape)
     if not skip_vid:
@@ -187,7 +187,7 @@ if __name__ == "__main__":
     parser.add_argument("-an", "--act-noise", type=float, default=1, help="Adjust the exploration noise added to actions of agents")
     parser.add_argument("--rof", type=int, default=0, help="Size of ring of fire around patch")
     parser.add_argument("--patch-resize", action=argparse.BooleanOptionalAction, default=False, help="Allow the patch to resize based on the amount of resources present")
-    parser.add_argument("--use-msg", action=argparse.BooleanOptionalAction, default=False, help="Let agents pass messages to each other")
+    parser.add_argument("--agent-type", default="No Communication", help="Decides the type of agent for the environment")
     parser.add_argument("--video", action=argparse.BooleanOptionalAction, help="Toggle for video generation of episodes")
     args = parser.parse_args()
     run_experiment(**vars(args))
