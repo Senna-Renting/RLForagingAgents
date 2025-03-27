@@ -14,7 +14,7 @@ def compute_NSW(rewards):
     return NSW
     
 class NAgentsEnv():
-    def __init__(self, patch_radius=10,s_init=10, e_init=5, eta=0.1, beta=0.05, env_gamma=0.01, step_max=600, x_max=50, y_max=50, v_max=4, n_agents=2, obs_others=False, obs_range=80, in_patch_only=False, p_welfare=0, rof=0, patch_resize=False, agent_type="No Communication", **kwargs):
+    def __init__(self, patch_radius=10,s_init=10, e_init=5, eta=0.1, beta=0.05, env_gamma=0.01, step_max=600, x_max=50, y_max=50, v_max=4, n_agents=2, in_patch_only=False, p_welfare=0, rof=0, patch_resize=False, agent_type="No Communication", **kwargs):
         self.x_max = x_max
         self.y_max = y_max
         self.v_max = v_max
@@ -42,8 +42,6 @@ class NAgentsEnv():
         self.n_agents = n_agents
         self.beta = beta
         self.e_init = e_init
-        self.obs_others = obs_others
-        self.obs_range = obs_range
         self.in_patch_only = in_patch_only
         self.patch_resize = patch_resize
         self.p_welfare = p_welfare
@@ -75,54 +73,20 @@ class NAgentsEnv():
     def size(self):
         return self.x_max, self.y_max
 
-    """
-    For the state generator version 2 below, I will make a few major changes.
-    The patch resource state will now only be seen if the agent is in the patch, or if communication is enabled (obs_others) and a close-by agent is in the patch, and if in_patch_only is false, it will always show the resource state.
-    Agents communicate their velocity and position with the other agents only when nearby (within obs_range) if obs_others is enabled.
-    When either the patch resource cannot be seen, or other agents are not nearby enough, we will assume zero values for their states, as this should remove dependence on those state values for the neural networks.
-    """
     def get_states(self, agents_state, patch_state):
         # Initialize size of state
         obs_size = self.get_state_space()
-        is_nearby = self.get_nearby_agents(agents_state)
         in_patch = np.array([self.agents[i].is_in_patch(agents_state[i], patch_state) for i in range(self.n_agents)])
         agents_obs = np.zeros((self.n_agents, obs_size))
         # Compute components of state
         for i in range(self.n_agents):
-            ptr = 0
-            agents_obs[i, ptr:self.agents[i].num_vars] = agents_state[i]
-            ptr += self.agents[i].num_vars
-            agents_obs[i, ptr:ptr+self.patch.num_vars-1] = patch_state[:-1]
-            ptr += self.patch.num_vars-1
-            # Add patch resource info to state
-            if (np.any(is_nearby[i] & in_patch) and self.obs_others) or in_patch[i] or not self.in_patch_only:
+            agents_obs[i] = np.concatenate([agents_state[i], patch_state[:-1], [self.latest_patch]])
+            if in_patch[i] or not self.in_patch_only:
                 self.latest_patch = patch_state[-1]
-            agents_obs[i, ptr] = self.latest_patch
-            ptr += 1
-            # Add position and velocity information of nearby agents (including self) to state
-            if self.obs_others:
-                for j in range(self.n_agents):
-                    if is_nearby[i,j] and i != j:
-                        self.latest_obs[i,j] = agents_state[j][:4] # We only provide the agent with the latest observed information  
-                    if i != j:
-                        agents_obs[i, ptr:ptr+4] = self.latest_obs[i,j]
-                        ptr += 4
         return agents_obs
-
-    def get_nearby_agents(self, agents_state):
-        nearby_mat = np.empty((self.n_agents, self.n_agents), dtype='bool')
-        for i in range(self.n_agents):
-            for j in range(self.n_agents):
-                x_diff = agents_state[i][0] - agents_state[j][0]
-                y_diff = agents_state[i][1] - agents_state[j][1]
-                dist = np.sqrt(x_diff**2 + y_diff**2)
-                nearby_mat[i,j] = dist < self.obs_range
-        return nearby_mat
 
     def get_state_space(self):
         obs_size = self.agents[0].num_vars + self.patch.num_vars
-        if self.obs_others:
-            obs_size += 4*(self.n_agents-1) # Add indices for tracking position and velocity (4 items!) of other agents when nearby
         return obs_size 
     
     def reset(self, seed=0):
