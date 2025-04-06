@@ -17,7 +17,6 @@ class Critic(nnx.Module):
         self.input = nnx.Linear(in_dim, hidden_dim[0], rngs=rngs)
         self.lhs = tuple([nnx.Linear(hidden_dim[i], hidden_dim[i+1], rngs=rngs) for i in range(len(hidden_dim) - 1)])
         self.out = nnx.Linear(hidden_dim[-1], out_dim, rngs=rngs)
-        self.comms_mask = jnp.array([0,0,1,0])
     def __call__(self, state, action):
         x = jnp.concatenate([state, action], axis=-1)
         x = nnx.relu(self.input(x))
@@ -33,25 +32,6 @@ def MSE_optimize_critic(optimizer: nnx.Optimizer, critic: nnx.Module, states: jn
     return loss, grads
 
 @nnx.jit
-def MSE_optimize_td3(optimizer: nnx.Optimizer, critic: nnx.Module, states: jnp.array, actions: jnp.array, ys: jnp.array):
-    loss_fn = lambda critic: ((critic(states, actions) - ys) ** 2).mean()
-    loss = [None, None]
-    grads = [None, None]
-    for i in range(2):
-        l, g = nnx.value_and_grad(loss_fn)(critic[i])
-        loss[i] = l
-        grads[i] = g
-        optimizer[i].update(g)
-    return loss, grads
-
-@nnx.jit
-def compute_targets_td3(critic: nnx.Module, actor: nnx.Module, rs: jnp.array, states: jnp.array, done: jnp.array, gamma: float, key, target_noise, noise_clip):
-    actions = actor(states)
-    as_noisy = actions + jnp.clip(jax.random.normal(key, actions.shape)*target_noise, min=-noise_clip, max=noise_clip)
-    c_min = jnp.stack([critic[i](states, as_noisy) for i in range(2)], axis=0).min(axis=0)
-    return rs + gamma*(1-done)*(c_min)    
-
-@nnx.jit
 def compute_targets(critic: nnx.Module, actor: nnx.Module, rs: jnp.array, states: jnp.array, done: jnp.array, gamma: float):
     return rs + gamma*(1-done)*(critic(states, actor(states)))
 
@@ -63,12 +43,14 @@ class Actor(nnx.Module):
         self.input = nnx.Linear(in_dim, hidden_dim[0], rngs=rngs)
         self.lhs = tuple([nnx.Linear(hidden_dim[i], hidden_dim[i+1], rngs=rngs) for i in range(len(hidden_dim) - 1)])
         self.out = nnx.Linear(hidden_dim[-1], out_dim, rngs=rngs)
+    def final_activation(self, x):
+        return nnx.tanh(x) * self.a_max 
     def __call__(self, state):
         x = nnx.relu(self.input(state))
         for lh in self.lhs:
             x = nnx.relu(lh(x))
         x = self.out(x)
-        return self.a_max * nnx.tanh(x)
+        return self.final_activation(x)
 
 @nnx.jit
 def mean_optimize_actor(optimizer: nnx.Optimizer, actor: nnx.Module, critic: nnx.Module, states: jnp.array):
@@ -80,13 +62,6 @@ def mean_optimize_actor(optimizer: nnx.Optimizer, actor: nnx.Module, critic: nnx
 def sample_action(rng, actor, state, action_min, action_max, action_dim, act_noise=0.1):
     mu_action = actor(state)
     eps = jax.random.normal(rng, (action_dim,))*act_noise
-    return jnp.clip(mu_action + eps, action_min, action_max)
-
-def sample_action_beta(rng, actor, state, action_min, action_max, action_dim, act_noise=0.1):
-    alpha_beta = lambda s: (1-4*s)/(8*s) # Equation that approximates normal distribution std parameters needed for beta dist.
-    ab = alpha_beta(act_noise)
-    eps = (jax.random.beta(rng, ab, ab, (action_dim,)) - 0.5)*2*action_max # - 0.5 to ensure zero mean
-    mu_action = actor(state)
     return jnp.clip(mu_action + eps, action_min, action_max)
     
 
@@ -220,7 +195,7 @@ def create_data_files(path, **info):
     }
     return data
 
-def n_agents_ddpg(env, num_episodes, tau=0.0025, gamma=0.99, batch_size=240, lr_a=3e-4, lr_c=1e-3, seed=0, action_dim=2, state_dim=9, action_max=1, hidden_dim=[256,32], act_noise=0.13, log_fun=print_log_ddpg_n_agents, current_path="", **kwargs):
+def n_agents_ddpg(env, num_episodes, tau=0.0025, gamma=0.99, batch_size=240, lr_a=3e-4, lr_c=1e-3, seed=0, action_dim=2, state_dim=9, action_max=1, hidden_dim=[256,64], act_noise=0.13, log_fun=print_log_ddpg_n_agents, current_path="", **kwargs):
     # Initialize metadata object for keeping track of (hyper-)parameters and/or additional settings of the environment
     hidden_dims = [str(h_dim) for h_dim in hidden_dim]
     warmup_size = 5*batch_size

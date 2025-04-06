@@ -40,10 +40,10 @@ def env_vars_data(patch_info, agents_state, actions):
     action_state = np.linalg.norm(np.reshape(actions[:,:,:,:2], (-1, n_agents, 2)), axis=2)
     agents_data.append(("Action", action_state))
     if action_dim >= 3:
-        comms_state = np.reshape(actions[:,:,:,2], (-1, n_agents))
+        comms_state = np.reshape(np.max(actions[:,:,:,2:-1], axis=3), (-1, n_agents))
         agents_data.append(("Comms", comms_state))
     if action_dim >= 4:
-        attention_state = np.reshape(actions[:,:,:,3], (-1, n_agents))
+        attention_state = np.reshape(actions[:,:,:,-1], (-1, n_agents))
         agents_data.append(("Attention", attention_state))
     agents_data.append(("Energy", energy_state))
     return resource_state, agents_data
@@ -97,6 +97,19 @@ def plot_rewards(path, rewards, colors=plt.cm.Set1.colors):
     fig.savefig(os.path.join(path, "agent_episodes_return.png"))
     plt.close(fig)
 
+def plot_final_welfare(path, agents_states, colors=plt.cm.Set1.colors):
+    energy = np.mean(agents_states[:, :, :, 4], axis=1)
+    energy[energy < 0] = 0
+    nsw = np.sqrt(np.prod(energy, axis=1))
+    fig = plt.figure()
+    plt.plot(nsw)
+    plt.title("Welfare of agents across episodes")
+    plt.xlabel("Episode")
+    plt.ylabel("Average NSW")
+    fig.savefig(os.path.join(path, "average_nsw_over_episodes.png"))
+    plt.close(fig)
+
+
 #### Tested
 """
 The agent_state and the patch_state of the NAgentsEnv class are used as input here
@@ -109,7 +122,7 @@ def plot_env(path, env_shape, patch_info, agents_state, actions, a_colors=plt.cm
     action_names = ["Horizontal acc", "Vertical acc", "Communication", "Attention"]
     patch_energy = patch_info[1]
     agent_size = env_shape[0]/70
-    s_max = np.max(patch_info[1][-1])
+    s_max = np.max(patch_info[1])
     patch_pos = patch_info[0][:2]
     patch_radius = patch_info[0][3]
     rof = patch_info[0][2]
