@@ -177,7 +177,7 @@ def n_agents_ddpg(env, num_episodes, tau=0.0025, gamma=0.99, batch_size=240, lr_
     warmup_size = 5*batch_size
     metadata = dict(n_episodes=num_episodes.item(), tau=tau, gamma=gamma, 
                     batch_size=batch_size, lr_actor=lr_a, lr_critic=lr_c, 
-                    seed=seed, action_dim=action_dim, state_dim=state_dim,
+                    action_dim=action_dim, state_dim=state_dim,
                     action_max=action_max, hidden_dims=hidden_dims,
                     warmup_size=warmup_size, act_noise=act_noise, alg_name="Normal DDPG", 
                     current_path=current_path, **env.get_params())

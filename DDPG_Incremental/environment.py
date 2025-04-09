@@ -12,38 +12,41 @@ def compute_NSW(rewards):
     return NSW
     
 class NAgentsEnv():
-    def __init__(self, patch_radius=10,s_init=10, e_init=5, eta=0.1, beta=0.05, env_gamma=0.01, step_max=600, x_max=50, y_max=50, v_max=4, n_agents=2, in_patch_only=False, p_welfare=0, rof=0, patch_resize=False, agent_type="No Communication", **kwargs):
+    def __init__(self, patch_radius=10,s_init=10, e_init=5, eta=0.1, beta=0.05, env_gamma=0.01, step_max=600, x_max=50, y_max=50, v_max=4, n_agents=2, in_patch_only=False, p_welfare=0, rof=0, patch_resize=False, agent_type="No Communication", seed=0, **kwargs):
+        # Main variables used in environment
         self.x_max = x_max
         self.y_max = y_max
         self.v_max = v_max
-        # Eta and gamma are used for computing the rendering (don't remove them!!)
         self.eta = eta
         self.env_gamma = env_gamma
         self.step_max = step_max
         self.step_idx = 0
         self.rof = rof
-        self.patch = Patch(x_max/2, y_max/2, patch_radius, s_init, eta=eta, gamma=env_gamma, rof=rof, patch_resize=patch_resize)
         self.damping = 0.3
         self.p_still = 0.02
         self.p_act = 0.2
         self.p_att = 0.02
         self.p_comm = 0.1
         self.p_rof = 0.2
-        self.agent_type = agent_type
-        if self.agent_type == "Learned Communication":
-            self.agents = [LearnedCommsAgent(0,0,x_max,y_max,e_init,v_max, beta=beta, id=i, damping=self.damping, p_still=self.p_still, p_act=self.p_act, p_att=self.p_att, p_comm=self.p_comm, p_rof=self.p_rof, seed=kwargs["seed"]) for i in range(n_agents)]
-        elif self.agent_type == "State Communication":
-            self.agents = [StateCommsAgent(0,0,x_max,y_max,e_init,v_max, beta=beta, id=i, damping=self.damping, p_still=self.p_still, p_act=self.p_act, p_att=self.p_att, p_rof=self.p_rof, seed=kwargs["seed"]) for i in range(n_agents)]
-        elif self.agent_type == "SA-State Communication":
-            self.agents = [SendAcceptStateCommsAgent(0,0,x_max,y_max,e_init,v_max, beta=beta, id=i, damping=self.damping, p_still=self.p_still, p_act=self.p_act, p_att=self.p_att, p_comm=self.p_comm, p_rof=self.p_rof, seed=kwargs["seed"]) for i in range(n_agents)]
-        else:
-            self.agents = [Agent(0,0,x_max,y_max,e_init,v_max, beta=beta, id=i, damping=self.damping, p_still=self.p_still, p_act=self.p_act, p_rof=self.p_rof, seed=seed) for i in range(n_agents)]
         self.n_agents = n_agents
         self.beta = beta
         self.e_init = e_init
+        self.s_init = s_init
         self.in_patch_only = in_patch_only
         self.patch_resize = patch_resize
         self.p_welfare = p_welfare
+        self.seed = seed
+        # Initialize patch and agents
+        self.patch = Patch(x_max/2, y_max/2, patch_radius, self)
+        self.agent_type = agent_type
+        if self.agent_type == "Learned Communication":
+            self.agents = [LearnedCommsAgent(0,0,self,id=i) for i in range(n_agents)]
+        elif self.agent_type == "State Communication":
+            self.agents = [StateCommsAgent(0,0,self,id=i) for i in range(n_agents)]
+        elif self.agent_type == "SA-State Communication":
+            self.agents = [SendAcceptStateCommsAgent(0,0,self,id=i) for i in range(n_agents)]
+        else:
+            self.agents = [Agent(0,0,self,id=i) for i in range(n_agents)]
         # Initialize latest observation states
         self.latest_obs = np.zeros((self.n_agents, self.n_agents, self.agents[0].num_vars-1))
         self.latest_patch = 0
@@ -58,7 +61,6 @@ class NAgentsEnv():
             message_dim = 1
         action_dim = 2 # We use two acceleration terms (one for x and one for y)
         action_range = [-self.v_max, self.v_max]
-        print(action_dim+message_dim)
         return action_dim+message_dim, action_range
     
     def get_params(self):
@@ -158,18 +160,16 @@ class NAgentsEnv():
 
 
 class Agent:
-    def __init__(self,x,y,x_max,y_max,e_init,v_max,alpha=0.4, beta=0.25, id=0, p_still=0.2, p_act=0.8, p_rof=0.2, damping=0.3, seed=0):
-        # Hyperparameters of dynamical system
-        self.beta = beta # amount of eating per timestep
-        # General variables
-        self.v_max = v_max
-        self.size = [x_max, y_max]
-        self.e_init = e_init
+    def __init__(self,x,y,env,id=0):
+        self.beta = env.beta # amount of eating per timestep
+        self.v_max = env.v_max
+        self.size = [env.x_max, env.y_max]
+        self.e_init = env.e_init
         self.id = id
-        self.p_still = p_still
-        self.p_act = p_act
-        self.p_rof = p_rof
-        self.damping = damping
+        self.p_still = env.p_still
+        self.p_act = env.p_act
+        self.p_rof = env.p_rof
+        self.damping = env.damping
         self.num_vars = 5 # Variables of interest: (x,y,v_x,v_y,e)
     
     def reset(self,x,y,rng):
@@ -209,7 +209,6 @@ class Agent:
         agent_state[4] = agent_state[4]+de
         reward = agent_state[4]/self.e_init
         penalties = action_p
-        #print("Regular pens: ", action_p + rof_p, "\n Other pens: ", other_penalties)
         return agent_state, reward, s_eaten, penalties
         
     def update_position(self,agent_state,action, dt=0.1):
@@ -229,11 +228,11 @@ class Agent:
         return agent_state
 
 class LearnedCommsAgent(Agent):
-    def __init__(self,x,y,x_max,y_max,e_init,v_max,alpha=0.4, beta=0.25, id=0, p_still=0.05, p_act=0.3, p_comm=0.4, p_att=0.4, p_rof=0.3, damping=0.3, seed=0):
-        super().__init__(x,y,x_max,y_max,e_init,v_max,alpha,beta,id,p_still,p_act,p_rof,damping,seed)
-        self.p_comm = p_comm
-        self.p_att = p_att
-        self.noise_rng = np.random.default_rng(seed=seed)
+    def __init__(self,x,y,env,id=0):
+        super().__init__(x,y,env,id=id)
+        self.p_comm = env.p_comm
+        self.p_att = env.p_att
+        self.noise_rng = np.random.default_rng(seed=env.seed)
         self.num_vars = 6
     
     # We will add the message as a last term to the agent's state
@@ -254,10 +253,10 @@ class LearnedCommsAgent(Agent):
         return super().update_energy(agents_state,patch_state,action,other_penalties=penalty,dt=0.1)
 
 class StateCommsAgent(Agent):
-    def __init__(self,x,y,x_max,y_max,e_init,v_max,alpha=0.4, beta=0.25, id=0, p_still=0.05, p_act=0.3, p_att=0.4, p_rof=0.3, damping=0.3, seed=0,):
-        super().__init__(x,y,x_max,y_max,e_init,v_max,alpha,beta,id,p_still,p_act,p_rof,damping,seed)
-        self.p_att = p_att
-        self.noise_rng = np.random.default_rng(seed=seed)
+    def __init__(self,x,y,env,id=0):
+        super().__init__(x,y,env,id=id)
+        self.p_att = env.p_att
+        self.noise_rng = np.random.default_rng(seed=env.seed)
         self.num_vars += 5
 
     def get_message(self,agents_state,actions):
@@ -277,9 +276,9 @@ class StateCommsAgent(Agent):
         return super().update_energy(agents_state,patch_state,action,other_penalties=penalty,dt=0.1)
 
 class SendAcceptStateCommsAgent(StateCommsAgent):
-    def __init__(self,x,y,x_max,y_max,e_init,v_max,alpha=0.4, beta=0.25, id=0, p_still=0.05, p_act=0.3, p_att=0.4, p_comm=0.4, p_rof=0.3, damping=0.3, seed=0, signals=[0,1,2,3]):
-        self.p_comm = p_comm
-        super().__init__(x,y,x_max,y_max,e_init,v_max,alpha,beta,id,p_still,p_act,p_att,p_rof,damping,seed)
+    def __init__(self,x,y,env,id=0):
+        self.p_comm = env.p_comm
+        super().__init__(x,y,env,id=id)
         self.num_vars = 7 # 5 state dimensions and 2 message dimensions
         
     def get_message(self,agents_state,actions):
@@ -322,15 +321,15 @@ class SendAcceptStateCommsAgent(StateCommsAgent):
         return agent_state, reward, s_eaten, penalties
 
 class Patch:
-    def __init__(self, x,y,radius,s_init, eta=0.1, gamma=0.01, rof=0, patch_resize=False):
+    def __init__(self,x,y,radius,env):
         # Hyperparameters of dynamical system
-        self.eta = eta # regeneration rate of resources
-        self.gamma = gamma # decay rate of resources
+        self.eta = env.eta # regeneration rate of resources
+        self.gamma = env.env_gamma # decay rate of resources
         self.pos = np.array([x,y])
-        self.rof = rof
+        self.rof = env.rof
         self.radius = radius
-        self.patch_resize = patch_resize
-        self.s_init = s_init
+        self.patch_resize = env.patch_resize
+        self.s_init = env.s_init
         self.num_vars = 5 # Variables of interest: (x,y,r,rof,s)
     def get_radius(self):
         return self.radius
