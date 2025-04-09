@@ -1,4 +1,3 @@
-# Import required libraries
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
@@ -6,31 +5,7 @@ from matplotlib.colors import ListedColormap, BoundaryNorm
 from matplotlib.ticker import FuncFormatter
 from matplotlib.patches import Circle
 import os
-# Constants we will use to test on
-step_max = 400
-n_episodes = 50
-n_agents = 2
-n_stats = 3
-reward_dim = 1
-has_comms = True
-test_shape_network = ((9,64), (64,64), (64,2))
-path = "tests"
-# The test data used to build and test the plots
-test_data_in_patch = np.random.choice([True, False], (n_episodes, step_max, n_agents), p=[0.5,0.5])
-test_data_penalties = np.random.uniform(-0.2,0.2, (n_episodes, step_max, n_agents, 1+int(has_comms)))
-test_data_weights = [np.random.uniform(-1,1, (n_episodes, step_max, n_agents, *shape)) for shape in test_shape_network]
-test_data_returns = np.random.uniform(-0.05, 0.2, (n_episodes, step_max, n_agents, reward_dim))
-test_data_resources = np.random.uniform(0,10, (n_episodes, step_max))
-test_data_loss = np.random.uniform(0,1, (n_episodes, n_stats, n_agents))
-test_data_loss[:,0,:] = np.mean(test_data_loss, axis=1)
-test_data_loss[:,1,:] = np.min(test_data_loss, axis=1)
-test_data_loss[:,2,:] = np.max(test_data_loss, axis=1)
-test_patch_info = ([2.5,2.5], 0.5, np.random.uniform(0,10, (step_max,)))
-test_agents_poss = np.random.uniform(0,5, (step_max, n_agents, 2))
-test_env_shape = [5,5]
 
-### Put test functions for plots below (constants defined globally may NOT be IMPLICITLY used in the functions described below)
-#### Not Tested
 def env_vars_data(patch_info, agents_state, actions):
     n_agents = actions.shape[2]
     action_dim = actions.shape[-1]
@@ -110,7 +85,6 @@ def plot_final_welfare(path, agents_states, colors=plt.cm.Set1.colors):
     plt.close(fig)
 
 
-#### Tested
 """
 The agent_state and the patch_state of the NAgentsEnv class are used as input here
 agent_state's shape: [n_episodes, step_max, n_agents, dim(x,y,x_dot,y_dot,e)]
@@ -292,8 +266,4 @@ def plot_penalty(path, is_in_patch, data, name, colors=plt.cm.Set1.colors, bins=
 
 if __name__ == "__main__":
     # Put any function of this file here to individually test/assess them
-    #print(np.where(test_data_in_patch[1,:,0]))
-    plot_penalty(path, test_data_in_patch, test_data_penalties[:,:,:,1], "communication")
-    #plot_final_states_env(path, test_data_in_patch, test_data_returns[-1], test_data_resources[-1], test_data_returns[-1])
-    #plot_loss(path, "critic", test_data_loss)
-    #plot_env(path, test_env_shape, test_patch_info, test_agents_poss)
+    pass

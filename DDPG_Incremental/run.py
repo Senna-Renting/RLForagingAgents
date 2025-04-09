@@ -82,67 +82,6 @@ def run_ddpg(env, num_episodes, train_fun, path, train_args=dict(), prev_path=No
     if not skip_vid:
         #plot_env_vars(path, env.size(), patch_info, agent_states, actions)
         plot_env(path, env.size(), patch_info, agent_states, actions)
-    
-    
-
-def wandb_ddpg_train_patch(env, num_episodes, num_runs=5, hidden_dim=32, batch_size=100, warmup_steps=200):
-    episodes = list(range(1,num_episodes+1))
-    action_dim, a_range = env.get_action_space()
-    wandb.login()
-    sweep_config = {
-        'method':'bayes',
-        'metric':{
-            'name':'Return',
-            'goal':'maximize'
-        },
-        'parameters':{
-            'lr_c':{
-                'distribution':'uniform',
-                'min': 5e-4,
-                'max': 3e-3
-            },
-            'lr_a':{
-                'distribution':'uniform',
-                'min': 5e-5,
-                'max': 5e-4
-            },
-            'tau':{
-                'distribution':'uniform',
-                'min':0,
-                'max':0.3
-            },
-            'action_dim':{
-                'value':action_dim
-            },
-            'state_dim':{
-                'value':env.get_state_space()[1]
-            },
-            'hidden_dim':{
-                'value':hidden_dim
-            },
-            'batch_size':{
-                'value':batch_size
-            },
-            'num_episodes':{
-                'value':num_episodes
-            },
-            'warmup_steps':{
-                'value':warmup_steps
-            },
-            'seed':{
-                'value':0
-            },
-            'reset_seed':{
-                'value':0
-            },
-            'action_max':{
-                'value':a_range[1]
-            }
-        }
-    }
-    sweep_id = wandb.sweep(sweep_config, project="OneAgentPatchDDPG")
-    train_fun = wandb_train_ddpg(env)
-    wandb.agent(sweep_id, train_fun, count=num_runs)
 
 def patch_test_saved_policy(env, path, hidden_dim=32):
     state_dim = env.get_state_space()[1]
@@ -158,7 +97,6 @@ def patch_test_saved_policy(env, path, hidden_dim=32):
     env.render()
 
 def run_experiment(**kwargs):
-    print(kwargs)
     s = kwargs["seed"]
     e = kwargs["episodes"]
     env = NAgentsEnv(**kwargs)
@@ -192,5 +130,3 @@ if __name__ == "__main__":
     parser.add_argument("--video", action=argparse.BooleanOptionalAction, help="Toggle for video generation of episodes")
     args = parser.parse_args()
     run_experiment(**vars(args))
-    # Experiments can be run below
-    # experiment4(100,1)

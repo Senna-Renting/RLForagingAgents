@@ -8,9 +8,7 @@ from functools import partial
 
 # Helper function for computing the Nash Social Welfare function (aka geometric mean)
 def compute_NSW(rewards):
-    #print("Rewards: ", rewards)
     NSW = np.power(np.prod(rewards), 1/rewards.shape[0])
-    #print("Welfare: ", NSW.item())
     return NSW
     
 class NAgentsEnv():
@@ -127,11 +125,9 @@ class NAgentsEnv():
             agents_state[i, :agents_state.shape[1]] = self.agents[i].update_position(a_state, action)
             if self.agent_type in ["State Communication", "SA-State Communication"]:    
                 self.agents[i].get_message(agents_state, actions)
-                #print(msg.shape, msg)
             if self.agent_type == "Learned Communication":
                 msg = self.agents[i].update_message(agents_state, action)
                 agents_state[1-i, -1] = msg
-            #print(f"S_{i}: {agents_state[i]}")
             # Update agent energy
             agent_state, reward, s_eaten, penalty = self.agents[i].update_energy(agents_state, patch_state, action, dt=0.1)
             is_in_patch[i] = s_eaten != 0
@@ -140,7 +136,6 @@ class NAgentsEnv():
             rewards[i] = reward
             tot_eaten += s_eaten
             agents_state[i] = agent_state
-            #print("S, A: ", agents_state[i], action)
         # Compute welfare
         positive_rewards = rewards.copy()
         positive_rewards[positive_rewards < 0] = 0
@@ -207,7 +202,6 @@ class Agent:
         max_penalty = np.linalg.norm(np.full(2, self.v_max))
         action_p = np.linalg.norm(action[:2])/max_penalty*self.p_act
         rof_p = (self.is_in_rof(agent_state,patch_state)).astype(int)*self.p_rof
-        print("Tot: ", action_p + other_penalties)
         # Update step (differential equation)
         de = s_eaten - dt*(action_p + rof_p + other_penalties)
         # If agent has negative or zero energy, put the energy value at zero and consider the agent dead
@@ -250,8 +244,6 @@ class LearnedCommsAgent(Agent):
         agents_pos = [a[:2] for a in agents_state]
         max_dist = np.sqrt(self.size[0]**2+self.size[1]**2)
         noise_lvl = self.dist_to(*agents_pos)*(self.v_max-attention)/(max_dist*self.v_max) # Bounds noise lvl to [0,1]
-        #noise_lvl = self.dist_to(*agents_pos)/max_dist
-        #print(f"D,A,N: {self.dist_to(*agents_pos):.2f}, {(self.v_max-attention):.2f}, {noise_lvl:.2f}")
         noise_value = self.noise_rng.normal(0,noise_lvl)
         noised_msg = np.clip(msg + noise_value, -self.v_max, self.v_max)
         return noised_msg # Test the message itself first before adding noise
@@ -274,7 +266,6 @@ class StateCommsAgent(Agent):
         agents_pos = [a[:2] for a in agents_state]
         max_dist = np.sqrt(self.size[0]**2+self.size[1]**2)
         noise_lvl = self.dist_to(*agents_pos)/max_dist # Bounds noise lvl to [0,1]
-        #print(f"D,A,N: {self.dist_to(*agents_pos):.2f}, {(self.v_max-attention):.2f}, {noise_lvl:.2f}")
         noise_values = self.noise_rng.normal(0,noise_lvl,size=msg.shape)
         if round(attention) == 1:
             return  msg + noise_values # Test the message itself first before adding noise
@@ -286,35 +277,31 @@ class StateCommsAgent(Agent):
         return super().update_energy(agents_state,patch_state,action,other_penalties=penalty,dt=0.1)
 
 class SendAcceptStateCommsAgent(StateCommsAgent):
-    def __init__(self,x,y,x_max,y_max,e_init,v_max,alpha=0.4, beta=0.25, id=0, p_still=0.05, p_act=0.3, p_att=0.4, p_comm=0.4, p_rof=0.3, damping=0.3, seed=0):
+    def __init__(self,x,y,x_max,y_max,e_init,v_max,alpha=0.4, beta=0.25, id=0, p_still=0.05, p_act=0.3, p_att=0.4, p_comm=0.4, p_rof=0.3, damping=0.3, seed=0, signals=[0,1,2,3]):
         self.p_comm = p_comm
         super().__init__(x,y,x_max,y_max,e_init,v_max,alpha,beta,id,p_still,p_act,p_att,p_rof,damping,seed)
         self.num_vars = 7 # 5 state dimensions and 2 message dimensions
-
-    # TODO: fix this code to make agents send information correctly
+        
     def get_message(self,agents_state,actions):
         state_other = agents_state[1-self.id][:5]
         # Message can be position, velocity, energy or action of other agent respectively
-        msg = [state_other[:2], state_other[2:4], [state_other[4],0], actions[1-self.id][:2]]
+        msg = np.array([state_other[:2], state_other[2:4], [state_other[4],0], actions[1-self.id][:2]])
         normalize = lambda x: (self.v_max+x)/(2*self.v_max) # Bounds action value to [0,1]
         attention = normalize(actions[self.id][-1])
         # Communication here becomes a one-hot encoded signal that is selected by taking the strongest component
         communicate = normalize(actions[1-self.id][2:-1])
-        signal_idx = np.argmax(communicate)
-        signal_strength = np.max(communicate)
-        comms_signal = msg[signal_idx]
+        value = np.max(communicate)
+        idx = np.argmax(communicate)
+        msg = np.dot(communicate, msg)
         agents_pos = [a[:2] for a in agents_state]
         max_dist = np.sqrt(self.size[0]**2+self.size[1]**2)
-        noise_lvl = self.dist_to(*agents_pos)/max_dist # Bounds noise lvl to [0,1]
-        #print(f"D,A,N: {self.dist_to(*agents_pos):.2f}, {(self.v_max-attention):.2f}, {noise_lvl:.2f}")
-        noise_values = self.noise_rng.normal(0,noise_lvl,size=len(comms_signal))
-        if attention > 0.5 and signal_strength > 0.5:
-            agents_state[self.id][5:] = comms_signal + noise_values # Test the message itself first before adding noise
-        else:
-            agents_state[self.id][5:] = np.zeros(len(comms_signal)) # Zero vector indicating no information is retrieved
+        noise_lvl = (1-value)*(1+(1-attention)*(self.dist_to(*agents_pos)/max_dist)) # std 1 noise max
+        noise_values = self.noise_rng.normal(0,noise_lvl,size=1)
+        agents_state[self.id][5:] = msg + noise_values # Test the message itself first before adding noise
 
     def update_energy(self,agents_state,patch_state,action,other_penalties=0,dt=0.1):
-        comm_p = (np.max(action[2:-1])+self.v_max)/(2*self.v_max)*self.p_comm
+        a_comm = action[2:-1]
+        comm_p = np.linalg.norm(a_comm)/np.linalg.norm(np.full_like(a_comm, self.v_max))*self.p_comm
         att_p = (action[-1]+self.v_max)/(2*self.v_max)*self.p_att
         # Amount eaten depends on other agents in patch
         agent_state = agents_state[self.id]
@@ -332,7 +319,6 @@ class SendAcceptStateCommsAgent(StateCommsAgent):
         agent_state[4] = agent_state[4]+de
         reward = agent_state[4]/self.e_init
         penalties = action_p
-        #print("Regular pens: ", action_p + rof_p, "\n Other pens: ", other_penalties)
         return agent_state, reward, s_eaten, penalties
 
 class Patch:
@@ -340,7 +326,6 @@ class Patch:
         # Hyperparameters of dynamical system
         self.eta = eta # regeneration rate of resources
         self.gamma = gamma # decay rate of resources
-        # General variables
         self.pos = np.array([x,y])
         self.rof = rof
         self.radius = radius
@@ -349,20 +334,18 @@ class Patch:
         self.num_vars = 5 # Variables of interest: (x,y,r,rof,s)
     def get_radius(self):
         return self.radius
+        
     def update_resources(self, patch_state, eaten, dt=0.1):
         resources = patch_state[4]
-        
-        # Lotka volterra dynamics
         scalars = np.array([dt*self.eta, -dt*self.gamma, -1])
         values = np.array([resources,np.power(resources,2),eaten])
         ds = np.dot(scalars.T, values)
         
-        # Linear dynamics
-        # ds = dt*self.eta - eaten
         patch_state[4] = np.clip(resources + ds, 0, self.s_init) 
         if self.patch_resize:
             patch_state[3] = self.radius*0.5 + 0.5*self.radius*(patch_state[4]/self.s_init)
         return patch_state
+        
     def reset(self):
         patch_state = np.zeros(self.num_vars)
         patch_state[:2] = self.pos

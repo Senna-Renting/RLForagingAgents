@@ -151,34 +151,10 @@ class Buffer:
             jax.device_put(self.dones[ind]),
         ), ind
 
-# Below I build a curried function designed to work with wandb
-def wandb_train_ddpg(env):
-    def do_wandb(config=None):
-        with wandb.init(config=config) as run:
-            config = wandb.config
-            print(config)
-            returns, actor_t, *_ = train_ddpg(env, log_fun=wandb_log_ddpg, **config)
-            # Save policy of ddpg algorithm
-            path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "policies", run.sweep_id, run.name)
-            save_policy(actor_t, path)
-    return do_wandb
-
-def print_log_ddpg(epoch, critic_loss, actor_loss, returns):
-    print(f"Episode {epoch} done")
-    print(f"Critic loss: {critic_loss}")
-    print(f"Actor loss: {actor_loss}")
-    print(f"Return: {np.sum(returns, axis=1)}")
-
 def print_log_ddpg_n_agents(epoch, returns, energies):
     print(f"Episode {epoch} done")
     [print(f"Agent {i+1}'s return: {np.sum(returns[:,i], axis=0)}") for i in range(returns.shape[1])]
     [print(f"Agent {i+1}'s energy: {energy}") for i,energy in enumerate(energies)]
-
-def wandb_log_ddpg(epoch, critic_loss, actor_loss, returns):
-    wandb.log({"Epoch":epoch,
-               "Critic loss":critic_loss,
-               "Actor loss":actor_loss,
-               "Return":returns})
 
 def create_data_files(path, **info):
     data_path = os.path.abspath(os.path.join(path, "data"))
@@ -195,7 +171,7 @@ def create_data_files(path, **info):
     }
     return data
 
-def n_agents_ddpg(env, num_episodes, tau=0.0025, gamma=0.99, batch_size=240, lr_a=3e-4, lr_c=1e-3, seed=0, action_dim=2, state_dim=9, action_max=1, hidden_dim=[256,64], act_noise=0.13, log_fun=print_log_ddpg_n_agents, current_path="", **kwargs):
+def n_agents_ddpg(env, num_episodes, tau=0.0025, gamma=0.99, batch_size=240, lr_a=3e-4, lr_c=1e-3, seed=0, action_dim=2, state_dim=9, action_max=1, hidden_dim=[512,32], act_noise=0.13, log_fun=print_log_ddpg_n_agents, current_path="", **kwargs):
     # Initialize metadata object for keeping track of (hyper-)parameters and/or additional settings of the environment
     hidden_dims = [str(h_dim) for h_dim in hidden_dim]
     warmup_size = 5*batch_size
@@ -215,15 +191,6 @@ def n_agents_ddpg(env, num_episodes, tau=0.0025, gamma=0.99, batch_size=240, lr_
     actors_t = [Actor(state_dim,actor_dim,action_max,seed+i,hidden_dim=hidden_dim) for i in range(n_agents)]
     critics = [Critic(state_dim+actor_dim,seed+i,out_dim=1,hidden_dim=hidden_dim) for i in range(n_agents)]
     critics_t = [Critic(state_dim+actor_dim,seed+i,out_dim=1,hidden_dim=hidden_dim) for i in range(n_agents)]
-    # If using previous networks restore their state
-    #print(f"Checks: {'actors' in kwargs}, {'critics' in kwargs}, {'previous_path' in kwargs}")
-    if "previous_path" in kwargs:
-        print("Loading previous trained actor and critic networks...")
-        metadata["previous_path"] = kwargs["previous_path"]
-        [load_policies(actors, "actors", kwargs["previous_path"]) for i in range(n_agents)]
-        [load_policies(actors_t, "actors", kwargs["previous_path"]) for i in range(n_agents)]
-        [load_policies(critics, "critics", kwargs["previous_path"]) for i in range(n_agents)]
-        [load_policies(critics_t, "critics", kwargs["previous_path"]) for i in range(n_agents)]
     
     optim_actors = [nnx.Optimizer(actors[i], optax.adam(lr_a)) for i in range(n_agents)]
     optim_critics = [nnx.Optimizer(critics[i], optax.adam(lr_c)) for i in range(n_agents)]
@@ -270,25 +237,24 @@ def n_agents_ddpg(env, num_episodes, tau=0.0025, gamma=0.99, batch_size=240, lr_
             env_state, next_states, (rewards, penalties), terminated, truncated, _ = env.step(env_state, *actions)
             (agents_state, patch_state, step_idx) = env_state
             done = truncated or terminated
-            if not terminated:
-                for i_a in range(n_agents):
-                    # Add states info to buffer
-                    buffers[i_a].add(states[i_a], actions[i_a], rewards[i_a], next_states[i_a], terminated)
-                    # Sample batch from buffer
-                    (b_states, b_actions, b_rewards, b_next_states, b_dones), ind = buffers[i_a].sample(batch_size)
-                    # Update critic
-                    ys = compute_targets(critics_t[i_a], actors_t[i_a], b_rewards, b_next_states, b_dones, gamma)
-                    c_loss, grads = MSE_optimize_critic(optim_critics[i_a], critics[i_a], b_states, b_actions, ys)
-                    # Update policy
-                    a_loss, grads = mean_optimize_actor(optim_actors[i_a], actors[i_a], critics[i_a], b_states)
-                    # Update targets (critic and policy)
-                    nnx.update(critics_t[i_a], polyak_update(tau, critics_t[i_a], critics[i_a]))
-                    nnx.update(actors_t[i_a], polyak_update(tau, actors_t[i_a], actors[i_a]))
-                    # Store actor and critic loss 
-                    as_loss[i_a,step_idx-1] = a_loss
-                    cs_loss[i_a,step_idx-1] = c_loss
-            else:
+            if terminated:
                 break
+            for i_a in range(n_agents):
+                # Add states info to buffer
+                buffers[i_a].add(states[i_a], actions[i_a], rewards[i_a], next_states[i_a], terminated)
+                # Sample batch from buffer
+                (b_states, b_actions, b_rewards, b_next_states, b_dones), ind = buffers[i_a].sample(batch_size)
+                # Update critic
+                ys = compute_targets(critics_t[i_a], actors_t[i_a], b_rewards, b_next_states, b_dones, gamma)
+                c_loss, grads = MSE_optimize_critic(optim_critics[i_a], critics[i_a], b_states, b_actions, ys)
+                # Update policy
+                a_loss, grads = mean_optimize_actor(optim_actors[i_a], actors[i_a], critics[i_a], b_states)
+                # Update targets (critic and policy)
+                nnx.update(critics_t[i_a], polyak_update(tau, critics_t[i_a], critics[i_a]))
+                nnx.update(actors_t[i_a], polyak_update(tau, actors_t[i_a], actors[i_a]))
+                # Store actor and critic loss 
+                as_loss[i_a,step_idx-1] = a_loss
+                cs_loss[i_a,step_idx-1] = c_loss
             # Update state of agents
             states = next_states
         # Save training results
