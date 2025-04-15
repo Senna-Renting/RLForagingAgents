@@ -33,8 +33,10 @@ def run_ddpg(env, num_episodes, train_fun, path, train_args=dict(), prev_path=No
     # Extract/define initial variables
     episodes = np.arange(1,num_episodes+1)
     action_dim, a_range = env.get_action_space()
+    state_dim = env.get_state_space()
+    print(f"Action dimension: {action_dim}; State dimension: {state_dim}")
     train_args = {
-        "state_dim":env.get_state_space(),
+        "state_dim":state_dim,
         "action_dim":action_dim,
         "action_max":a_range[1],
         "current_path":path,
@@ -80,7 +82,6 @@ def run_ddpg(env, num_episodes, train_fun, path, train_args=dict(), prev_path=No
     d_path = os.path.abspath(os.path.join(metadata["current_path"], "data"))
     actions = np.memmap(os.path.join(d_path, "actions.dat"), mode="r", dtype="float32", shape=a_shape)
     if not skip_vid:
-        #plot_env_vars(path, env.size(), patch_info, agent_states, actions)
         plot_env(path, env.size(), patch_info, agent_states, actions)
 
 def patch_test_saved_policy(env, path, hidden_dim=32):
@@ -115,7 +116,6 @@ if __name__ == "__main__":
     parser.add_argument("-na", "--n-agents", type=int, default=1)
     parser.add_argument("--obs-others", action=argparse.BooleanOptionalAction, default=False, help="Toggle to allow agents to observe each other")
     parser.add_argument("-ipo", "--in-patch-only", action=argparse.BooleanOptionalAction, default=True, help="Toggle for agents to only observe the state of the patch when inside")
-    parser.add_argument("-or", "--obsrange", type=float, default=80, help="Adjusts the distance below which agents observe each other")
     parser.add_argument("-pw","--p-welfare", type=float, default=0.0, help="Adjusts the proportion of Nash Social Welfare (NSW) used in the reward of agents")
     parser.add_argument("-s", "--seed", type=int, default=0, help="General seed on which we generate our random numbers for the script")
     parser.add_argument("-t", "--tau", type=float, default=0.005, help="Polyak parameter (between 0 and 1) for updating the neural networks")
@@ -124,9 +124,10 @@ if __name__ == "__main__":
     parser.add_argument("-lra","--lr-a", type=float, default=3e-4, help="Learning rate for the actor network")
     parser.add_argument("-lrc","--lr-c", type=float, default=1e-3, help="Learning rate for the critic network")
     parser.add_argument("-an", "--act-noise", type=float, default=1, help="Adjust the exploration noise added to actions of agents")
+    parser.add_argument("--msg-type", nargs="*", type=int, default=[], help="Choose zero or more messages that should be used by the agent: \n 0. Energy \n 1. Position \n 2. Velocity \n 3. Action \n Choosing no message will produce a channel that directly uses the communication value, so the agents learn from communication by themselves.")
+    parser.add_argument("--comm-type", type=int, default=0, help="Choose type of communication: \n 0. No communication \n 1. Stochastic \n 2. Deterministic")
     parser.add_argument("--rof", type=int, default=0, help="Size of ring of fire around patch")
     parser.add_argument("--patch-resize", action=argparse.BooleanOptionalAction, default=False, help="Allow the patch to resize based on the amount of resources present")
-    parser.add_argument("--agent-type", default="No Communication", help="Decides the type of agent for the environment")
     parser.add_argument("--video", action=argparse.BooleanOptionalAction, help="Toggle for video generation of episodes")
     args = parser.parse_args()
     run_experiment(**vars(args))

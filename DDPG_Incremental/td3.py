@@ -152,9 +152,12 @@ class Buffer:
         ), ind
 
 def print_log_ddpg_n_agents(epoch, returns, energies):
-    print(f"Episode {epoch} done")
-    [print(f"Agent {i+1}'s return: {np.sum(returns[:,i], axis=0)}") for i in range(returns.shape[1])]
-    [print(f"Agent {i+1}'s energy: {energy}") for i,energy in enumerate(energies)]
+    str_out = ""
+    str_out += f"Episode {epoch}; "
+    str_out += "".join([f"A{i+1} Return: {np.sum(returns[:,i], axis=0):.2f}; " for i in range(returns.shape[1])])
+    str_out += "".join([f"A{i+1} Energy: {energy:.2f}; " for i,energy in enumerate(energies)])
+    str_out += "                    "
+    print(str_out, end="\r")
 
 def create_data_files(path, **info):
     data_path = os.path.abspath(os.path.join(path, "data"))
@@ -171,7 +174,7 @@ def create_data_files(path, **info):
     }
     return data
 
-def n_agents_ddpg(env, num_episodes, tau=0.0025, gamma=0.99, batch_size=240, lr_a=3e-4, lr_c=1e-3, seed=0, action_dim=2, state_dim=9, action_max=1, hidden_dim=[512,32], act_noise=0.13, log_fun=print_log_ddpg_n_agents, current_path="", **kwargs):
+def n_agents_ddpg(env, num_episodes, tau=0.0025, gamma=0.99, batch_size=240, lr_a=3e-4, lr_c=1e-3, seed=0, action_dim=2, state_dim=9, action_max=1, hidden_dim=[128,32], act_noise=0.13, log_fun=print_log_ddpg_n_agents, current_path="", **kwargs):
     # Initialize metadata object for keeping track of (hyper-)parameters and/or additional settings of the environment
     hidden_dims = [str(h_dim) for h_dim in hidden_dim]
     warmup_size = 5*batch_size
@@ -206,7 +209,7 @@ def n_agents_ddpg(env, num_episodes, tau=0.0025, gamma=0.99, batch_size=240, lr_
     (agents_state, patch_state, step_idx), states = env.reset(seed=seed)
     data = create_data_files(current_path, num_episodes=num_episodes, n_agents=n_agents, step_max=step_max, agents_state_shape=agents_state.shape, patch_resize=patch_resize, action_dim=actor_dim)
     # Warm-up round
-    print("Filling buffer with warmup samples...")
+    print("Filling buffer with warmup samples...", end="\r")
     env_state, states = env.reset(seed=seed)
     for s_i in range(warmup_size):
         # Sample action, execute it, and add to buffer
@@ -220,7 +223,7 @@ def n_agents_ddpg(env, num_episodes, tau=0.0025, gamma=0.99, batch_size=240, lr_
             buffers[i_a].add(states[i_a], actions[i_a], rewards[i_a], next_states[i_a], terminated)
         states = next_states
     # Run episodes
-    print("Training started...")
+    print("Training started...                   ", end="\r")
     for i in range(num_episodes):
         done = False
         env_state, states = env.reset(seed=seed+i) # We initialize randomly each episode to allow more exploration
@@ -239,6 +242,7 @@ def n_agents_ddpg(env, num_episodes, tau=0.0025, gamma=0.99, batch_size=240, lr_
             done = truncated or terminated
             if terminated:
                 break
+                
             for i_a in range(n_agents):
                 # Add states info to buffer
                 buffers[i_a].add(states[i_a], actions[i_a], rewards[i_a], next_states[i_a], terminated)
@@ -299,7 +303,7 @@ def n_agents_ddpg(env, num_episodes, tau=0.0025, gamma=0.99, batch_size=240, lr_
     buffer_data = [np.concatenate(tuple, axis=0) for tuple in buffer_tuple]
     # Save learned actor and critic
     if current_path != "":
-        print("Saving actor and critic networks of agents...")
+        print("\n Saving actor and critic networks of agents...          ")
         save_policies(actors_t, "actors", current_path)
         save_policies(critics_t, "critics", current_path)
         metadata["current_path"] = os.path.abspath(current_path)
