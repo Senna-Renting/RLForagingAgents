@@ -6,6 +6,81 @@ from matplotlib.ticker import FuncFormatter
 from matplotlib.patches import Circle
 import os
 
+"""
+This function derives the data needed for RQ1 plots, based on the stored data
+"""
+def rq1_data(patch_info, agents_state, actions):
+    patch_position = patch_info[0][:2]
+    energy = agents_state[:,:,:,4]
+    positions = agents_state[:,:,:,:2]
+    dist_agents = np.sqrt(np.sum(np.power(np.diff(positions, axis=2),2),axis=3))[:,:,0]
+    # We compute the distance of each agent w.r.t the edge of the patch
+    dist_agents_patch = np.sqrt(np.sum(np.power(positions - patch_position[np.newaxis,np.newaxis,np.newaxis,:],2),axis=3)) - patch_info[0][3]
+    dist_agents_patch[dist_agents_patch < 0] = 0
+    communication = actions[:,:,:,2]
+    attention = np.flip(actions[:,:,:,3],axis=2)
+    comm_filter = (communication > 0.5) & (attention > 0.5)
+    return energy, dist_agents, dist_agents_patch, comm_filter
+
+""" 
+Main function for generating the plots needed for RQ1
+Plots are generated for each episode.
+"""
+def rq1_plots(path, energy, dist_agents, dist_agents_patch, comm_filter):
+    path = os.path.join(path, "rq1_plots")
+    os.mkdir(path)
+    for episode in range(energy.shape[0]):
+        sub_path = os.path.join(path, f"episode {episode}")
+        os.mkdir(sub_path)
+        rq1_plots_per_episode(episode, sub_path, energy, dist_agents, dist_agents_patch, comm_filter, colors=plt.cm.Set1.colors)
+
+"""
+Subfunction for generating the plots of a single episode for RQ1
+"""
+def rq1_plots_per_episode(episode, path, energy, dist_agents, dist_agents_patch, comm_filter, colors=plt.cm.Set1.colors):
+    # First we implement the plots on the last run, later we can make folders for each successive run and it's results
+    energy, dist_agents, dist_agents_patch, comm_filter = energy[episode, :, :], dist_agents[episode, :], dist_agents_patch[episode,:,:], comm_filter[episode, :, :]
+    x_range = np.arange(0,energy.shape[0])
+    
+    # The code for the plots
+    fig1 = plt.figure()
+    plt.title("Relation between internal energy and communication")
+    plt.xlabel("Timestep")
+    plt.ylabel("Internal energy")
+    for a_i in range(energy.shape[1]):
+        filter = comm_filter[:,a_i]
+        plt.plot(np.where(filter, x_range, np.nan), np.where(filter, energy[:,a_i], np.nan), color=colors[a_i], linestyle="-", label=f"Communication Agent {a_i}")
+        plt.plot(np.where(~filter, x_range, np.nan), np.where(~filter, energy[:,a_i], np.nan), color=colors[a_i], linestyle=":", label=f"No Communication Agent {a_i}")
+    plt.legend()
+    fig2 = plt.figure()
+    plt.title("Relation of distance between agents and communication")
+    plt.xlabel("Timestep")
+    plt.ylabel("Distance(Agent1, Agent2)")
+    f_comm_no = (comm_filter[:,0]) & (~comm_filter[:,1])
+    f_no_comm = (~comm_filter[:,0]) & (comm_filter[:,1])
+    f_comm_comm = (comm_filter[:,0]) & (comm_filter[:,1])
+    f_no_no = (~comm_filter[:,0]) & (~comm_filter[:,1])
+    plt.plot(np.where(f_comm_no, x_range, np.nan), np.where(f_comm_no, dist_agents, np.nan), color=colors[0], label="Communication - No Communication")
+    plt.plot(np.where(f_no_comm, x_range, np.nan), np.where(f_no_comm, dist_agents, np.nan), color=colors[1], label="No Communication - Communication")
+    plt.plot(np.where(f_comm_comm, x_range, np.nan), np.where(f_comm_comm, dist_agents, np.nan), color=colors[2], label="Communication - Communication")
+    plt.plot(np.where(f_no_no, x_range, np.nan), np.where(f_no_no, dist_agents, np.nan), color=colors[3], label="No Communication - No Communication")
+    plt.legend()
+    fig3 = plt.figure()
+    plt.title("Relation of distance to patch and communication")
+    plt.xlabel("Timestep")
+    plt.ylabel("Distance(Agent, Patch)")
+    for a_i in range(energy.shape[1]):
+        filter = comm_filter[:,a_i]
+        plt.plot(np.where(filter, dist_agents_patch[:,a_i], np.nan), color=colors[a_i], linestyle="-", label=f"Communication Agent {a_i}")
+        plt.plot(np.where(~filter, dist_agents_patch[:,a_i], np.nan), color=colors[a_i], linestyle=":", label=f"No Communication Agent {a_i}")
+    plt.legend()
+    
+    # Save figures to PNG
+    fig1.savefig(os.path.join(path, "internal_energy_comms.png"))
+    fig2.savefig(os.path.join(path, "dist_agents_comms.png"))
+    fig3.savefig(os.path.join(path, "dist_agents_patch_comms.png"))
+    plt.close()
+
 def env_vars_data(patch_info, agents_state, actions):
     n_agents = actions.shape[2]
     action_dim = actions.shape[-1]

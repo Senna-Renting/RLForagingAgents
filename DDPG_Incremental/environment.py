@@ -25,7 +25,7 @@ class NAgentsEnv():
         self.p_still = 0.02
         self.p_act = 0.2
         self.p_att = 0.02
-        self.p_comm = 0.1
+        self.p_comm = 0.02
         self.p_rof = 0.2
         self.msg_noise = 0.01
         self.n_agents = n_agents
@@ -65,7 +65,7 @@ class NAgentsEnv():
         elif len(self.msg_type) == 0:
             return 1
         else:
-            return sum([size for size,_,__ in self.get_msg_types()])
+            return sum([size for i,(size,_,__) in enumerate(self.get_msg_types()) if i in self.msg_type])
     
     def get_params(self):
         params = dict(**self.__dict__)
@@ -175,7 +175,7 @@ class Agent:
         self.noise_rng = np.random.default_rng(seed=env.seed)
         self.damping = env.damping
         self.msg_size = env.get_msg_size()
-        self.noise_arr = np.concatenate([[noise]*size for size,noise,_ in env.get_msg_types()])
+        self.noise_arr = np.concatenate([[noise]*size for i,(size,noise,_) in enumerate(env.get_msg_types()) if i in env.msg_type])
         self.msg_type = env.msg_type
         self.comm_type = env.comm_type
         self.num_vars = 5+self.msg_size # Variables of interest: (x,y,v_x,v_y,e,[msg]) <- msg may not be there 

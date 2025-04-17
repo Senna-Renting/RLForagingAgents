@@ -81,6 +81,8 @@ def run_ddpg(env, num_episodes, train_fun, path, train_args=dict(), prev_path=No
     a_shape = (metadata["n_episodes"], metadata["step_max"], metadata["n_agents"], metadata["action_dim"])
     d_path = os.path.abspath(os.path.join(metadata["current_path"], "data"))
     actions = np.memmap(os.path.join(d_path, "actions.dat"), mode="r", dtype="float32", shape=a_shape)
+    rq1_plots(path, *rq1_data(patch_info, agent_states, actions))
+    
     if not skip_vid:
         plot_env(path, env.size(), patch_info, agent_states, actions)
 
