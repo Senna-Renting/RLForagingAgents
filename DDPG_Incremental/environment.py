@@ -10,7 +10,7 @@ def compute_NSW(rewards):
     return NSW
     
 class NAgentsEnv():
-    def __init__(self, patch_radius=10,s_init=10, e_init=5, eta=0.1, beta=0.05, env_gamma=0.01, step_max=600, x_max=50, y_max=50, v_max=4, e_max=20, n_agents=2, in_patch_only=False, p_welfare=0, rof=0, patch_resize=False, seed=0, comm_type=0, msg_type=[], **kwargs):
+    def __init__(self, patch_radius=10,s_init=10, e_init=5, eta=0.1, beta=0.05, env_gamma=0.01, step_max=600, x_max=50, y_max=50, v_max=4, e_max=20, n_agents=2, in_patch_only=False, p_welfare=0, patch_resize=False, seed=0, comm_type=0, msg_type=[], **kwargs):
         # Main variables used in environment
         self.x_max = x_max
         self.y_max = y_max
@@ -20,13 +20,11 @@ class NAgentsEnv():
         self.env_gamma = env_gamma
         self.step_max = step_max
         self.step_idx = 0
-        self.rof = rof
         self.damping = 0.3
         self.p_still = 0.02
         self.p_act = 0.2
         self.p_att = 0.02
         self.p_comm = 0.02
-        self.p_rof = 0.2
         self.msg_noise = 0.01
         self.n_agents = n_agents
         self.beta = beta
@@ -169,13 +167,13 @@ class Agent:
         self.id = id
         self.p_still = env.p_still
         self.p_act = env.p_act
-        self.p_rof = env.p_rof
         self.p_comm = env.p_comm
         self.p_att = env.p_att
         self.noise_rng = np.random.default_rng(seed=env.seed)
         self.damping = env.damping
         self.msg_size = env.get_msg_size()
-        self.noise_arr = np.concatenate([[noise]*size for i,(size,noise,_) in enumerate(env.get_msg_types()) if i in env.msg_type])
+        if len(env.msg_type) > 0:
+            self.noise_arr = np.concatenate([[noise]*size for i,(size,noise,_) in enumerate(env.get_msg_types()) if i in env.msg_type])
         self.msg_type = env.msg_type
         self.comm_type = env.comm_type
         self.num_vars = 5+self.msg_size # Variables of interest: (x,y,v_x,v_y,e,[msg]) <- msg may not be there 
@@ -194,11 +192,7 @@ class Agent:
     
     def is_in_patch(self,agent_state,patch_state):
         dist = self.dist_to(agent_state[:2], patch_state[:2])
-        return dist <= patch_state[3]
-
-    def is_in_rof(self,agent_state,patch_state):
-        dist = self.dist_to(agent_state[:2], patch_state[:2])
-        return dist > patch_state[3] and dist <= (patch_state[3] + patch_state[2])
+        return dist <= patch_state[1]
 
     def probabilistic_msg(self,agents_state,actions,msg):
         attention_other = self.normalize(actions[1-self.id][-1])
@@ -220,7 +214,7 @@ class Agent:
             return msg
         else:
             # Add noise to message to make it meaningless
-            return msg + self.noise_rng.normal(0,self.noise_arr,size=self.noise_arr.shape)
+        return msg + self.noise_rng.normal(0,self.noise_arr,size=self.noise_arr.shape)
 
     def get_penalty(self,agent_state,patch_state,action):
         penalty = 0
@@ -231,7 +225,6 @@ class Agent:
             penalty += attention.item()*self.p_att
         max_penalty = np.linalg.norm(np.full_like(action[:2], self.v_max))
         penalty += np.linalg.norm(action[:2])/max_penalty*self.p_act
-        penalty += (self.is_in_rof(agent_state,patch_state)).astype(int)*self.p_rof
         return penalty
     
     def generate_message(self,agents_state,actions,msg):
@@ -245,7 +238,8 @@ class Agent:
         msgs = [[state[4]], state[:2], state[2:4], actions[self.id][:2]]
         msg = np.concatenate([msgs[type] for type in self.msg_type])
         msg = self.generate_message(agents_state,actions,msg)
-        agents_state[1-self.id][5:] = msg
+        if msg is not None:
+            agents_state[1-self.id][5:] = msg
         
     
     def step(self,agents_state,actions):
@@ -256,7 +250,7 @@ class Agent:
         # Amount eaten depends on other agents in patch
         agent_state = agents_state[self.id]
         who_in = [self.is_in_patch(agents_state[i], patch_state) for i in range(len(agents_state))]
-        s_eaten = who_in[self.id]*self.beta*patch_state[4]
+        s_eaten = who_in[self.id]*self.beta*patch_state[-1]
         if np.any(who_in):
             s_eaten /= np.sum(who_in)
         penalty = self.get_penalty(agent_state, patch_state, action)
@@ -288,30 +282,28 @@ class Patch:
         self.eta = env.eta # regeneration rate of resources
         self.gamma = env.env_gamma # decay rate of resources
         self.pos = np.array([x,y])
-        self.rof = env.rof
         self.radius = radius
         self.patch_resize = env.patch_resize
         self.s_init = env.s_init
-        self.num_vars = 5 # Variables of interest: (x,y,r,rof,s)
+        self.num_vars = 4 # Variables of interest: (x,y,r,s)
     
     def get_radius(self):
         return self.radius
         
     def update_resources(self, patch_state, eaten, dt=0.1):
-        resources = patch_state[4]
+        resources = patch_state[-1]
         scalars = np.array([dt*self.eta, -dt*self.gamma, -1])
         values = np.array([resources,np.power(resources,2),eaten])
         ds = np.dot(scalars.T, values)
         
-        patch_state[4] = np.clip(resources + ds, 0, self.s_init) 
+        patch_state[-1] = np.clip(resources + ds, 0, self.s_init) 
         if self.patch_resize:
-            patch_state[3] = self.radius*0.5 + 0.5*self.radius*(patch_state[4]/self.s_init)
+            patch_state[3] = self.radius*0.5 + 0.5*self.radius*(patch_state[-1]/self.s_init)
         return patch_state
         
     def reset(self):
         patch_state = np.zeros(self.num_vars)
         patch_state[:2] = self.pos
-        patch_state[2] = self.rof
-        patch_state[3] = self.radius
-        patch_state[4] = self.s_init
+        patch_state[2] = self.radius
+        patch_state[3] = self.s_init
         return patch_state

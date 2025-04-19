@@ -15,11 +15,14 @@ def rq1_data(patch_info, agents_state, actions):
     positions = agents_state[:,:,:,:2]
     dist_agents = np.sqrt(np.sum(np.power(np.diff(positions, axis=2),2),axis=3))[:,:,0]
     # We compute the distance of each agent w.r.t the edge of the patch
-    dist_agents_patch = np.sqrt(np.sum(np.power(positions - patch_position[np.newaxis,np.newaxis,np.newaxis,:],2),axis=3)) - patch_info[0][3]
+    dist_agents_patch = np.sqrt(np.sum(np.power(positions - patch_position[np.newaxis,np.newaxis,np.newaxis,:],2),axis=3)) - patch_info[0][2]
     dist_agents_patch[dist_agents_patch < 0] = 0
-    communication = actions[:,:,:,2]
-    attention = np.flip(actions[:,:,:,3],axis=2)
-    comm_filter = (communication > 0.5) & (attention > 0.5)
+    if actions.shape[3] > 2:
+        communication = actions[:,:,:,2]
+        attention = np.flip(actions[:,:,:,3],axis=2)
+        comm_filter = (communication > 0.5) & (attention > 0.5)
+    else: 
+        comm_filter = None
     return energy, dist_agents, dist_agents_patch, comm_filter
 
 """ 
@@ -39,11 +42,52 @@ Subfunction for generating the plots of a single episode for RQ1
 """
 def rq1_plots_per_episode(episode, path, energy, dist_agents, dist_agents_patch, comm_filter, colors=plt.cm.Set1.colors):
     # First we implement the plots on the last run, later we can make folders for each successive run and it's results
-    energy, dist_agents, dist_agents_patch, comm_filter = energy[episode, :, :], dist_agents[episode, :], dist_agents_patch[episode,:,:], comm_filter[episode, :, :]
+    energy, dist_agents, dist_agents_patch = energy[episode, :, :], dist_agents[episode, :], dist_agents_patch[episode,:,:]
     x_range = np.arange(0,energy.shape[0])
     
     # The code for the plots
-    fig1 = plt.figure()
+    if comm_filter is None:
+        fig1 = plot_internal_energy(energy, x_range)
+        fig2 = plot_dist_agents(dist_agents, x_range)
+        fig3 = plot_dist_agents_patch(dist_agents_patch, x_range)
+    else:
+        comm_filter = comm_filter[episode, :, :]
+        fig1 = plot_internal_energy_comm(energy, x_range, comm_filter)
+        fig2 = plot_dist_agents_comm(dist_agents, x_range, comm_filter)
+        fig3 = plot_dist_agents_patch_comm(dist_agents_patch, x_range, comm_filter)
+    
+    # Save figures to PNG
+    fig1.savefig(os.path.join(path, "internal_energy.png"))
+    fig2.savefig(os.path.join(path, "dist_agents.png"))
+    fig3.savefig(os.path.join(path, "dist_agents_patch.png"))
+    plt.close(fig1)
+    plt.close(fig2)
+    plt.close(fig3)
+
+def plot_dist_agents_patch_comm(dist_agents_patch, x_range, comm_filter, colors=plt.cm.Set1.colors):
+    fig = plt.figure()
+    plt.title("Relation of distance to patch and communication")
+    plt.xlabel("Timestep")
+    plt.ylabel("Distance(Agent, Patch)")
+    for a_i in range(dist_agents_patch.shape[1]):
+        filter = comm_filter[:,a_i]
+        plt.plot(np.where(filter, dist_agents_patch[:,a_i], np.nan), color=colors[a_i], linestyle="-", label=f"Communication Agent {a_i}")
+        plt.plot(np.where(~filter, dist_agents_patch[:,a_i], np.nan), color=colors[a_i], linestyle=":", label=f"No Communication Agent {a_i}")
+    plt.legend()
+    return fig
+
+def plot_dist_agents_patch(dist_agents_patch, x_range, colors=plt.cm.Set1.colors):
+    fig = plt.figure()
+    plt.title("Relation of distance to patch")
+    plt.xlabel("Timestep")
+    plt.ylabel("Distance(Agent, Patch)")
+    for a_i in range(dist_agents_patch.shape[1]):
+        plt.plot(dist_agents_patch[:,a_i], color=colors[a_i], linestyle="-", label=f"Agent {a_i}")
+    plt.legend()
+    return fig
+
+def plot_internal_energy_comm(energy, x_range, comm_filter, colors=plt.cm.Set1.colors):
+    fig = plt.figure()
     plt.title("Relation between internal energy and communication")
     plt.xlabel("Timestep")
     plt.ylabel("Internal energy")
@@ -52,7 +96,20 @@ def rq1_plots_per_episode(episode, path, energy, dist_agents, dist_agents_patch,
         plt.plot(np.where(filter, x_range, np.nan), np.where(filter, energy[:,a_i], np.nan), color=colors[a_i], linestyle="-", label=f"Communication Agent {a_i}")
         plt.plot(np.where(~filter, x_range, np.nan), np.where(~filter, energy[:,a_i], np.nan), color=colors[a_i], linestyle=":", label=f"No Communication Agent {a_i}")
     plt.legend()
-    fig2 = plt.figure()
+    return fig
+
+def plot_internal_energy(energy, x_range, colors=plt.cm.Set1.colors):
+    fig = plt.figure()
+    plt.title("Internal energy of agents")
+    plt.xlabel("Timestep")
+    plt.ylabel("Internal energy")
+    for a_i in range(energy.shape[1]):
+        plt.plot(x_range, energy[:,a_i], color=colors[a_i], linestyle="-", label=f"Communication Agent {a_i}")
+    plt.legend()
+    return fig
+
+def plot_dist_agents_comm(dist_agents, x_range, comm_filter, colors=plt.cm.Set1.colors):
+    fig = plt.figure()
     plt.title("Relation of distance between agents and communication")
     plt.xlabel("Timestep")
     plt.ylabel("Distance(Agent1, Agent2)")
@@ -65,21 +122,16 @@ def rq1_plots_per_episode(episode, path, energy, dist_agents, dist_agents_patch,
     plt.plot(np.where(f_comm_comm, x_range, np.nan), np.where(f_comm_comm, dist_agents, np.nan), color=colors[2], label="Communication - Communication")
     plt.plot(np.where(f_no_no, x_range, np.nan), np.where(f_no_no, dist_agents, np.nan), color=colors[3], label="No Communication - No Communication")
     plt.legend()
-    fig3 = plt.figure()
-    plt.title("Relation of distance to patch and communication")
+    return fig
+
+def plot_dist_agents(dist_agents, x_range, colors=plt.cm.Set1.colors):
+    fig = plt.figure()
+    plt.title("Distance between agents per episode")
     plt.xlabel("Timestep")
-    plt.ylabel("Distance(Agent, Patch)")
-    for a_i in range(energy.shape[1]):
-        filter = comm_filter[:,a_i]
-        plt.plot(np.where(filter, dist_agents_patch[:,a_i], np.nan), color=colors[a_i], linestyle="-", label=f"Communication Agent {a_i}")
-        plt.plot(np.where(~filter, dist_agents_patch[:,a_i], np.nan), color=colors[a_i], linestyle=":", label=f"No Communication Agent {a_i}")
-    plt.legend()
-    
-    # Save figures to PNG
-    fig1.savefig(os.path.join(path, "internal_energy_comms.png"))
-    fig2.savefig(os.path.join(path, "dist_agents_comms.png"))
-    fig3.savefig(os.path.join(path, "dist_agents_patch_comms.png"))
-    plt.close()
+    plt.ylabel("Distance(Agent1, Agent2)")
+    plt.plot(x_range, dist_agents, colors[2])
+    return fig
+
 
 def env_vars_data(patch_info, agents_state, actions):
     n_agents = actions.shape[2]
@@ -163,7 +215,7 @@ def plot_final_welfare(path, agents_states, colors=plt.cm.Set1.colors):
 """
 The agent_state and the patch_state of the NAgentsEnv class are used as input here
 agent_state's shape: [n_episodes, step_max, n_agents, dim(x,y,x_dot,y_dot,e)]
-patch_info's shape: ([dim(x,y,rof,r)], [n_episodes, step_max, dim(s))])
+patch_info's shape: ([dim(x,y,r)], [n_episodes, step_max, dim(s))])
 """
 def plot_env(path, env_shape, patch_info, agents_state, actions, a_colors=plt.cm.Set1.colors):
     a_colors=plt.cm.Set1.colors
@@ -173,8 +225,7 @@ def plot_env(path, env_shape, patch_info, agents_state, actions, a_colors=plt.cm
     agent_size = env_shape[0]/70
     s_max = np.max(patch_info[1])
     patch_pos = patch_info[0][:2]
-    patch_radius = patch_info[0][3]
-    rof = patch_info[0][2]
+    patch_radius = patch_info[0][2]
     agent_pos = lambda frame, i_a: agents_state[int(frame/step_max),frame%step_max, i_a, :2]
     agent_radius = lambda frame: patch_energy[int(frame/step_max), frame%step_max,0]
     norm = lambda frame: patch_energy[int(frame/step_max), frame%step_max,-1]/s_max
@@ -189,7 +240,6 @@ def plot_env(path, env_shape, patch_info, agents_state, actions, a_colors=plt.cm
     resource_state, agents_data = env_vars_data(patch_info, agents_state, actions)
     state_axes = [fig.add_axes([0.6,0.7-i*0.15,0.38,0.15]) for i in range(len(agents_data)+1)]
     data, plots = plot_env_vars(resource_state, agents_data, state_axes)
-    rof = ax.add_patch(plt.Circle(patch_pos, patch_radius+rof, color=(0.5,0.3,1)))
     patch = ax.add_patch(plt.Circle(patch_pos, patch_radius, color=patch_color(norm(0))))
     agents = [ax.add_patch(plt.Circle(agent_pos(0, i_a), agent_size, facecolor=a_colors[i_a], linewidth=1, edgecolor=(0.9,0.9,0.9))) for i_a in range(n_agents)]
     episode_text = ax.text(0.05,0.1, f"Episode: 1/{n_episodes}", transform=ax.transAxes)
@@ -203,7 +253,7 @@ def plot_env(path, env_shape, patch_info, agents_state, actions, a_colors=plt.cm
         patch.set(color = patch_color(norm(frame)), radius = radius)
         for i_a, agent in enumerate(agents):
             agent.set(center = agent_pos(frame,i_a))
-        return [frame_text, episode_text, patch, rof, *agents, ]
+        return [frame_text, episode_text, patch, *agents, ]
     
     fps = 24
     anim = FuncAnimation(fig,update, n_episodes*step_max, init_func=lambda: update(0), interval=1000/fps, blit=True, cache_frame_data=False)
