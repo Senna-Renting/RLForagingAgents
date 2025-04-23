@@ -38,7 +38,7 @@ def run_ddpg(env, num_episodes, train_fun, path, train_args=dict(), prev_path=No
     train_args = {
         "state_dim":state_dim,
         "action_dim":action_dim,
-        "action_max":a_range[1],
+        "action_range":a_range,
         "current_path":path,
         **train_args
     }
@@ -77,14 +77,14 @@ def run_ddpg(env, num_episodes, train_fun, path, train_args=dict(), prev_path=No
     # Draw run of agents over the episodes and save informative plots of final state environment
     plot_final_states_env(path, is_in_patch, patch_info, agent_states[-1], rewards[-1])
     
-    # Toggle for generating video of the training over episodes
     a_shape = (metadata["n_episodes"], metadata["step_max"], metadata["n_agents"], metadata["action_dim"])
     d_path = os.path.abspath(os.path.join(metadata["current_path"], "data"))
     actions = np.memmap(os.path.join(d_path, "actions.dat"), mode="r", dtype="float32", shape=a_shape)
-    rq1_plots(path, *rq1_data(patch_info, agent_states, actions))
-    
+    # Only plot the environment if video toggle is on
+    plot_episode_env = lambda episode, path: None
     if not skip_vid:
-        plot_env(path, env.size(), patch_info, agent_states, actions)
+        plot_episode_env = lambda episode, path: plot_env(path, episode, env.size(), patch_info, agent_states, actions)
+    episode_results(path, *rq1_data(patch_info, agent_states, actions), plot_env=plot_episode_env)
 
 def patch_test_saved_policy(env, path, hidden_dim=32):
     state_dim = env.get_state_space()[1]
@@ -127,7 +127,7 @@ if __name__ == "__main__":
     parser.add_argument("-lrc","--lr-c", type=float, default=1e-3, help="Learning rate for the critic network")
     parser.add_argument("-an", "--act-noise", type=float, default=1, help="Adjust the exploration noise added to actions of agents")
     parser.add_argument("--msg-type", nargs="*", type=int, default=[], help="Choose zero or more messages that should be used by the agent: \n 0. Energy \n 1. Position \n 2. Velocity \n 3. Action \n Choosing no message will produce a channel that directly uses the communication value, so the agents learn from communication by themselves.")
-    parser.add_argument("--comm-type", type=int, default=0, help="Choose type of communication: \n 0. No communication \n 1. Stochastic \n 2. Deterministic")
+    parser.add_argument("--comm-type", type=int, default=0, help="Choose type of communication: \n 0. No communication \n 1. Communication \n 2. Always Communication \n 3. Only Noise")
     parser.add_argument("--rof", type=int, default=0, help="Size of ring of fire around patch")
     parser.add_argument("--patch-resize", action=argparse.BooleanOptionalAction, default=False, help="Allow the patch to resize based on the amount of resources present")
     parser.add_argument("--video", action=argparse.BooleanOptionalAction, help="Toggle for video generation of episodes")

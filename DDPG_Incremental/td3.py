@@ -43,8 +43,11 @@ class Actor(nnx.Module):
         self.input = nnx.Linear(in_dim, hidden_dim[0], rngs=rngs)
         self.lhs = tuple([nnx.Linear(hidden_dim[i], hidden_dim[i+1], rngs=rngs) for i in range(len(hidden_dim) - 1)])
         self.out = nnx.Linear(hidden_dim[-1], out_dim, rngs=rngs)
+        self.act_mask = jnp.ones(out_dim)
+        if out_dim > 2:
+            self.act_mask = self.act_mask.at[2:].set(0)
     def final_activation(self, x):
-        return nnx.tanh(x) * self.a_max 
+        return jnp.where(self.act_mask, nnx.tanh(x)*self.a_max, nnx.sigmoid(x))
     def __call__(self, state):
         x = nnx.relu(self.input(state))
         for lh in self.lhs:
@@ -61,7 +64,7 @@ def mean_optimize_actor(optimizer: nnx.Optimizer, actor: nnx.Module, critic: nnx
 
 def sample_action(rng, actor, state, action_min, action_max, action_dim, act_noise=0.1):
     mu_action = actor(state)
-    eps = jax.random.normal(rng, (action_dim,))*act_noise
+    eps = jax.random.normal(rng, (action_dim,))*action_max*act_noise
     return jnp.clip(mu_action + eps, action_min, action_max)
     
 
@@ -174,14 +177,16 @@ def create_data_files(path, **info):
     }
     return data
 
-def n_agents_ddpg(env, num_episodes, tau=0.0025, gamma=0.99, batch_size=240, lr_a=3e-4, lr_c=1e-3, seed=0, action_dim=2, state_dim=9, action_max=1, hidden_dim=[256,32], act_noise=0.13, log_fun=print_log_ddpg_n_agents, current_path="", **kwargs):
+def n_agents_ddpg(env, num_episodes, tau=0.0025, gamma=0.99, batch_size=240, lr_a=3e-4, lr_c=1e-3, seed=0, action_dim=2, state_dim=9, action_range=[[-4,0],[4,1]], hidden_dim=[256,32], act_noise=0.13, log_fun=print_log_ddpg_n_agents, current_path="", **kwargs):
     # Initialize metadata object for keeping track of (hyper-)parameters and/or additional settings of the environment
     hidden_dims = [str(h_dim) for h_dim in hidden_dim]
+    action_range_str = [[str(type[0]), str(type[-1])]  for type in action_range]
+    action_range = jnp.array(action_range)
     warmup_size = 5*batch_size
     metadata = dict(n_episodes=num_episodes.item(), tau=tau, gamma=gamma, 
                     batch_size=batch_size, lr_actor=lr_a, lr_critic=lr_c, 
                     action_dim=action_dim, state_dim=state_dim,
-                    action_max=action_max, hidden_dims=hidden_dims,
+                    action_range=action_range_str, hidden_dims=hidden_dims,
                     warmup_size=warmup_size, act_noise=act_noise, alg_name="Normal DDPG", 
                     current_path=current_path, **env.get_params())
     # Initialize neural networks
@@ -189,7 +194,8 @@ def n_agents_ddpg(env, num_episodes, tau=0.0025, gamma=0.99, batch_size=240, lr_
     step_max = env.step_max
     patch_resize = env.patch_resize
     actor_dim = action_dim
-
+    action_max = action_range[1][0]
+    
     actors = [Actor(state_dim,actor_dim,action_max,seed+i,hidden_dim=hidden_dim) for i in range(n_agents)]
     actors_t = [Actor(state_dim,actor_dim,action_max,seed+i,hidden_dim=hidden_dim) for i in range(n_agents)]
     critics = [Critic(state_dim+actor_dim,seed+i,out_dim=1,hidden_dim=hidden_dim) for i in range(n_agents)]
@@ -216,7 +222,7 @@ def n_agents_ddpg(env, num_episodes, tau=0.0025, gamma=0.99, batch_size=240, lr_
         actions = list(range(n_agents))
         for i_a,actor in enumerate(actors):
             action_key, key = jax.random.split(key)
-            actions[i_a] = jax.random.uniform(action_key, actor_dim, minval=-action_max, maxval=action_max) 
+            actions[i_a] = jax.random.uniform(action_key, actor_dim, minval=action_range[0], maxval=action_range[1]) 
         env_state, next_states, (rewards, penalties), terminated, truncated, _ = env.step(env_state, *actions)
         (agents_state, patch_state, step_idx) = env_state
         for i_a in range(n_agents):
@@ -236,7 +242,7 @@ def n_agents_ddpg(env, num_episodes, tau=0.0025, gamma=0.99, batch_size=240, lr_
             actions = list(range(n_agents))
             for i_a,actor in enumerate(actors):
                 action_key, key = jax.random.split(key)
-                actions[i_a] = np.array(sample_action(action_key, actor, states[i_a], -action_max, action_max, actor_dim, act_noise)) 
+                actions[i_a] = np.array(sample_action(action_key, actor, states[i_a], action_range[0], action_range[1], actor_dim, act_noise))
             env_state, next_states, (rewards, penalties), terminated, truncated, _ = env.step(env_state, *actions)
             (agents_state, patch_state, step_idx) = env_state
             done = truncated or terminated

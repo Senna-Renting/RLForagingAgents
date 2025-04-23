@@ -10,12 +10,12 @@ def compute_NSW(rewards):
     return NSW
     
 class NAgentsEnv():
-    def __init__(self, patch_radius=10,s_init=10, e_init=5, eta=0.1, beta=0.05, env_gamma=0.01, step_max=600, x_max=50, y_max=50, v_max=4, e_max=20, n_agents=2, in_patch_only=False, p_welfare=0, patch_resize=False, seed=0, comm_type=0, msg_type=[], **kwargs):
+    def __init__(self, patch_radius=10,s_init=10, e_init=10, eta=0.1, beta=0.05, env_gamma=0.01, step_max=600, x_max=50, y_max=50, v_max=4, n_agents=2, in_patch_only=False, p_welfare=0, patch_resize=False, seed=0, comm_type=0, msg_type=[], **kwargs):
         # Main variables used in environment
         self.x_max = x_max
         self.y_max = y_max
         self.v_max = v_max
-        self.e_max = e_max
+        self.e_max = s_init + e_init
         self.eta = eta
         self.env_gamma = env_gamma
         self.step_max = step_max
@@ -24,8 +24,8 @@ class NAgentsEnv():
         self.p_still = 0.02
         self.p_act = 0.2
         self.p_att = 0.02
-        self.p_comm = 0.02
-        self.msg_noise = 0.01
+        self.p_comm = 0.04
+        self.msg_noise = 0.1
         self.n_agents = n_agents
         self.beta = beta
         self.e_init = e_init
@@ -47,11 +47,11 @@ class NAgentsEnv():
         message_dim = len(self.msg_type) > 0 # Add a channel for each message type
         attention_dim = (message_dim > 0) # Add an attention dimension
         action_dim = 2 # We use two acceleration terms (one for x and one for y)
-        action_range = [-self.v_max, self.v_max]
+        action_range = [[-self.v_max,-self.v_max,0,0], [self.v_max,self.v_max,1,1]]
         return action_dim+message_dim+attention_dim, action_range
 
     def get_comm_types(self):
-        return ["None", "Stochastic", "Deterministic"]
+        return ["None", "Noisy message", "Full observation", "Noise only"]
     
     def get_msg_types(self):
         return [(1,self.msg_noise*self.e_max,"Energy"), (2,self.msg_noise*self.x_max,"Position"), 
@@ -192,43 +192,45 @@ class Agent:
     
     def is_in_patch(self,agent_state,patch_state):
         dist = self.dist_to(agent_state[:2], patch_state[:2])
-        return dist <= patch_state[1]
+        return dist <= patch_state[2]
 
-    def probabilistic_msg(self,agents_state,actions,msg):
-        attention_other = self.normalize(actions[1-self.id][-1])
-        communication = self.normalize(actions[self.id][2:-1])
-        idx, c_value = [np.argmax(communication), np.max(communication)]
-        agents_pos = [a[:2] for a in agents_state]
-        max_dist = np.sqrt(self.size[0]**2+self.size[1]**2)
-        noise_lvl = (1-c_value)*(1-attention_other)*(self.dist_to(*agents_pos)/max_dist)# *std_msg # ~ 1:1 SNR
-        noise_values = self.noise_rng.normal(0,noise_lvl,size=(1,msg[idx].shape[0]))
-        return msg[idx]*communication + noise_values
-
-    def normalize(self, action):
-        return (action+self.v_max)/(2*self.v_max)
-
+    """
+    Message mechanism where agents are allowed to decide if they want to send/receive messages
+    """
     def discrete_msg(self,agents_state,actions,msg):
-        attention_other = self.normalize(actions[1-self.id][3])
-        communication = self.normalize(actions[self.id][2])
-        if attention_other > 0.5 and communication > 0.5:
-            return msg
-        else:
-            # Add noise to message to make it meaningless
+        attention_other = actions[1-self.id][3]
+        communication = actions[self.id][2]
+        # Add noise to message that depends on willingness to send and receive a message
+        #if attention_other > 0.5 and communication > 0.5:
+        #    return msg
+        noise = self.noise_rng.normal(0,self.noise_arr,size=self.noise_arr.shape)*(1-communication)
+        return msg + noise
+
+    """
+    Always send messages in full quality between agents
+    """
+    def always_msg(self,agents_state,actions,msg):
+        return msg
+
+    """
+    Only sends messages with noise between agents
+    """
+    def never_msg(self,agents_state,actions,msg):
         return msg + self.noise_rng.normal(0,self.noise_arr,size=self.noise_arr.shape)
 
     def get_penalty(self,agent_state,patch_state,action):
-        penalty = 0
+        penalty = self.p_still
         if self.msg_size > 0:
-            attention = self.normalize(action[-1])
-            communication = self.normalize(action[2:-1])
-            penalty += np.linalg.norm(communication)/np.linalg.norm(np.ones_like(communication))*self.p_comm
+            attention = action[3]
+            communication = action[2]
+            penalty += communication.item()*self.p_comm
             penalty += attention.item()*self.p_att
         max_penalty = np.linalg.norm(np.full_like(action[:2], self.v_max))
         penalty += np.linalg.norm(action[:2])/max_penalty*self.p_act
         return penalty
     
     def generate_message(self,agents_state,actions,msg):
-        comm_types = [None, self.probabilistic_msg, self.discrete_msg]
+        comm_types = [None, self.discrete_msg, self.always_msg, self.never_msg]
         return comm_types[self.comm_type](agents_state,actions,msg)
     
     def send_message(self,agents_state,actions):
