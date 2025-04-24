@@ -10,7 +10,7 @@ def compute_NSW(rewards):
     return NSW
     
 class NAgentsEnv():
-    def __init__(self, patch_radius=10,s_init=10, e_init=10, eta=0.1, beta=0.05, env_gamma=0.01, step_max=600, x_max=50, y_max=50, v_max=4, n_agents=2, in_patch_only=False, p_welfare=0, patch_resize=False, seed=0, comm_type=0, msg_type=[], **kwargs):
+    def __init__(self, patch_radius=10,s_init=10, e_init=10, eta=0.1, beta=0.2, env_gamma=0.01, step_max=600, x_max=50, y_max=50, v_max=4, n_agents=2, in_patch_only=False, p_welfare=0, patch_resize=False, seed=0, comm_type=0, msg_type=[], **kwargs):
         # Main variables used in environment
         self.x_max = x_max
         self.y_max = y_max
@@ -25,7 +25,7 @@ class NAgentsEnv():
         self.p_act = 0.2
         self.p_att = 0.02
         self.p_comm = 0.04
-        self.msg_noise = 0.1
+        self.msg_noise = 0.01
         self.n_agents = n_agents
         self.beta = beta
         self.e_init = e_init
@@ -129,7 +129,7 @@ class NAgentsEnv():
             # Update agent position, and send message
             agents_state[i, :agents_state.shape[1]] = self.agents[i].step(agents_state, actions)
             # Update agent energy
-            agent_state, reward, s_eaten, penalty = self.agents[i].update_energy(agents_state, patch_state, action, dt=0.1)
+            agent_state, reward, s_eaten, penalty = self.agents[i].update_energy(agents_state[i], patch_state, action, dt=0.1)
             is_in_patch[i] = s_eaten != 0
             penalties[i,:] = penalty
             # Add agent reward to reward vector
@@ -200,10 +200,11 @@ class Agent:
     def discrete_msg(self,agents_state,actions,msg):
         attention_other = actions[1-self.id][3]
         communication = actions[self.id][2]
-        # Add noise to message that depends on willingness to send and receive a message
-        #if attention_other > 0.5 and communication > 0.5:
-        #    return msg
-        noise = self.noise_rng.normal(0,self.noise_arr,size=self.noise_arr.shape)*(1-communication)
+        # When communicating send the message in full quality
+        if attention_other > 0.5 and communication > 0.5:
+            return msg
+        # Add noise to message if not communicating
+        noise = self.noise_rng.normal(0,self.noise_arr,size=self.noise_arr.shape)
         return msg + noise
 
     """
@@ -235,7 +236,7 @@ class Agent:
     
     def send_message(self,agents_state,actions):
         if self.msg_size == 0:
-            return 
+            return 0
         state = agents_state[self.id]
         msgs = [[state[4]], state[:2], state[2:4], actions[self.id][:2]]
         msg = np.concatenate([msgs[type] for type in self.msg_type])
@@ -248,13 +249,8 @@ class Agent:
         self.send_message(agents_state, actions)
         return self.update_position(agents_state[self.id],actions[self.id])
     
-    def update_energy(self,agents_state,patch_state,action,dt=0.1):
-        # Amount eaten depends on other agents in patch
-        agent_state = agents_state[self.id]
-        who_in = [self.is_in_patch(agents_state[i], patch_state) for i in range(len(agents_state))]
-        s_eaten = who_in[self.id]*self.beta*patch_state[-1]
-        if np.any(who_in):
-            s_eaten /= np.sum(who_in)
+    def update_energy(self,agent_state,patch_state,action,dt=0.1):
+        s_eaten = self.is_in_patch(agent_state, patch_state)*self.beta*patch_state[-1]
         penalty = self.get_penalty(agent_state, patch_state, action)
         # Update step (differential equation)
         de = s_eaten - dt*penalty
@@ -298,9 +294,7 @@ class Patch:
         values = np.array([resources,np.power(resources,2),eaten])
         ds = np.dot(scalars.T, values)
         
-        patch_state[-1] = np.clip(resources + ds, 0, self.s_init) 
-        if self.patch_resize:
-            patch_state[3] = self.radius*0.5 + 0.5*self.radius*(patch_state[-1]/self.s_init)
+        patch_state[-1] = np.clip(resources + ds, 0, self.s_init)
         return patch_state
         
     def reset(self):

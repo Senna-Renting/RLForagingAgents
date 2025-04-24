@@ -35,7 +35,8 @@ def episode_results(path, energy, dist_agents, dist_agents_patch, comm_filter, p
         sub_path = os.path.join(path, f"episode {episode}")
         os.mkdir(sub_path)
         rq1_plots_per_episode(episode, sub_path, energy, dist_agents, dist_agents_patch, comm_filter, colors=plt.cm.Set1.colors)
-        plot_env(episode, sub_path)
+    # Only make a video for the final episode
+    plot_env(episode, sub_path)
 
 """
 Subfunction for generating the plots of a single episode for RQ1
