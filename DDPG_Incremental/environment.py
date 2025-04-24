@@ -6,7 +6,7 @@ import os
 
 # Helper function for computing the Nash Social Welfare function (aka geometric mean)
 def compute_NSW(rewards):
-    NSW = np.power(np.prod(rewards), 1/rewards.shape[0])
+    NSW = np.power(np.prod(rewards,axis=0), 1/rewards.shape[0])
     return NSW
     
 class NAgentsEnv():

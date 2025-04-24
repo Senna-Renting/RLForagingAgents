@@ -293,6 +293,8 @@ def n_agents_ddpg(env, num_episodes, tau=0.0025, gamma=0.99, batch_size=240, lr_
             states = next_states
             done = terminated or truncated
             data["returns"][i,step_idx] = rewards
+            # Save all written data to disk indefinitely
+            [d.flush() for d in data.values()]
             if done:
                 break
         # Log the important variables to some logger
@@ -302,8 +304,6 @@ def n_agents_ddpg(env, num_episodes, tau=0.0025, gamma=0.99, batch_size=240, lr_
         # Compute relevant information
         patch_info = (patch_state[:-1], data["patch_states"])
         env_info = (data["penalties"], data["is_in_patch"], data["agent_states"], patch_info)
-        # Save all written data to disk indefinitely
-        [d.flush() for d in data.values()]
     # Gather buffer data for storing purposes
     buffer_tuple = zip(*[buffer.get_all() for buffer in buffers])
     buffer_data = [np.concatenate(tuple, axis=0) for tuple in buffer_tuple]

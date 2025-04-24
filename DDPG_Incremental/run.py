@@ -16,10 +16,11 @@ def create_exp_folder(exp_name, test=False):
     if test:
         folder_name= "tests"
     timepoint = datetime.now().strftime("%d-%m-%Y %H%M%S")
-    path = os.path.join(folder_name, exp_name, timepoint)
+    main_folder = os.path.join(folder_name, exp_name)
+    path = os.path.join(main_folder, timepoint)
     if not os.path.exists(path):
         os.makedirs(path)
-    return path
+    return os.path.abspath(main_folder), path
 
 def save_metadata(metadata, path):
     with open(os.path.join(path, "metadata.json"), 'w') as f:
@@ -104,11 +105,14 @@ def run_experiment(**kwargs):
     e = kwargs["episodes"]
     env = NAgentsEnv(**kwargs)
     for i_r in range(kwargs["runs"]):
-        path = create_exp_folder(kwargs["out"])
+        main_folder, path = create_exp_folder(kwargs["out"])
         os.mkdir(os.path.join(path, "data"))
         train_args=dict(**kwargs)
         train_args["seed"] = s+i_r*e
+        # Single run of DDPG on the environment
         run_ddpg(env, e, n_agents_ddpg, path, train_args, skip_vid=not kwargs["video"])
+    # Compute the average return over the amount of runs done
+    get_grouped_return(main_folder)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

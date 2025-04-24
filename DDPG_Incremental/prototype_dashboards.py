@@ -6,6 +6,53 @@ from matplotlib.collections import LineCollection
 from matplotlib.ticker import FuncFormatter
 from matplotlib.patches import Circle
 import os
+import json
+from environment import compute_NSW
+
+
+"""
+This function should plot the average, minimum and maximum return of the runs, inside a given folder across their episodes.
+The resulting plot will be put inside this folder
+
+Input:
+    path: location of folder containing runs on device
+Return: None
+"""
+def get_grouped_return(path):
+    return_data = []
+    num_episodes = 0
+    # Get folders of seperate runs
+    for run in os.listdir(path): 
+        run_p = os.path.join(path, run)
+        if os.path.isdir(run_p):
+            # For each run get the return data
+            path_return_data = os.path.join(run_p, "data", "returns.dat")
+            path_metadata = os.path.join(run_p, "metadata.json")
+            with open(path_metadata, 'r') as f:
+                metadata = json.load(f)
+                num_episodes = metadata["n_episodes"]
+                return_shape = (num_episodes, metadata["step_max"], metadata["n_agents"])
+                run_data = np.memmap(path_return_data, mode="r+", shape=return_shape, dtype="float32").copy()
+                print(run_data.shape)
+                # Compute NSW from return data
+                print("amount of NaNs: ", np.sum(np.isnan(run_data)))
+                nsw = np.sum(compute_NSW(run_data.T).T, axis=1)
+                print("run NSW: ", nsw)
+                return_data.append(nsw)
+    # Convert return data list into an array
+    return_data = np.array(return_data)
+    print("Final return shape: ", return_data.shape)
+    # Generate the plot
+    x_range = np.arange(0,num_episodes)
+    fig = plt.figure()
+    plt.title(f"Average NSW between agents across runs")
+    plt.xlabel("Episode")
+    plt.ylabel("NSW")
+    plt.fill_between(x_range, np.min(return_data), np.max(return_data), color="r", alpha=0.4)
+    plt.plot(np.mean(return_data), color="b")
+    plt.legend(loc="lower right")
+    fig.savefig(os.path.join(path, f"average_NSW.png"))
+    plt.close(fig)
 
 """
 This function derives the data needed for RQ1 plots, based on the stored data
