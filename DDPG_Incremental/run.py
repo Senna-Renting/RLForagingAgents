@@ -51,7 +51,7 @@ def run_ddpg(env, num_episodes, train_fun, path, train_args=dict(), prev_path=No
         train_args["current_path"] = path
         
     # Train agent(s)
-    rewards, networks, (as_loss, cs_loss), agents_info, metadata, buffer_data = train_fun(env, episodes[-1], **train_args)
+    train_data, networks, agents_info, metadata, buffer_data = train_fun(env, episodes[-1], **train_args)
     ((actors, a_weights), (critics, c_weights)) = networks
     (penalties, is_in_patch, agent_states, patch_info) = agents_info
     # Save all data (as efficiently as possible)
@@ -69,14 +69,14 @@ def run_ddpg(env, num_episodes, train_fun, path, train_args=dict(), prev_path=No
     save_metadata(metadata, path)
     
     # Plot a few informative plots
-    plot_rewards(path, rewards)
-    plot_loss(path, "critic", cs_loss)
-    plot_loss(path, "actor", as_loss)
+    plot_rewards(path, train_data["returns"])
+    plot_loss(path, "critic", train_data["critics_loss"])
+    plot_loss(path, "actor", train_data["actors_loss"])
     plot_penalty(path, is_in_patch, penalties[:,:,:,0], "action")
     plot_final_welfare(path, agent_states)
     
     # Draw run of agents over the episodes and save informative plots of final state environment
-    plot_final_states_env(path, is_in_patch, patch_info, agent_states[-1], rewards[-1])
+    plot_final_states_env(path, is_in_patch, patch_info, agent_states[-1], train_data["returns"][-1])
     
     a_shape = (metadata["n_episodes"], metadata["step_max"], metadata["n_agents"], metadata["action_dim"])
     d_path = os.path.abspath(os.path.join(metadata["current_path"], "data"))

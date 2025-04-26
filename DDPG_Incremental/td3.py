@@ -337,4 +337,4 @@ def n_agents_ddpg(env, num_episodes, tau=0.0025, gamma=0.99, batch_size=240, lr_
         save_policies(critics_t, "critics", current_path)
         metadata["current_path"] = os.path.abspath(current_path)
     
-    return data["returns"], ((actors_t, actor_weights), (critics_t, critic_weights)), (data["actors_loss"], data["critics_loss"]), env_info, metadata, buffer_data
+    return data, ((actors_t, actor_weights), (critics_t, critic_weights)), env_info, metadata, buffer_data
