@@ -85,7 +85,8 @@ def run_ddpg(env, num_episodes, train_fun, path, train_args=dict(), prev_path=No
     plot_episode_env = lambda episode, path: None
     if not skip_vid:
         plot_episode_env = lambda episode, path: plot_env(path, episode, env.size(), patch_info, agent_states, actions)
-    episode_results(path, *rq1_data(patch_info, agent_states, actions), plot_env=plot_episode_env)
+    if metadata["n_agents"] == 2:
+        episode_results(path, *rq1_data(patch_info, agent_states, actions), plot_env=plot_episode_env)
 
 def patch_test_saved_policy(env, path, hidden_dim=32):
     state_dim = env.get_state_space()[1]

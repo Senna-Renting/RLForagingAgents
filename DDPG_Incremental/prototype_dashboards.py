@@ -33,23 +33,19 @@ def get_grouped_return(path):
                 num_episodes = metadata["n_episodes"]
                 return_shape = (num_episodes, metadata["step_max"], metadata["n_agents"])
                 run_data = np.memmap(path_return_data, mode="r+", shape=return_shape, dtype="float32").copy()
-                print(run_data.shape)
                 # Compute NSW from return data
-                print("amount of NaNs: ", np.sum(np.isnan(run_data)))
-                nsw = np.sum(compute_NSW(run_data.T).T, axis=1)
-                print("run NSW: ", nsw)
-                return_data.append(nsw)
+                mean_return = np.mean(np.sum(run_data, axis=1),axis=1)
+                return_data.append(mean_return)
     # Convert return data list into an array
     return_data = np.array(return_data)
-    print("Final return shape: ", return_data.shape)
     # Generate the plot
     x_range = np.arange(0,num_episodes)
     fig = plt.figure()
-    plt.title(f"Average NSW between agents across runs")
+    plt.title(f"Average return of agents over episodes")
     plt.xlabel("Episode")
-    plt.ylabel("NSW")
-    plt.fill_between(x_range, np.min(return_data), np.max(return_data), color="r", alpha=0.4)
-    plt.plot(np.mean(return_data), color="b")
+    plt.ylabel("Return")
+    plt.fill_between(x_range, np.min(return_data,axis=0), np.max(return_data,axis=0), color="r", alpha=0.4, label="min, max bound")
+    plt.plot(np.mean(return_data,axis=0), color="b", label="Mean(A1, A2)")
     plt.legend(loc="lower right")
     fig.savefig(os.path.join(path, f"average_NSW.png"))
     plt.close(fig)
@@ -315,15 +311,13 @@ def plot_env(path, episode, env_shape, patch_info, agents_state, actions, a_colo
     plt.close(fig) 
 
 def plot_loss(path, name, data, colors=plt.cm.Set1.colors):
-    n_episodes, n_stats, n_agents = data.shape
-    x_range = np.arange(0,n_episodes)
+    steps, n_agents = data.shape
     fig = plt.figure()
     plt.title(f"{name} loss of agents")
     plt.xlabel("Episode")
     plt.ylabel("Loss")
     for i_a in range(n_agents):
-        plt.fill_between(x_range, data[:,1,i_a], data[:,2,i_a], color=colors[i_a], alpha=0.4)
-        plt.plot(data[:,0,i_a], label=f"$A_{i_a+1}$", color=colors[i_a])
+        plt.plot(data[:,i_a], label=f"$A_{i_a+1}$", color=colors[i_a])
     plt.legend(loc="lower right")
     fig.savefig(os.path.join(path, f"{name}_loss.png"))
     plt.close(fig)

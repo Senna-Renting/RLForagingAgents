@@ -10,7 +10,7 @@ def compute_NSW(rewards):
     return NSW
     
 class NAgentsEnv():
-    def __init__(self, patch_radius=10,s_init=10, e_init=10, eta=0.1, beta=0.2, env_gamma=0.01, step_max=600, x_max=50, y_max=50, v_max=4, n_agents=2, in_patch_only=False, p_welfare=0, patch_resize=False, seed=0, comm_type=0, msg_type=[], **kwargs):
+    def __init__(self, patch_radius=10,s_init=10, e_init=3, eta=0.1, beta=0.2, env_gamma=0.01, step_max=600, x_max=50, y_max=50, v_max=4, n_agents=2, in_patch_only=False, p_welfare=0, patch_resize=False, seed=0, comm_type=0, msg_type=[], **kwargs):
         # Main variables used in environment
         self.x_max = x_max
         self.y_max = y_max
@@ -47,7 +47,10 @@ class NAgentsEnv():
         message_dim = len(self.msg_type) > 0 # Add a channel for each message type
         attention_dim = (message_dim > 0) # Add an attention dimension
         action_dim = 2 # We use two acceleration terms (one for x and one for y)
-        action_range = [[-self.v_max,-self.v_max,0,0], [self.v_max,self.v_max,1,1]]
+        if self.n_agents == 2:
+            action_range = [[-self.v_max,-self.v_max,0,0], [self.v_max,self.v_max,1,1]]
+        else:
+            action_range = [[-self.v_max, -self.v_max], [self.v_max, self.v_max]]
         return action_dim+message_dim+attention_dim, action_range
 
     def get_comm_types(self):
@@ -269,7 +272,11 @@ class Agent:
         pos += dt*vel 
         pos = np.mod(pos, self.size)
         # Update velocity
-        vel = v_bounded(vel + dt*(acc-self.damping*vel))
+        # TODO: Test velocity based control compared to acceleration based control
+        # Velocity control
+        vel = v_bounded(acc - dt*(self.damping*acc))
+        # Acceleration control
+        # vel = v_bounded(vel + dt*(acc - self.damping*vel))
         agent_state[:2] = pos
         agent_state[2:4] = vel
         return agent_state
