@@ -9,6 +9,35 @@ import os
 import json
 from environment import compute_NSW
 
+"""
+Plots the Kullback-Leibler divergence between the learned critic and the target critic for each timestep across agents
+"""
+def plot_kl(path, data, colors=plt.cm.Set1.colors):
+    fig = plt.figure()
+    plt.title(f"Kullback-Leibler distance for Actor vs batch actions")
+    plt.xlabel("Timestep")
+    plt.ylabel("KL(a, $\\hat{a}$)")
+    [plt.plot(data[:,i_a], label=f"Agent {i_a+1}", color=colors[i_a]) for i_a in range(data.shape[1])]
+    plt.legend()
+    fig.savefig(os.path.join(path, f"kl_critics.png"))
+    plt.close()
+
+"""
+Plots a histogram of the learned and target critic values seen in the last episode
+"""
+def plot_cvals(path, data):
+    for i_a in range(data.shape[1]):
+        fig = plt.figure()
+        plt.title(f"Distribution of Q-values for Agent {i_a+1}")
+        plt.xlabel("Q(s,a)")
+        plt.ylabel("Amount")
+        d_range = (data[:,i_a,:].min(),data[:,i_a,:].max())
+        plt.hist(data[:,i_a,1], label="$Q_{target}$", bins=100, alpha=0.5, range=d_range)
+        plt.hist(data[:,i_a,0], label=f"$Q$", bins=100, alpha=0.5, range=d_range)
+        plt.legend()
+        fig.savefig(os.path.join(path, f"critic_values_agent{i_a+1}.png"))
+        plt.close()
+        
 
 """
 This function should plot the average, minimum and maximum return of the runs, inside a given folder across their episodes.

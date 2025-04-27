@@ -99,13 +99,6 @@ def compute_welfare(buffers, lookback):
         rewards[i] = rs.mean()
     NSW = compute_NSW(rewards)
     return NSW
-
-"""
-This function computes the Kullback-Leibler Divergence between two distributions generated. 
-We will use it to compute the difference between the learned critic and it's target.
-"""
-def compute_kl(normal_dist, target_dist):
-    return np.sum(normal_dist*np.log(normal_dist/target_dist))
     
 
 ## Buffer data structure
@@ -176,8 +169,7 @@ def create_data_files(path, **info):
     steps = n_ep*s_max
     n_ag = info["n_agents"]
     data = {
-        "critics_kl": make_file("critics_kl.dat", (steps, n_ag)),
-        "critics_vals": make_file("critics_vals.dat", (steps*b_size, n_ag, 2)),
+        "critics_vals": make_file("critics_vals.dat", (s_max*b_size,n_ag, 2)),
         "critics_loss": make_file("critics_loss.dat", (steps, n_ag)),
         "actors_loss": make_file("actors_loss.dat", (steps, n_ag)),
         "returns": make_file("returns.dat", (n_ep, s_max, n_ag)),
@@ -247,7 +239,6 @@ def n_agents_ddpg(env, num_episodes, tau=0.0025, gamma=0.99, batch_size=240, lr_
         env_state, states = env.reset(seed=seed+i) # We initialize randomly each episode to allow more exploration
         # Initialize loss temp variables
         cs_loss = np.empty((step_max,n_agents))
-        kl_div = np.empty((step_max,n_agents))
         c_vals = np.empty((step_max*batch_size,n_agents,2)) # 2 is for learned and target critic respectively 
         as_loss = np.empty((step_max,n_agents))
         # Train agent
@@ -276,12 +267,11 @@ def n_agents_ddpg(env, num_episodes, tau=0.0025, gamma=0.99, batch_size=240, lr_
                 # Update targets (critic and policy)
                 nnx.update(critics_t[i_a], polyak_update(tau, critics_t[i_a], critics[i_a]))
                 nnx.update(actors_t[i_a], polyak_update(tau, actors_t[i_a], actors[i_a]))
-                # Compute Critic-Critic target difference, and corresponding KL-divergence
+                # Compute Critic-Critic target difference
                 c_start = batch_size*(step_idx-1)
                 c_end = c_start + batch_size
                 c_vals[c_start:c_end,i_a,0] = critics[i_a](b_states, b_actions).flatten()
                 c_vals[c_start:c_end,i_a,1] = critics_t[i_a](b_states, b_actions).flatten()
-                kl_div[step_idx-1,i_a] = compute_kl(c_vals[c_start:c_end,i_a,0], c_vals[c_start:c_end,i_a,1])
                 # Store actor and critic loss 
                 as_loss[step_idx-1,i_a] = a_loss
                 cs_loss[step_idx-1,i_a] = c_loss
@@ -291,9 +281,6 @@ def n_agents_ddpg(env, num_episodes, tau=0.0025, gamma=0.99, batch_size=240, lr_
         step_idx = env_state[2]
         data["actors_loss"][i*step_max:(i+1)*step_max,:] = as_loss
         data["critics_loss"][i*step_max:(i+1)*step_max,:] = cs_loss
-        v_len = step_max*batch_size
-        data["critics_vals"][i*v_len: (i+1)*v_len,:,:] = c_vals
-        data["critics_kl"][i*step_max: (i+1)*step_max,:] = kl_div
         for i_a in range(n_agents):
             c_weights = get_network_weights(critics_t[i_a])
             a_weights = get_network_weights(actors_t[i_a])
@@ -319,7 +306,7 @@ def n_agents_ddpg(env, num_episodes, tau=0.0025, gamma=0.99, batch_size=240, lr_
             if done:
                 break
         # Save all written data to disk indefinitely
-        [d.flush() for d in data.values()]
+        [d.flush() for k,d in data.items() if k != "critics_vals"]
         # Log the important variables to some logger
         (agents_state, patch_state, step_idx) = env_state
         end_energy = agents_state[:, 4]
@@ -327,6 +314,9 @@ def n_agents_ddpg(env, num_episodes, tau=0.0025, gamma=0.99, batch_size=240, lr_
         # Compute relevant information
         patch_info = (patch_state[:-1], data["patch_states"])
         env_info = (data["penalties"], data["is_in_patch"], data["agent_states"], patch_info)
+    # Store the critic values on disk
+    data["critics_vals"][:,:,:] = c_vals
+    data["critics_vals"].flush()
     # Gather buffer data for storing purposes
     buffer_tuple = zip(*[buffer.get_all() for buffer in buffers])
     buffer_data = [np.concatenate(tuple, axis=0) for tuple in buffer_tuple]

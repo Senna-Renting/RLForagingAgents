@@ -74,6 +74,7 @@ def run_ddpg(env, num_episodes, train_fun, path, train_args=dict(), prev_path=No
     plot_loss(path, "actor", train_data["actors_loss"])
     plot_penalty(path, is_in_patch, penalties[:,:,:,0], "action")
     plot_final_welfare(path, agent_states)
+    plot_cvals(path, train_data["critics_vals"])
     
     # Draw run of agents over the episodes and save informative plots of final state environment
     plot_final_states_env(path, is_in_patch, patch_info, agent_states[-1], train_data["returns"][-1])
