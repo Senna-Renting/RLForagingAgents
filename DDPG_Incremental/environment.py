@@ -274,9 +274,9 @@ class Agent:
         # Update velocity
         # TODO: Test velocity based control compared to acceleration based control
         # Velocity control
-        vel = v_bounded(acc - dt*(self.damping*acc))
+        #vel = v_bounded(acc - dt*(self.damping*acc))
         # Acceleration control
-        # vel = v_bounded(vel + dt*(acc - self.damping*vel))
+        vel = v_bounded(vel + dt*(acc - self.damping*vel))
         agent_state[:2] = pos
         agent_state[2:4] = vel
         return agent_state
