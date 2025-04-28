@@ -62,9 +62,9 @@ def mean_optimize_actor(optimizer: nnx.Optimizer, actor: nnx.Module, critic: nnx
     optimizer.update(grads)
     return loss, grads
 
-def sample_action(rng, actor, state, action_min, action_max, action_dim, act_noise=0.1):
+def sample_action(rng, actor, state, action_min, action_max, act_noise=0.1):
     mu_action = actor(state)
-    eps = jax.random.normal(rng, (action_dim,))*action_max*act_noise
+    eps = jax.random.normal(rng, mu_action.shape)*action_max*act_noise
     return jnp.clip(mu_action + eps, action_min, action_max)
 
 @nnx.jit
@@ -247,7 +247,7 @@ def n_agents_ddpg(env, num_episodes, tau=0.0025, gamma=0.99, batch_size=240, lr_
             actions = list(range(n_agents))
             for i_a,actor in enumerate(actors):
                 action_key, key = jax.random.split(key)
-                actions[i_a] = np.array(sample_action(action_key, actor, states[i_a], action_range[0], action_range[1], actor_dim, act_noise))
+                actions[i_a] = np.array(sample_action(action_key, actor, states[i_a], action_range[0], action_range[1], act_noise))
             env_state, next_states, (rewards, penalties), terminated, truncated, _ = env.step(env_state, *actions)
             (agents_state, patch_state, step_idx) = env_state
             done = truncated or terminated
@@ -328,3 +328,4 @@ def n_agents_ddpg(env, num_episodes, tau=0.0025, gamma=0.99, batch_size=240, lr_
         metadata["current_path"] = os.path.abspath(current_path)
     
     return data, ((actors_t, actor_weights), (critics_t, critic_weights)), env_info, metadata, buffer_data
+    

@@ -3,7 +3,23 @@ from typing import NamedTuple, List, Dict
 from functools import partial
 import jax
 # TODO: Rewrite the environment in pure functions here to be handled by jax
-class Parameters(NamedTuple):
+class TrainParameters(NamedTuple):
+    current_path: str
+    hidden_dims: tuple
+    action_range: tuple
+    batch_size: jnp.integer
+    num_episodes: jnp.integer
+    seed: jnp.integer
+    step_max: jnp.integer
+    tau: jnp.float32
+    gamma: jnp.float32
+    act_noise: jnp.float32
+    lr_a: jnp.float32
+    lr_c: jnp.float32
+    
+    
+
+class EnvParameters(NamedTuple):
     # General
     env_size: jnp.float32
     p_welfare: jnp.float32
@@ -16,7 +32,7 @@ class Parameters(NamedTuple):
     # Patch
     growth: jnp.float32
     decay: jnp.float32
-    patch_resource_init: jnp.ndarray
+    patch_resource_init: jnp.float32
     patch_radius: jnp.float32
     # Agents
     p_still: jnp.float32
@@ -46,8 +62,8 @@ class EnvState(NamedTuple):
 Reset the environment to an initial random state
 """
 @partial(jax.jit, static_argnames=["parameters"])
-def env_reset(key: jax.random.PRNGKey, parameters: Parameters):
-    key1, key2 = jax.random.split(key)
+def env_reset(key: jax.random.PRNGKey, parameters: EnvParameters):
+    key1, key2, key3 = jax.random.split(key, 3)
     n_agents = parameters.n_agents
     v_max = parameters.v_max
     size = parameters.env_size
@@ -55,42 +71,48 @@ def env_reset(key: jax.random.PRNGKey, parameters: Parameters):
     patch_state = PatchState(position=patch_position, 
                              radius=jnp.array([parameters.patch_radius]),
                              resource=jnp.array([parameters.patch_resource_init]))
-    positions = jax.random.uniform(key1, shape=(2,n_agents), minval=0, maxval=parameters.env_size)
-    velocities = jax.random.uniform(key2, shape=(2,n_agents), minval=-v_max, maxval=v_max)
-    agent_states = [AgentState(position=positions.at[:,i_a].get(),
-                               velocity=velocities.at[:,i_a].get(),
+    positions = jax.random.uniform(key1, shape=(n_agents,2), minval=0, maxval=parameters.env_size)
+    velocities = jax.random.uniform(key2, shape=(n_agents,2), minval=-v_max, maxval=v_max)
+    agent_states = [AgentState(position=positions.at[i_a].get(),
+                               velocity=velocities.at[i_a].get(),
                                energy=jnp.array([parameters.e_init])
                     ) for i_a in range(n_agents)]
-    agents_obs = get_obs(agent_states, patch_state, parameters)
+    no_actions = jnp.zeros((4,n_agents))
+    messages = get_messages(agent_states, no_actions, key3, parameters)
+    agents_obs = get_obs(agent_states, patch_state, messages, parameters)
     return EnvState(patch_state=patch_state, agent_states=agent_states), agents_obs
 
 """
 Computes a single step through the environment
 """
 @partial(jax.jit, static_argnames=["parameters"])
-def env_step(state: EnvState, actions: List[jnp.ndarray], key: jax.random.PRNGKey, parameters: Parameters):
+def env_step(state: EnvState, actions: List[jnp.ndarray], key: jax.random.PRNGKey, parameters: EnvParameters):
     patch_state = state.patch_state
     agent_states = state.agent_states
     n_agents = parameters.n_agents
     p_welfare = parameters.p_welfare
     tot_eaten = 0
     rewards = jnp.zeros((n_agents,1))
-    for i_a, agent_state in enumerate(agent_states):
-        action = actions.at[:,i_a].get()
-        agent_state = ag_position_step(agent_state, action, parameters)
+    for i_a in range(n_agents):
+        action = actions.at[i_a].get()
+        agent_state = ag_position_step(agent_states[i_a], action, parameters)
         agent_state, reward, s_eaten, penalty = ag_energy_step(patch_state, agent_state, action, parameters)
-        rewards = rewards.at[:i_a].set(reward)
+        rewards = rewards.at[i_a].set(reward)
         tot_eaten += s_eaten
         agent_states[i_a] = agent_state
+    
+    # Modify reward with welfare contribution
     positive_rewards = jnp.maximum(rewards, jnp.zeros(n_agents))
     welfare = jnp.power(jnp.prod(positive_rewards), 1/rewards.shape[0])
     rewards = (1-p_welfare)*rewards + p_welfare*welfare
+    
     patch_state = patch_step(patch_state, tot_eaten, parameters)
-    agents_obs = get_obs(agent_states, patch_state, parameters)
+    messages = get_messages(agent_states, actions, key, parameters)
+    agents_obs = get_obs(agent_states, patch_state, messages, parameters)
     done = False
     return EnvState(patch_state=patch_state, agent_states=agent_states), agents_obs, rewards, done
 
-def ag_position_step(agent_state: AgentState, action: jnp.ndarray, parameters: Parameters):
+def ag_position_step(agent_state: AgentState, action: jnp.ndarray, parameters: EnvParameters):
     # Compute action values
     pos = agent_state.position
     vel = agent_state.velocity
@@ -109,7 +131,7 @@ def ag_position_step(agent_state: AgentState, action: jnp.ndarray, parameters: P
     vel = jnp.clip(vel + dt*(acc - damping*vel), -vmax, vmax)
     return AgentState(position=pos, velocity=vel, energy=agent_state.energy)
 
-def patch_step(patch_state: PatchState, eaten: jnp.float32, parameters: Parameters):
+def patch_step(patch_state: PatchState, eaten: jnp.float32, parameters: EnvParameters):
     resource = patch_state.resource
     dt = parameters.dt
     growth = parameters.growth
@@ -124,7 +146,7 @@ def patch_step(patch_state: PatchState, eaten: jnp.float32, parameters: Paramete
                              resource=resource)
     return patch_state
 
-def ag_energy_step(patch_state: PatchState, agent_state: AgentState, action: jnp.ndarray, parameters: Parameters):
+def ag_energy_step(patch_state: PatchState, agent_state: AgentState, action: jnp.ndarray, parameters: EnvParameters):
     eat_rate = parameters.eat_rate
     dt = parameters.dt
     e_init = parameters.e_init
@@ -151,7 +173,7 @@ def ag_is_in_patch(patch_state: PatchState, agent_state: AgentState):
     dist = dist_to(ag_pos, p_pos)
     return dist <= p_radius
 
-def get_penalty(agent_state: AgentState, action: jnp.ndarray, parameters: Parameters):
+def get_penalty(agent_state: AgentState, action: jnp.ndarray, parameters: EnvParameters):
     p_still = parameters.p_still
     p_act = parameters.p_act
     p_att = parameters.p_att
@@ -166,24 +188,49 @@ def get_penalty(agent_state: AgentState, action: jnp.ndarray, parameters: Parame
     penalty += jnp.linalg.norm(action[:2])/max_penalty*p_act
     return penalty
 
+def get_messages(agent_states: List[AgentState], actions: jnp.ndarray, key: jax.random.PRNGKey, parameters: EnvParameters):
+    msgs = jnp.array([jnp.concatenate(jax.tree.leaves(agent_state)) for i_a, agent_state in enumerate(reversed(agent_states))])
+    max_vals = jnp.array([jnp.concatenate([jnp.full_like(a_state.position, parameters.env_size),
+                jnp.full_like(a_state.velocity, parameters.v_max),
+                jnp.full_like(a_state.energy, parameters.e_max)]) for a_state in agent_states])
+    noise_lvl = parameters.msg_noise*max_vals
+    noise = noise_lvl*jax.random.normal(key, msgs.shape)
+    # No message state
+    if parameters.comm_type == 0:
+        return jnp.array([[],[]])
+    # Learn communication
+    if parameters.comm_type == 1:
+        for i_a in range(parameters.n_agents):
+            noisy = lambda i_a, msgs, noise: msgs.at[i_a].set(msgs.at[i_a].get() + noise.at[i_a].get())
+            no_noisy = lambda i_a, msgs, noise: msgs
+            att_other = actions[1-i_a,3]
+            comm = actions[i_a,2]
+            return jax.lax.cond((att_other > 0.5) & (comm > 0.5), no_noisy, noisy, i_a, msgs, noise)
+    # Message with noise always
+    if parameters.comm_type == 2:
+        return msgs + noise
+    # Message without noise always
+    if parameters.comm_type == 3:
+        return msgs
+    # Default is message without noise
+    return msgs
+
 # TODO: fully implement this observation method to behave like our numpy environment
-def get_obs(agent_states: List[AgentState], patch_state: PatchState, parameters: Parameters):
+def get_obs(agent_states: List[AgentState], patch_state: PatchState, messages: jnp.ndarray, parameters: EnvParameters):
     n_agents = parameters.n_agents
-    agents_obs = jnp.empty((9, n_agents))
-    for i_a, agent_state in enumerate(agent_states):
-        obs = jnp.concatenate(jax.tree.leaves([agent_state, patch_state]))
-        agents_obs = agents_obs.at[:,i_a].set(obs)
+    agents_obs = jnp.array([jnp.concatenate(jax.tree.leaves([agent_state, patch_state, messages.at[i_a].get()])) 
+     for i_a, agent_state in enumerate(agent_states)])
     return agents_obs
 
 if __name__ == "__main__":
-    parameters = Parameters(
+    parameters = EnvParameters(
         env_size = 50,
         p_welfare = 0.9,
         dt = 0.1,
         p_att = 0.02,
         p_comm = 0.1,
-        msg_noise = 0.01,
-        comm_type = 0,
+        msg_noise = 0.1,
+        comm_type = 1,
         growth = 0.1,
         decay = 0.01,
         patch_resource_init = 10,
@@ -200,9 +247,9 @@ if __name__ == "__main__":
     key = jax.random.PRNGKey(0)
     env, agents_obs = env_reset(key, parameters)
     print("Obs i=0: ", agents_obs)
-    action = jnp.array([[0,1,0,0], [0,-1,0,0]]).T
+    action = jnp.array([[1,1,0,0], [-1,-1.5,0,0]])
     sum = 0
-    for i in range(1023):
+    for i in range(10023):
         if i % 2 == 0:
             env, agents_obs, rewards, done = env_step(env, action, key, parameters)
         sum += 1
