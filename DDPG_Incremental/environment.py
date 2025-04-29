@@ -24,8 +24,8 @@ class NAgentsEnv():
         self.p_still = 0.02
         self.p_act = 0.2
         self.p_att = 0.02
-        self.p_comm = 0.04
-        self.msg_noise = 0.01
+        self.p_comm = 0.1
+        self.msg_noise = 0.1
         self.n_agents = n_agents
         self.beta = beta
         self.e_init = e_init

@@ -18,16 +18,15 @@ def create_data_files(**metadata):
         "actors_loss": make_file("actors_loss.dat", (steps, n_ag)),
         "returns": make_file("returns.dat", (n_ep, s_max, n_ag)),
         "agent_states": make_file("agent_states.dat", (n_ep, s_max, metadata["state_dim"])),
-        "patch_states": make_file("patch_states.dat", (n_ep, s_max, 1)),
         "actions": make_file("actions.dat", (n_ep, s_max, n_ag, metadata["action_dim"])) 
     }
     return data
 
 # TODO: re-implement the ddpg algorithm from the td3.py file to work on the EnvState implementation
-def jax_n_agents_ddpg(train_params: TrainParameters, env_params: EnvParameters):
+def jax_n_agents_ddpg(train_params: TrainParameters, env_params: EnvParameters, log_fun=print_log_ddpg_n_agents):
     # Extract useful variables from parameters
     n_agents = env_params.n_agents
-    actor_dim = 2*(1+(env_params.comm_type>0))
+    actor_dim = get_action_space(env_params)
     current_path, hidden_dims, action_range, batch_size, n_episodes, seed, step_max, tau, gamma, act_noise, lr_a, lr_c = train_params
     minvals = jnp.array([action_range[0] for i_a in range(n_agents)])
     maxvals = jnp.array([action_range[1] for i_a in range(n_agents)])
@@ -72,9 +71,9 @@ def jax_n_agents_ddpg(train_params: TrainParameters, env_params: EnvParameters):
     for i in range(n_episodes):
         state, obs = env_reset(key, env_params) # We initialize randomly each episode to allow more exploration
         # Initialize loss temp variables
-        cs_loss = jnp.empty((step_max,n_agents))
-        c_vals = jnp.empty((step_max*batch_size,n_agents,2)) # 2 is for learned and target critic respectively 
-        as_loss = jnp.empty((step_max,n_agents))
+        cs_loss = np.empty((step_max,n_agents))
+        c_vals = np.empty((step_max*batch_size,n_agents,2)) # 2 is for learned and target critic respectively 
+        as_loss = np.empty((step_max,n_agents))
         # Train agent
         for s_i in range(step_max):
             # Sample action and execute it
@@ -96,36 +95,29 @@ def jax_n_agents_ddpg(train_params: TrainParameters, env_params: EnvParameters):
                 nnx.update(critics_t[i_a], polyak_update(tau, critics_t[i_a], critics[i_a]))
                 nnx.update(actors_t[i_a], polyak_update(tau, actors_t[i_a], actors[i_a]))
                 # Compute Critic-Critic target difference
-                c_start = batch_size*(s_i-1)
+                c_start = batch_size*s_i
                 c_end = c_start + batch_size
-                c_vals = c_vals.at[c_start:c_end,i_a,0].set(critics[i_a](b_states, b_actions).flatten())
-                c_vals = c_vals.at[c_start:c_end,i_a,1].set(critics_t[i_a](b_states, b_actions).flatten())
+                c_vals[c_start:c_end,i_a,0] = critics[i_a](b_states, b_actions).flatten()
+                c_vals[c_start:c_end,i_a,1] = critics_t[i_a](b_states, b_actions).flatten()
                 # Store actor and critic loss 
-                as_loss = as_loss.at[s_i-1,i_a].set(a_loss)
-                cs_loss = cs_loss.at[s_i-1,i_a].set(c_loss)
+                as_loss[s_i-1,i_a] = a_loss
+                cs_loss[s_i-1,i_a] = c_loss
             # Update observations of agents
             obs = next_obs
-        # Save training results
-        data["actors_loss"][i*step_max:(i+1)*step_max,:] = jax.device_put(as_loss)
-        data["critics_loss"][i*step_max:(i+1)*step_max,:] = jax.device_put(cs_loss)
         # Test agent
-        state, obs = env_reset(key, env_params)
-        for i_t in range(step_max):
-            for i_a in range(n_agents):
-                data["actions"][i,i_t,i_a,:] = np.asarray(actors_t[i_a](obs[i_a]))
-            state,next_obs,rewards, done = env_step(state, jax.device_put(data["actions"][i,i_t])
-            data["agent_states"][i, i_t] = np.asarray(get_agent_states(state))
-            data["patch_states"][i, i_t] = np.asarray(get_patch_state(state))
-            data["returns"][i, i_t] = np.asarray(rewards)
-            obs = next_obs
-        # Save all written data to disk indefinitely
+        actions, agent_states, returns = test_loop(tuple(actors_t), key, env_params, train_params.step_max)
+        print("Testing done")
+        # Save training results
+        data["actors_loss"][i*step_max:(i+1)*step_max,:] = as_loss
+        data["critics_loss"][i*step_max:(i+1)*step_max,:] = cs_loss
+        data["actions"][i,:, :, :] = np.asarray(actions)
+        data["agent_states"][i, :, :, :] = np.asarray(agent_states)
+        data["returns"][i, :, :] = np.asarray(returns)
+        # Save all written data to disk
         [d.flush() for k,d in data.items() if k != "critics_vals"]
         # Log the important variables to some logger
-        end_energy = [state.agent_states[i_a].energy for i_a in range(n_agents)]
+        end_energy = data["agent_states"][i,i_t,:,4]
         log_fun(i, data["returns"][i], end_energy)
-        # Compute relevant information
-        patch_info = (state.patch_state.resource, data["patch_states"])
-        env_info = (data["agent_states"], patch_info)
     # Store the critic values on disk
     data["critics_vals"][:,:,:] = c_vals
     data["critics_vals"].flush()
@@ -135,6 +127,24 @@ def jax_n_agents_ddpg(train_params: TrainParameters, env_params: EnvParameters):
     save_policies(critics_t, "critics", current_path)
     metadata["current_path"] = os.path.abspath(current_path)
     return data, metadata
+
+@partial(nnx.jit, static_argnames=["env_params", "step_max"])
+def test_loop(actors: nnx.Module, key: jax.random.PRNGKey, env_params: EnvParameters, step_max: jnp.integer):
+    state, obs = env_reset(key, env_params)
+    state_dim = obs.shape[1]
+    action_dim = get_action_space(env_params)
+    n_agents = env_params.n_agents
+    actions = jnp.empty((step_max, n_agents, action_dim))
+    agent_states = jnp.empty((step_max, n_agents, state_dim))
+    returns = jnp.empty((step_max, n_agents))
+    for i_t in range(step_max):
+        subkey, key = jax.random.split(key)
+        actions = actions.at[i_t].set(jnp.array([actors[i_a](obs[i_a]) for i_a in range(n_agents)]))
+        state,next_obs,rewards, done = env_step(state, actions.at[i_t].get(), subkey, env_params)
+        agent_states = agent_states.at[i_t].set(next_obs)
+        returns = returns.at[i_t].set(rewards.flatten())
+        obs = next_obs
+    return actions, agent_states, returns
 
 def run_jax_ddpg(train_fun, path):
     env_params =  EnvParameters(env_size = 50,

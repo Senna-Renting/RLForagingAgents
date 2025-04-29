@@ -86,7 +86,7 @@ def env_reset(key: jax.random.PRNGKey, parameters: EnvParameters):
 Computes a single step through the environment
 """
 @partial(jax.jit, static_argnames=["parameters"])
-def env_step(state: EnvState, actions: List[jnp.ndarray], key: jax.random.PRNGKey, parameters: EnvParameters):
+def env_step(state: EnvState, actions: jnp.ndarray, key: jax.random.PRNGKey, parameters: EnvParameters):
     patch_state = state.patch_state
     agent_states = state.agent_states
     n_agents = parameters.n_agents
@@ -221,6 +221,9 @@ def get_obs(agent_states: List[AgentState], patch_state: PatchState, messages: j
     agents_obs = jnp.array([jnp.concatenate(jax.tree.leaves([agent_state, patch_state, messages.at[i_a].get()])) 
      for i_a, agent_state in enumerate(agent_states)])
     return agents_obs
+
+def get_action_space(parameters: EnvParameters):
+    return 2*(1+(parameters.comm_type>0))
 
 if __name__ == "__main__":
     parameters = EnvParameters(
