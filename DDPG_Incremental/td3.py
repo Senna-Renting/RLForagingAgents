@@ -33,7 +33,9 @@ def MSE_optimize_critic(optimizer: nnx.Optimizer, critic: nnx.Module, states: jn
 
 @nnx.jit
 def compute_targets(critic_t: nnx.Module, actor_t: nnx.Module, rs: jnp.array, next_states: jnp.array, done: jnp.array, gamma: float):
-    return rs + gamma*(critic_t(next_states, actor_t(next_states)))*(1-done)
+    q_target = critic_t(next_states, actor_t(next_states))
+    q_target = jax.lax.stop_gradient(q_target)
+    return rs + gamma*q_target*(1-done)
 
 ## Actor network and it's complementary functions
 class Actor(nnx.Module):
@@ -57,8 +59,11 @@ class Actor(nnx.Module):
 
 @nnx.jit
 def mean_optimize_actor(optimizer: nnx.Optimizer, actor: nnx.Module, critic: nnx.Module, states: jnp.array):
-    loss_fn = lambda actor: (-1*critic(states, actor(states))).mean()
-    loss, grads = nnx.value_and_grad(loss_fn)(actor)
+    def loss_fn(actor, critic, states): 
+        actions = actor(states)
+        q_vals = critic(states, actions)
+        return -jnp.mean(q_vals)
+    loss, grads = nnx.value_and_grad(loss_fn, argnums=0)(actor, critic, states)
     optimizer.update(grads)
     return loss, grads
 
@@ -106,7 +111,7 @@ def compute_welfare(buffers, lookback):
 # Implications: not JIT-compileable structure, but the output of the buffer when sampling does
 # contain jax arrays, so from that point onward we should be able to JIT.
 class Buffer:
-    def __init__(self, buffer_size, state_dim, action_dim, reward_dim=1, seed=0):
+    def __init__(self, buffer_size, state_dim, action_dim, reward_dim=1):
         self.states = np.empty((buffer_size,state_dim))
         self.actions = np.empty((buffer_size,action_dim))
         self.rewards = np.empty((buffer_size,reward_dim))
@@ -115,15 +120,14 @@ class Buffer:
         self.max_size = buffer_size
         self.size = 0
         self.ptr = 0
-        self.rng = np.random.default_rng(seed)
-    def add(self, state, action, reward, next_state, done):
-        self.states[self.ptr, :] = state
-        self.actions[self.ptr, :] = action
-        self.rewards[self.ptr, :] = reward
-        self.next_states[self.ptr, :] = next_state
-        self.dones[self.ptr, :] = done
-        self.size = min(self.size + 1, self.max_size)
-        self.ptr = (self.ptr + 1) % self.max_size
+    def add(self, state, action, reward, next_state, done, size=1):
+        self.states[self.ptr:self.ptr+size, :] = state
+        self.actions[self.ptr:self.ptr+size, :] = action
+        self.rewards[self.ptr:self.ptr+size, :] = reward
+        self.next_states[self.ptr:self.ptr+size, :] = next_state
+        self.dones[self.ptr:self.ptr+size, :] = done
+        self.size = min(self.size + size, self.max_size)
+        self.ptr = (self.ptr + size) % self.max_size
     def get(self, indices):
         return (
             self.states[indices],
@@ -134,16 +138,16 @@ class Buffer:
         )
     def get_all(self):
         return (
-            self.states[np.newaxis, :],
-            self.actions[np.newaxis, :],
-            self.rewards[np.newaxis, :],
-            self.next_states[np.newaxis, :],
-            self.dones[np.newaxis, :],
+            self.states[np.newaxis, :self.size],
+            self.actions[np.newaxis, :self.size],
+            self.rewards[np.newaxis, :self.size],
+            self.next_states[np.newaxis, :self.size],
+            self.dones[np.newaxis, :self.size],
         )
     def get_size(self):
         return self.size
-    def sample(self, batch_size):
-        ind = self.rng.integers(0,self.size,size=batch_size)
+    def sample(self, batch_size, key):
+        ind = np.asarray(jax.random.randint(key, batch_size,minval=0,maxval=self.size))
         return (
             jax.device_put(self.states[ind]),
             jax.device_put(self.actions[ind]),
@@ -168,10 +172,11 @@ def create_data_files(path, **info):
     b_size = info["batch_size"]
     steps = n_ep*s_max
     n_ag = info["n_agents"]
+    update_every = info["update_every"]
     data = {
-        "critics_vals": make_file("critics_vals.dat", (s_max*b_size,n_ag, 2)),
-        "critics_loss": make_file("critics_loss.dat", (steps, n_ag)),
-        "actors_loss": make_file("actors_loss.dat", (steps, n_ag)),
+        "critics_vals": make_file("critics_vals.dat", (s_max*b_size//update_every,n_ag, 2)),
+        "critics_loss": make_file("critics_loss.dat", (steps//update_every, n_ag)),
+        "actors_loss": make_file("actors_loss.dat", (steps//update_every, n_ag)),
         "returns": make_file("returns.dat", (n_ep, s_max, n_ag)),
         "penalties": make_file("test_penalties.dat", (n_ep, s_max, n_ag, 1)),
         "is_in_patch": make_file("is_in_patch.dat", (n_ep, s_max, n_ag)),
@@ -181,22 +186,22 @@ def create_data_files(path, **info):
     }
     return data
 
-def n_agents_ddpg(env, num_episodes, tau=0.0025, gamma=0.99, batch_size=240, lr_a=3e-4, lr_c=1e-3, seed=0, action_dim=2, state_dim=9, action_range=[[-4,0],[4,1]], hidden_dim=[256,32], act_noise=0.13, log_fun=print_log_ddpg_n_agents, current_path="", **kwargs):
+def n_agents_ddpg(env, num_episodes, tau=0.0025, gamma=0.99, batch_size=240, lr_a=3e-4, lr_c=1e-3, seed=0, action_dim=2, state_dim=9, action_range=[[-4,0],[4,1]], hidden_dim=[400,300], act_noise=0.13, log_fun=print_log_ddpg_n_agents, current_path="", update_every=1, **kwargs):
     # Initialize metadata object for keeping track of (hyper-)parameters and/or additional settings of the environment
     hidden_dims = [str(h_dim) for h_dim in hidden_dim]
     action_range_str = [[str(type[0]), str(type[-1])]  for type in action_range]
     action_range = jnp.array(action_range)
-    warmup_size = 5*batch_size
-    metadata = dict(n_episodes=num_episodes.item(), tau=tau, gamma=gamma, 
-                    batch_size=batch_size, lr_actor=lr_a, lr_critic=lr_c, 
+    n_agents = env.n_agents
+    step_max = env.step_max
+    patch_resize = env.patch_resize
+    warmup_size = 10*step_max
+    metadata = dict(update_every=update_every, n_episodes=num_episodes.item(), tau=tau, 
+                    gamma=gamma, batch_size=batch_size, lr_actor=lr_a, lr_critic=lr_c, 
                     action_dim=action_dim, state_dim=state_dim,
                     action_range=action_range_str, hidden_dims=hidden_dims,
                     warmup_size=warmup_size, act_noise=act_noise, alg_name="Normal DDPG", 
                     current_path=current_path, **env.get_params())
     # Initialize neural networks
-    n_agents = env.n_agents
-    step_max = env.step_max
-    patch_resize = env.patch_resize
     actor_dim = action_dim
     action_max = action_range[1][0]
     
@@ -209,78 +214,85 @@ def n_agents_ddpg(env, num_episodes, tau=0.0025, gamma=0.99, batch_size=240, lr_
     optim_critics = [nnx.Optimizer(critics[i_a], optax.adam(lr_c)) for i_a in range(n_agents)]
     # Add seperate experience replay buffer for each agent 
     buffer_size = num_episodes*env.step_max+warmup_size # Ensure every step is kept in the replay buffer
-    buffers = [Buffer(buffer_size, state_dim, actor_dim, seed=seed+i_a) for i_a in range(n_agents)]
+    buffers = [Buffer(buffer_size, state_dim, actor_dim) for i_a in range(n_agents)]
     # Initialize environment
     key = jax.random.PRNGKey(seed)
     # Keep track of neural network weights (assumes homogeneous networks across agents!)
     critic_weights = [np.empty((num_episodes, n_agents, *shape)) for shape in get_network_shape(critics_t[0])]
     actor_weights = [np.empty((num_episodes, n_agents, *shape)) for shape in get_network_shape(actors_t[0])]
     # Keep track of important loss variables
-    (agents_state, patch_state, step_idx), states = env.reset(seed=seed)
-    data = create_data_files(current_path, num_episodes=num_episodes, n_agents=n_agents, step_max=step_max, agents_state_shape=agents_state.shape, patch_resize=patch_resize, action_dim=actor_dim, batch_size=batch_size)
+    (agents_state, patch_state, step_idx), states = env.reset(key)
+    data = create_data_files(current_path, num_episodes=num_episodes, n_agents=n_agents, step_max=step_max, agents_state_shape=agents_state.shape, patch_resize=patch_resize, action_dim=actor_dim, batch_size=batch_size, update_every=update_every)
     # Warm-up round
     print("Filling buffer with warmup samples...", end="\r")
-    env_state, states = env.reset(seed=seed)
     for s_i in range(warmup_size):
+        if s_i % step_max == 0:
+            subkey, key = jax.random.split(key)
+            env_state, states = env.reset(subkey)
         # Sample action, execute it, and add to buffer
         actions = list(range(n_agents))
         for i_a,actor in enumerate(actors):
-            action_key, key = jax.random.split(key)
+            step_key, action_key, key = jax.random.split(key,3)
             actions[i_a] = jax.random.uniform(action_key, actor_dim, minval=action_range[0], maxval=action_range[1]) 
-        env_state, next_states, (rewards, penalties), terminated, truncated, _ = env.step(env_state, *actions)
-        (agents_state, patch_state, step_idx) = env_state
+        env_state, next_states, (rewards, penalties), terminated, truncated, _ = env.step(step_key, env_state, *actions)
         for i_a in range(n_agents):
             buffers[i_a].add(states[i_a], actions[i_a], rewards[i_a], next_states[i_a], terminated)
         states = next_states
+    
     # Run episodes
     print("Training started...                   ", end="\r")
     for i in range(num_episodes):
         done = False
-        env_state, states = env.reset(seed=seed+i) # We initialize randomly each episode to allow more exploration
+        subkey, key = jax.random.split(key)
+        env_state, states = env.reset(subkey) # We initialize randomly each episode to allow more exploration
         # Initialize loss temp variables
-        cs_loss = np.empty((step_max,n_agents))
-        c_vals = np.empty((step_max*batch_size,n_agents,2)) # 2 is for learned and target critic respectively 
-        as_loss = np.empty((step_max,n_agents))
+        cs_loss = np.empty((step_max//update_every,n_agents))
+        c_vals = np.empty((step_max//update_every*batch_size,n_agents,2)) # 2 is for learned and target critic respectively 
+        as_loss = np.empty((step_max//update_every,n_agents))
         # Train agent
         for s_i in range(step_max):
             # Sample action and execute it
             actions = list(range(n_agents))
             for i_a,actor in enumerate(actors):
-                action_key, key = jax.random.split(key)
+                step_key,action_key, key = jax.random.split(key,3)
                 actions[i_a] = np.array(sample_action(action_key, actor, states[i_a], action_range[0], action_range[1], act_noise))
-            env_state, next_states, (rewards, penalties), terminated, truncated, _ = env.step(env_state, *actions)
+            env_state, next_states, (rewards, penalties), terminated, truncated, _ = env.step(step_key,env_state, *actions)
             (agents_state, patch_state, step_idx) = env_state
             done = truncated or terminated
             if terminated:
                 break
-                
             for i_a in range(n_agents):
                 # Add states info to buffer
                 buffers[i_a].add(states[i_a], actions[i_a], rewards[i_a], next_states[i_a], terminated)
-                # Sample batch from buffer
-                (b_states, b_actions, b_rewards, b_next_states, b_dones), ind = buffers[i_a].sample(batch_size)
-                # Update critic
-                ys = compute_targets(critics_t[i_a], actors_t[i_a], b_rewards, b_next_states, b_dones, gamma)
-                c_loss, grads = MSE_optimize_critic(optim_critics[i_a], critics[i_a], b_states, b_actions, ys)
-                # Update policy
-                a_loss, grads = mean_optimize_actor(optim_actors[i_a], actors[i_a], critics[i_a], b_states)
-                # Update targets (critic and policy)
-                nnx.update(critics_t[i_a], polyak_update(tau, critics_t[i_a], critics[i_a]))
-                nnx.update(actors_t[i_a], polyak_update(tau, actors_t[i_a], actors[i_a]))
-                # Compute Critic-Critic target difference
-                c_start = batch_size*(step_idx-1)
-                c_end = c_start + batch_size
-                c_vals[c_start:c_end,i_a,0] = critics[i_a](b_states, b_actions).flatten()
-                c_vals[c_start:c_end,i_a,1] = critics_t[i_a](b_states, b_actions).flatten()
-                # Store actor and critic loss 
-                as_loss[step_idx-1,i_a] = a_loss
-                cs_loss[step_idx-1,i_a] = c_loss
+                if s_i % update_every == 0: 
+                    # Sample batch from buffer
+                    subkey, key = jax.random.split(key)
+                    (b_states, b_actions, b_rewards, b_next_states, b_dones), ind = buffers[i_a].sample(batch_size, subkey)
+                    # Update critic
+                    ys = compute_targets(critics_t[i_a], actors_t[i_a], b_rewards, b_next_states, b_dones, gamma)
+                    c_loss, grads = MSE_optimize_critic(optim_critics[i_a], critics[i_a], b_states, b_actions, ys)
+                    # Update policy
+                    a_loss, grads = mean_optimize_actor(optim_actors[i_a], actors[i_a], critics[i_a], b_states)
+                    # Update targets (critic and policy)
+                    nnx.update(critics_t[i_a], polyak_update(tau, critics_t[i_a], critics[i_a]))
+                    nnx.update(actors_t[i_a], polyak_update(tau, actors_t[i_a], actors[i_a]))
+                    # Compute Critic-Critic target difference
+                    if i == num_episodes - 1:
+                        c_start = batch_size*(s_i//update_every)
+                        c_end = c_start + batch_size
+                        c_vals[c_start:c_end,i_a,0] = critics[i_a](b_states, b_actions).flatten()
+                        c_vals[c_start:c_end,i_a,1] = critics_t[i_a](b_states, b_actions).flatten()
+                    # Store actor and critic loss 
+                    as_loss[s_i//update_every,i_a] = a_loss
+                    cs_loss[s_i//update_every,i_a] = c_loss
             # Update state of agents
             states = next_states
         # Save training results
         step_idx = env_state[2]
-        data["actors_loss"][i*step_max:(i+1)*step_max,:] = as_loss
-        data["critics_loss"][i*step_max:(i+1)*step_max,:] = cs_loss
+        l_start = i*(step_max//update_every)
+        l_end = l_start + step_max//update_every
+        data["actors_loss"][l_start:l_end,:] = as_loss
+        data["critics_loss"][l_start:l_end,:] = cs_loss
         for i_a in range(n_agents):
             c_weights = get_network_weights(critics_t[i_a])
             a_weights = get_network_weights(actors_t[i_a])
@@ -290,12 +302,14 @@ def n_agents_ddpg(env, num_episodes, tau=0.0025, gamma=0.99, batch_size=240, lr_
                 actor_weight[i, i_a] = a_weights[i_w]
         # Test agent
         done = False
-        env_state, states = env.reset(seed=seed+i) # Make sure the reset seed is the same as for training
+        subkey, key = jax.random.split(key)
+        env_state, states = env.reset(subkey) # Make sure the reset seed is the same as for training
         for i_t in range(step_max):
             for i_a in range(n_agents):
                 data["actions"][i,i_t,i_a,:] = actors_t[i_a](states[i_a])
             step_idx = env_state[2]
-            env_state,next_states,(rewards,(penalties, is_in_patch)), terminated, truncated, _ = env.step(env_state, *data["actions"][i,i_t])
+            subkey, key = jax.random.split(key)
+            env_state,next_states,(rewards,(penalties, is_in_patch)), terminated, truncated, _ = env.step(subkey,env_state, *data["actions"][i,i_t])
             data["agent_states"][i, i_t] = env_state[0]
             data["patch_states"][i, i_t] = env_state[1][-1-patch_resize:]
             data["penalties"][i,step_idx] = penalties

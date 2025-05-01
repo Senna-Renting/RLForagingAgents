@@ -343,8 +343,10 @@ def plot_loss(path, name, data, colors=plt.cm.Set1.colors):
     steps, n_agents = data.shape
     fig = plt.figure()
     plt.title(f"{name} loss of agents")
-    plt.xlabel("Episode")
-    plt.ylabel("Loss")
+    plt.xlabel("Timestep")
+    plt.ylabel(f"log({name} loss)")
+    if name == "critic":
+        plt.yscale("log")
     for i_a in range(n_agents):
         plt.plot(data[:,i_a], label=f"$A_{i_a+1}$", color=colors[i_a])
     plt.legend(loc="lower right")

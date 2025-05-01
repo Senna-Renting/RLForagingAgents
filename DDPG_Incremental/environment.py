@@ -15,22 +15,21 @@ class NAgentsEnv():
         self.x_max = x_max
         self.y_max = y_max
         self.v_max = v_max
-        self.e_max = s_init + e_init
+        self.e_max = 2*e_init
         self.eta = eta
         self.env_gamma = env_gamma
         self.step_max = step_max
         self.step_idx = 0
         self.damping = 0.3
-        self.p_still = 0.02
+        self.p_still = 0.05
         self.p_act = 0.2
-        self.p_att = 0.02
-        self.p_comm = 0.1
-        self.msg_noise = 0.1
+        self.p_att = 0.05
+        self.p_comm = 0.05
+        self.msg_noise = 1
         self.n_agents = n_agents
         self.beta = beta
         self.e_init = e_init
         self.s_init = s_init
-        self.in_patch_only = in_patch_only
         self.patch_resize = patch_resize
         self.p_welfare = p_welfare
         self.seed = seed
@@ -41,7 +40,7 @@ class NAgentsEnv():
         self.agents = [Agent(0,0,self,id=i) for i in range(n_agents)]
         # Initialize latest observation states
         self.latest_obs = np.zeros((self.n_agents, self.n_agents, self.agents[0].num_vars-1))
-        self.latest_patch = 0
+        self.latest_patch = s_init
 
     def get_action_space(self):
         message_dim = len(self.msg_type) > 0 # Add a channel for each message type
@@ -86,31 +85,28 @@ class NAgentsEnv():
     def get_states(self, agents_state, patch_state):
         # Initialize size of state
         obs_size = self.get_state_space()
-        in_patch = np.array([self.agents[i].is_in_patch(agents_state[i], patch_state) for i in range(self.n_agents)])
         agents_obs = np.zeros((self.n_agents, obs_size))
         # Compute components of state
         for i in range(self.n_agents):
-            agents_obs[i] = np.concatenate([agents_state[i], patch_state[:-1], [self.latest_patch]])
-            if in_patch[i] or not self.in_patch_only:
-                self.latest_patch = patch_state[-1]
+            agents_obs[i] = np.concatenate([agents_state[i], patch_state])
         return agents_obs
 
     def get_state_space(self):
         obs_size = self.agents[0].num_vars + self.patch.num_vars
         return obs_size 
     
-    def reset(self, seed=0):
-        rng = np.random.default_rng(seed=seed)
+    def reset(self, key):
         # Initialize rng_key and state arrays
         agents_state = np.zeros((self.n_agents, self.agents[0].num_vars))
         # Reset the patch
         patch_state = self.patch.reset()
         # Generate random position for each agent
         for i in range(self.n_agents):
-            x = rng.random()*self.x_max
-            y = rng.random()*self.y_max
+            sub1, sub2, key = jax.random.split(key,3)
+            x = jax.random.uniform(sub1, minval=0, maxval=1)*self.x_max
+            y = jax.random.uniform(sub2, minval=0, maxval=2)*self.y_max
             pos = [x,y]
-            agents_state[i] = self.agents[i].reset(*pos, rng)
+            agents_state[i] = self.agents[i].reset(*pos, key)
         # Reset counter
         step_idx = 0
         # Store agents' observations
@@ -119,10 +115,9 @@ class NAgentsEnv():
         env_state = (agents_state, patch_state, step_idx) 
         return env_state, agents_obs
 
-    def step(self, env_state, *actions):
+    def step(self, key, env_state, *actions):
         (agents_state, patch_state, step_idx) = env_state
         rewards = np.empty(self.n_agents)
-        welfare = 0
         penalties = np.empty((self.n_agents, 1))
         is_in_patch = np.empty(self.n_agents)
         tot_eaten = 0
@@ -130,7 +125,7 @@ class NAgentsEnv():
             # Flatten array if needed
             action = action.flatten()
             # Update agent position, and send message
-            agents_state[i, :agents_state.shape[1]] = self.agents[i].step(agents_state, actions)
+            agents_state[i, :agents_state.shape[1]] = self.agents[i].step(key, agents_state, actions)
             # Update agent energy
             agent_state, reward, s_eaten, penalty = self.agents[i].update_energy(agents_state[i], patch_state, action, dt=0.1)
             is_in_patch[i] = s_eaten != 0
@@ -154,7 +149,7 @@ class NAgentsEnv():
         # When any of the agents dies, the environment is terminated 
         terminated = False #np.any(agents_state[:,-1] == 0)
         truncated = step_idx >= self.step_max
-        env_state = (agents_state, patch_state, step_idx)
+        env_state = (agents_state.copy(), patch_state.copy(), step_idx)
         agents_info = (penalties, is_in_patch)
         return env_state, next_states, (rewards, agents_info), terminated, truncated, None # None is to have similar output shape as gym API
 
@@ -181,11 +176,11 @@ class Agent:
         self.comm_type = env.comm_type
         self.num_vars = 5+self.msg_size # Variables of interest: (x,y,v_x,v_y,e,[msg]) <- msg may not be there 
         
-    def reset(self,x,y,rng):
+    def reset(self,x,y,key):
         agent_state = np.zeros(self.num_vars)
         agent_state[:2] = np.array([x,y])
-        vs = 2*self.v_max*rng.random(size=2) - self.v_max
-        agent_state[2:4] = vs
+        vs = 2*self.v_max*jax.random.uniform(key, 2, minval=0, maxval=1) - self.v_max
+        agent_state[2:4] = np.asarray(vs)
         agent_state[4] = self.e_init
         return agent_state
 
@@ -200,27 +195,27 @@ class Agent:
     """
     Message mechanism where agents are allowed to decide if they want to send/receive messages
     """
-    def discrete_msg(self,agents_state,actions,msg):
+    def discrete_msg(self,key,agents_state,actions,msg):
         attention_other = actions[1-self.id][3]
         communication = actions[self.id][2]
         # When communicating send the message in full quality
         if attention_other > 0.5 and communication > 0.5:
             return msg
         # Add noise to message if not communicating
-        noise = self.noise_rng.normal(0,self.noise_arr,size=self.noise_arr.shape)
+        noise = np.asarray(jax.random.normal(key,self.noise_arr.shape))*self.noise_arr
         return msg + noise
 
     """
     Always send messages in full quality between agents
     """
-    def always_msg(self,agents_state,actions,msg):
+    def always_msg(self,key,agents_state,actions,msg):
         return msg
 
     """
     Only sends messages with noise between agents
     """
-    def never_msg(self,agents_state,actions,msg):
-        return msg + self.noise_rng.normal(0,self.noise_arr,size=self.noise_arr.shape)
+    def never_msg(self,key,agents_state,actions,msg):
+        return msg + np.asarray(jax.random.normal(key,self.noise_arr.shape))*self.noise_arr
 
     def get_penalty(self,agent_state,patch_state,action):
         penalty = self.p_still
@@ -233,23 +228,23 @@ class Agent:
         penalty += np.linalg.norm(action[:2])/max_penalty*self.p_act
         return penalty
     
-    def generate_message(self,agents_state,actions,msg):
+    def generate_message(self,key,agents_state,actions,msg):
         comm_types = [None, self.discrete_msg, self.always_msg, self.never_msg]
-        return comm_types[self.comm_type](agents_state,actions,msg)
+        return comm_types[self.comm_type](key,agents_state,actions,msg)
     
-    def send_message(self,agents_state,actions):
+    def send_message(self,key,agents_state,actions):
         if self.msg_size == 0:
             return 0
         state = agents_state[self.id]
         msgs = [[state[4]], state[:2], state[2:4], actions[self.id][:2]]
         msg = np.concatenate([msgs[type] for type in self.msg_type])
-        msg = self.generate_message(agents_state,actions,msg)
+        msg = self.generate_message(key,agents_state,actions,msg)
         if msg is not None:
-            agents_state[1-self.id][5:] = msg
+            agents_state[1-self.id,5:] = msg
         
     
-    def step(self,agents_state,actions):
-        self.send_message(agents_state, actions)
+    def step(self,key,agents_state,actions):
+        self.send_message(key, agents_state, actions)
         return self.update_position(agents_state[self.id],actions[self.id])
     
     def update_energy(self,agent_state,patch_state,action,dt=0.1):
@@ -258,7 +253,7 @@ class Agent:
         # Update step (differential equation)
         de = s_eaten - dt*penalty
         agent_state[4] = agent_state[4]+de
-        reward = agent_state[4]/self.e_init
+        reward = (1+np.clip(agent_state[4]/self.e_max, -1, 1))/2 # Reward has range [0,1]  
         return agent_state, reward, s_eaten, penalty
         
     def update_position(self,agent_state,action, dt=0.1):
@@ -301,7 +296,7 @@ class Patch:
         values = np.array([resources,np.power(resources,2),eaten])
         ds = np.dot(scalars.T, values)
         
-        patch_state[-1] = np.clip(resources + ds, 0, self.s_init)
+        patch_state[-1] = np.clip(resources + ds, 0, self.eta/self.gamma)
         return patch_state
         
     def reset(self):
