@@ -73,8 +73,9 @@ def run_ddpg(env, num_episodes, train_fun, path, train_args=dict(), prev_path=No
     plot_loss(path, "critic", train_data["critics_loss"])
     plot_loss(path, "actor", train_data["actors_loss"])
     plot_penalty(path, is_in_patch, penalties[:,:,:,0], "action")
-    plot_final_welfare(path, agent_states)
+    plot_final_welfare(path, train_data["returns"])
     plot_cvals(path, train_data["critics_vals"])
+    plot_succes_rate_comm(path, train_data["actions"])
     
     # Draw run of agents over the episodes and save informative plots of final state environment
     plot_final_states_env(path, is_in_patch, patch_info, agent_states[-1], train_data["returns"][-1])
@@ -87,7 +88,9 @@ def run_ddpg(env, num_episodes, train_fun, path, train_args=dict(), prev_path=No
     if not skip_vid:
         plot_episode_env = lambda episode, path: plot_env(path, episode, env.size(), patch_info, agent_states, actions)
     if metadata["n_agents"] == 2:
-        episode_results(path, *rq1_data(patch_info, agent_states, actions), plot_env=plot_episode_env)
+        episode_data = rq1_data(patch_info, agent_states, actions)
+        plot_comm_frequency(path, episode_data[-1])
+        episode_results(path, *episode_data, plot_env=plot_episode_env)
 
 def patch_test_saved_policy(env, path, hidden_dim=32):
     state_dim = env.get_state_space()[1]

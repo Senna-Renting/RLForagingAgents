@@ -92,10 +92,10 @@ def rq1_data(patch_info, agents_state, actions):
     if actions.shape[3] > 2:
         communication = actions[:,:,:,2]
         attention_other = np.flip(actions[:,:,:,3],axis=2)
-        noise_lvl = communication*attention_other
+        comm_filter = (communication > 0.5) & (attention_other > 0.5)
     else: 
-        noise_lvl = None
-    return energy, dist_agents, dist_agents_patch, noise_lvl
+        comm_filter = None
+    return energy, dist_agents, dist_agents_patch, comm_filter
 
 """ 
 Main function for generating information gained from each episode
@@ -113,20 +113,20 @@ def episode_results(path, energy, dist_agents, dist_agents_patch, comm_filter, p
 """
 Subfunction for generating the plots of a single episode for RQ1
 """
-def rq1_plots_per_episode(episode, path, energy, dist_agents, dist_agents_patch, noise_lvl, colors=plt.cm.Set1.colors):
+def rq1_plots_per_episode(episode, path, energy, dist_agents, dist_agents_patch, comm_filter, colors=plt.cm.Set1.colors):
     # First we implement the plots on the last run, later we can make folders for each successive run and it's results
     energy, dist_agents, dist_agents_patch = energy[episode, :, :], dist_agents[episode, :], dist_agents_patch[episode,:,:]
     x_range = np.arange(0,energy.shape[0])
     
     # The code for the plots
     fig2 = plot_dist_agents(dist_agents, x_range)
-    if noise_lvl is None:
+    if comm_filter is None:
         fig1 = plot_internal_energy(energy, x_range)
         fig3 = plot_dist_agents_patch(dist_agents_patch, x_range)
     else:
-        noise_lvl = noise_lvl[episode, :, :]
-        fig1 = plot_internal_energy_comm(energy, x_range, noise_lvl)
-        fig3 = plot_dist_agents_patch_comm(dist_agents_patch, x_range, noise_lvl)
+        comm_filter = comm_filter[episode, :, :]
+        fig1 = plot_internal_energy_comm(energy, x_range, comm_filter)
+        fig3 = plot_dist_agents_patch_comm(dist_agents_patch, x_range, comm_filter)
     
     # Save figures to PNG
     fig1.savefig(os.path.join(path, "internal_energy.png"))
@@ -136,18 +136,32 @@ def rq1_plots_per_episode(episode, path, energy, dist_agents, dist_agents_patch,
     plt.close(fig2)
     plt.close(fig3)
 
-def plot_dist_agents_patch_comm(dist_agents_patch, x_range, noise_lvl, colors=plt.cm.Set1.colors):
+def plot_comm_frequency(path, comm_filter, colors=plt.cm.Set1.colors):
+    fig1 = plt.figure()
+    plt.title("Mean amount of communication steps over episodes")
+    plt.xlabel("Episode")
+    plt.ylabel("Communication steps")
+    plt.plot(comm_filter.sum(axis=1).mean(axis=1), linewidth=2)
+    fig2 = plt.figure()
+    plt.title("Mean amount of communication events over episodes")
+    plt.xlabel("Episode")
+    plt.ylabel("Communication events")
+    plt.plot(np.diff(comm_filter,axis=1).sum(axis=1).mean(axis=1), linewidth=2)
+    fig1.savefig(os.path.join(path, "comm_steps.png"))
+    fig2.savefig(os.path.join(path, "comm_events.png"))
+
+def plot_dist_agents_patch_comm(dist_agents_patch, x_range, comm_filter, colors=plt.cm.Set1.colors):
     fig,ax = plt.subplots(figsize=(10,5))
     ax.set_title("Relation of distance to patch and communication")
     ax.set_xlabel("Timestep")
     ax.set_ylabel("Distance(Agent, Patch)")
-    markers = ["+", "x"]
     plt.plot([x_range[0],x_range[-1]],[0,0],label="Patch border", c='r', linestyle="--")
     for a_i in range(dist_agents_patch.shape[1]):
         cmap = plt.get_cmap('viridis')
         plt.scatter(x_range[::20], dist_agents_patch[::20,a_i], label=f"Agent {a_i}", color=colors[a_i])
-        sm = plot_color_lines(x_range, dist_agents_patch[:,a_i], noise_lvl[:,a_i], ax, cmap)
-    plt.colorbar(sm, ax=ax, label='Level of Communication')
+        sm = plot_color_lines(x_range, dist_agents_patch[:,a_i], comm_filter[:,a_i], ax, cmap)
+    cbar = plt.colorbar(sm, ax=ax, ticks=[0.25,0.75])
+    cbar.ax.set_yticklabels(['No communication', 'Communication'])
     plt.legend()
     return fig
 
@@ -162,29 +176,31 @@ def plot_dist_agents_patch(dist_agents_patch, x_range, colors=plt.cm.Set1.colors
     plt.legend()
     return fig
 
-def plot_internal_energy_comm(energy, x_range, noise_lvl, colors=plt.cm.Set1.colors):
+def plot_internal_energy_comm(energy, x_range, comm_filter, colors=plt.cm.Set1.colors):
     fig,ax = plt.subplots(figsize=(10,5))
     ax.set_title("Relation between internal energy and communication")
     ax.set_xlabel("Timestep")
     ax.set_ylabel("Internal energy")
-    markers = ["+", "x"]
     for a_i in range(energy.shape[1]):
         cmap = plt.get_cmap('viridis')
         plt.scatter(x_range[::20], energy[::20,a_i], label=f"Agent {a_i}", color=colors[a_i])
-        sm = plot_color_lines(x_range,energy[:,a_i],noise_lvl[:,a_i],ax,cmap)
-    plt.colorbar(sm, ax=ax, label='Level of Communication')
+        sm = plot_color_lines(x_range, energy[:,a_i], comm_filter[:,a_i], ax, cmap)
+    cbar = plt.colorbar(sm, ax=ax, ticks=[0.25,0.75])
+    cbar.ax.set_yticklabels(['No communication', 'Communication'])
     plt.legend()
     return fig
 
 def plot_color_lines(x,y,c,ax,cmap=plt.get_cmap('viridis')):
     points = np.array([x, y]).T.reshape(-1, 1, 2)
     segments = np.concatenate([points[:-1], points[1:]], axis=1)
-    norm = Normalize(vmin=0, vmax=1)
-    cmap = plt.get_cmap('viridis')
+    cmap = ListedColormap([cmap(0.0), cmap(1.0)], N=2)
+    bounds = [-0.5, 0.5, 1.5]  # so 0 → bin 0, 1 → bin 1
+    norm = BoundaryNorm(bounds, cmap.N)
     sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
     sm.set_array([])  # dummy array — colorbar only needs cmap + norm
-    lc = LineCollection(segments, cmap=cmap, linewidth=2)
-    lc.set_array(c)
+    lc = LineCollection(segments, cmap=cmap, norm=norm, linewidth=2)
+    c = c.astype(int)
+    lc.set_array(c[:-1])
     ax.add_collection(lc)
     ax.autoscale()
     return sm
@@ -276,17 +292,28 @@ def plot_rewards(path, rewards, colors=plt.cm.Set1.colors):
     fig.savefig(os.path.join(path, "agent_episodes_return.png"))
     plt.close(fig)
 
-def plot_final_welfare(path, agents_states, colors=plt.cm.Set1.colors):
-    energy = np.mean(agents_states[:, :, :, 4], axis=1)
-    energy[energy < 0] = 0
-    nsw = np.sqrt(np.prod(energy, axis=1))
+def plot_final_welfare(path, returns, colors=plt.cm.Set1.colors):
+    nsw = np.sqrt(np.prod(returns, axis=2)).sum(axis=1)
     fig = plt.figure()
     plt.plot(nsw)
     plt.title("Welfare of agents across episodes")
     plt.xlabel("Episode")
-    plt.ylabel("Average NSW")
+    plt.ylabel("$NSW(R_1, R_2)$")
     fig.savefig(os.path.join(path, "average_nsw_over_episodes.png"))
     plt.close(fig)
+
+def plot_succes_rate_comm(path, actions):
+    communication = actions[:,:,:,2]
+    attention_other = np.flip(actions[:,:,:,3], axis=2)
+    comm_success = ((communication > 0.5) & (attention_other > 0.5)).sum(axis=1)
+    comm_total = (communication > 0.5).sum(axis=1)
+    mean_success_rate = (np.divide(comm_success, comm_total, out=np.zeros(comm_total.shape), where=comm_total!=0)*100).mean(axis=1)
+    fig = plt.figure()
+    plt.title("Mean success rate of communication")
+    plt.xlabel("Episode")
+    plt.ylabel("Success %")
+    plt.plot(mean_success_rate, linewidth=2)
+    fig.savefig(os.path.join(path, "comm_success_rate.png"))
 
 
 """
@@ -344,9 +371,7 @@ def plot_loss(path, name, data, colors=plt.cm.Set1.colors):
     fig = plt.figure()
     plt.title(f"{name} loss of agents")
     plt.xlabel("Timestep")
-    plt.ylabel(f"log({name} loss)")
-    if name == "critic":
-        plt.yscale("log")
+    plt.ylabel(f"{name} loss")
     for i_a in range(n_agents):
         plt.plot(data[:,i_a], label=f"$A_{i_a+1}$", color=colors[i_a])
     plt.legend(loc="lower right")

@@ -21,10 +21,10 @@ class NAgentsEnv():
         self.step_max = step_max
         self.step_idx = 0
         self.damping = 0.3
-        self.p_still = 0.05
+        self.p_still = 0.03
         self.p_act = 0.2
-        self.p_att = 0.05
-        self.p_comm = 0.05
+        self.p_att = 0.1
+        self.p_comm = 0.1
         self.msg_noise = 1
         self.n_agents = n_agents
         self.beta = beta
