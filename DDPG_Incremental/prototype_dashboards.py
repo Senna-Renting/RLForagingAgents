@@ -78,6 +78,25 @@ def get_grouped_return(path):
     plt.legend(loc="lower right")
     fig.savefig(os.path.join(path, f"average_NSW.png"))
     plt.close(fig)
+    return (return_data.min(axis=0), return_data.mean(axis=0), return_data.max(axis=0))
+
+def exp1_plots(noise_path, comms_path, fullobs_path, out_path):
+    # Retrieve data
+    noise_min, noise_mean, noise_max = get_grouped_return(noise_path)
+    comms_min, comms_mean, comms_max = get_grouped_return(noise_path)
+    fullobs_min, fullobs_mean, fullobs_max = get_grouped_return(noise_path)
+    # Plot data and save to png
+    fig = plt.figure()
+    plt.title("Comparing learning curves with communication")
+    plt.xlabel("Episode")
+    plt.ylabel("Return")
+    plt.fill_between(x_range, noise_min, noise_max, color="r", alpha=0.4)
+    plt.fill_between(x_range, comms_min, comms_max, color="g", alpha=0.4)
+    plt.fill_between(x_range, fullobs_min, fullobs_max, color="b", alpha=0.4)
+    plt.plot(noise_mean, color="r", label="Noise only")
+    plt.plot(comms_mean, color="g", label="Adaptive noise (communication)")
+    plt.plot(fullobs_mean, color="b", label="No noise")
+    fig.savefig(os.path.join(out_path, "experiment1_result.png"))
 
 """
 This function derives the data needed for RQ1 plots, based on the stored data
@@ -304,16 +323,15 @@ def plot_final_welfare(path, returns, colors=plt.cm.Set1.colors):
 
 def plot_succes_rate_comm(path, actions):
     communication = actions[:,:,:,2]
+    max_amount = communication.shape[1]*communication.shape[2]
     attention_other = np.flip(actions[:,:,:,3], axis=2)
-    comm_success = ((communication > 0.5) & (attention_other > 0.5)).sum(axis=1)
-    comm_total = (communication > 0.5).sum(axis=1)
-    mean_success_rate = (np.divide(comm_success, comm_total, out=np.zeros(comm_total.shape), where=comm_total!=0)*100).mean(axis=1)
+    comm_amount = (communication*attention_other).sum(axis=1).sum(axis=1)/max_amount
     fig = plt.figure()
-    plt.title("Mean success rate of communication")
+    plt.title("Percentage of communication per episode")
     plt.xlabel("Episode")
-    plt.ylabel("Success %")
-    plt.plot(mean_success_rate, linewidth=2)
-    fig.savefig(os.path.join(path, "comm_success_rate.png"))
+    plt.ylabel("Total %")
+    plt.plot(comm_amount, linewidth=2)
+    fig.savefig(os.path.join(path, "comm_amount.png"))
 
 
 """
@@ -369,6 +387,8 @@ def plot_env(path, episode, env_shape, patch_info, agents_state, actions, a_colo
 def plot_loss(path, name, data, colors=plt.cm.Set1.colors):
     steps, n_agents = data.shape
     fig = plt.figure()
+    if name == "critic":
+        data = np.clip(data, 0, 100)
     plt.title(f"{name} loss of agents")
     plt.xlabel("Timestep")
     plt.ylabel(f"{name} loss")

@@ -106,14 +106,16 @@ def patch_test_saved_policy(env, path, hidden_dim=32):
     env.render()
 
 def run_experiment(**kwargs):
-    s = kwargs["seed"]
     e = kwargs["episodes"]
+    s = kwargs["seed"]
     env = NAgentsEnv(**kwargs)
     for i_r in range(kwargs["runs"]):
         main_folder, path = create_exp_folder(kwargs["out"])
         os.mkdir(os.path.join(path, "data"))
         train_args=dict(**kwargs)
+        print("seed before: ", train_args["seed"])
         train_args["seed"] = s+i_r*e
+        print("seed after: ", train_args["seed"])
         # Single run of DDPG on the environment
         run_ddpg(env, e, n_agents_ddpg, path, train_args, skip_vid=not kwargs["video"])
     # Compute the average return over the amount of runs done

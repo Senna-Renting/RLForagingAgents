@@ -10,7 +10,7 @@ def compute_NSW(rewards):
     return NSW
     
 class NAgentsEnv():
-    def __init__(self, patch_radius=10,s_init=10, e_init=5, eta=0.1, beta=0.1, env_gamma=0.01, step_max=600, x_max=50, y_max=50, v_max=4, n_agents=2, in_patch_only=False, p_welfare=0, patch_resize=False, seed=0, comm_type=0, msg_type=[], **kwargs):
+    def __init__(self, patch_radius=10,s_init=10, e_init=5, eta=0.1, beta=0.1, env_gamma=0.01, step_max=600, x_max=50, y_max=50, v_max=2, n_agents=2, in_patch_only=False, p_welfare=0, patch_resize=False, comm_type=0, msg_type=[], **kwargs):
         # Main variables used in environment
         self.x_max = x_max
         self.y_max = y_max
@@ -23,16 +23,15 @@ class NAgentsEnv():
         self.damping = 0.3
         self.p_still = 0.03
         self.p_act = 0.2
-        self.p_att = 0.1
-        self.p_comm = 0.1
-        self.msg_noise = 1
+        self.p_att = 0.0
+        self.p_comm = 0.0
+        self.msg_noise = 2
         self.n_agents = n_agents
         self.beta = beta
         self.e_init = e_init
         self.s_init = s_init
         self.patch_resize = patch_resize
         self.p_welfare = p_welfare
-        self.seed = seed
         self.msg_type = msg_type
         self.comm_type = comm_type
         # Initialize patch and agents
@@ -167,7 +166,6 @@ class Agent:
         self.p_act = env.p_act
         self.p_comm = env.p_comm
         self.p_att = env.p_att
-        self.noise_rng = np.random.default_rng(seed=env.seed)
         self.damping = env.damping
         self.msg_size = env.get_msg_size()
         if len(env.msg_type) > 0:
@@ -199,11 +197,11 @@ class Agent:
         attention_other = actions[1-self.id][3]
         communication = actions[self.id][2]
         # When communicating send the message in full quality
-        if attention_other > 0.5 and communication > 0.5:
-            return msg
+        #if attention_other > 0.5 and communication > 0.5:
+        #    return msg
         # Add noise to message if not communicating
         noise = np.asarray(jax.random.normal(key,self.noise_arr.shape))*self.noise_arr
-        return msg + noise
+        return msg + (1-attention_other*communication)*noise
 
     """
     Always send messages in full quality between agents
@@ -219,11 +217,11 @@ class Agent:
 
     def get_penalty(self,agent_state,patch_state,action):
         penalty = self.p_still
+        comm_pens = [lambda c,a: self.p_comm*c + self.p_att*a, lambda c,a: self.p_comm + self.p_att, lambda c,a: 0] # Expects 1:comm, 2:fullobs and 3:noise
         if self.msg_size > 0:
             attention = action[3]
             communication = action[2]
-            penalty += communication.item()*self.p_comm
-            penalty += attention.item()*self.p_att
+            penalty += comm_pens[self.comm_type-1](communication, attention)
         max_penalty = np.linalg.norm(np.full_like(action[:2], self.v_max))
         penalty += np.linalg.norm(action[:2])/max_penalty*self.p_act
         return penalty
@@ -269,9 +267,9 @@ class Agent:
         # Update velocity
         # TODO: Test velocity based control compared to acceleration based control
         # Velocity control
-        #vel = v_bounded(acc - dt*(self.damping*acc))
+        vel = v_bounded(acc - dt*(self.damping*acc))
         # Acceleration control
-        vel = v_bounded(vel + dt*(acc - self.damping*vel))
+        #vel = v_bounded(vel + dt*(acc - self.damping*vel))
         agent_state[:2] = pos
         agent_state[2:4] = vel
         return agent_state

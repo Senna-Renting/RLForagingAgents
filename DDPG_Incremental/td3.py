@@ -26,7 +26,7 @@ class Critic(nnx.Module):
 
 @nnx.jit
 def MSE_optimize_critic(optimizer: nnx.Optimizer, critic: nnx.Module, states: jnp.array, actions: jnp.array, ys: jnp.array):
-    loss_fn = lambda critic: ((critic(states, actions) - ys) ** 2).mean()
+    loss_fn = lambda critic: ((critic(states, actions) - jax.lax.stop_gradient(ys)) ** 2).mean()
     loss, grads = nnx.value_and_grad(loss_fn)(critic)
     optimizer.update(grads)
     return loss, grads
@@ -34,7 +34,6 @@ def MSE_optimize_critic(optimizer: nnx.Optimizer, critic: nnx.Module, states: jn
 @nnx.jit
 def compute_targets(critic_t: nnx.Module, actor_t: nnx.Module, rs: jnp.array, next_states: jnp.array, done: jnp.array, gamma: float):
     q_target = critic_t(next_states, actor_t(next_states))
-    q_target = jax.lax.stop_gradient(q_target)
     return rs + gamma*q_target*(1-done)
 
 ## Actor network and it's complementary functions
@@ -200,7 +199,7 @@ def n_agents_ddpg(env, num_episodes, tau=0.0025, gamma=0.99, batch_size=240, lr_
                     action_dim=action_dim, state_dim=state_dim,
                     action_range=action_range_str, hidden_dims=hidden_dims,
                     warmup_size=warmup_size, act_noise=act_noise, alg_name="Normal DDPG", 
-                    current_path=current_path, **env.get_params())
+                    current_path=current_path, seed=seed, **env.get_params())
     # Initialize neural networks
     actor_dim = action_dim
     action_max = action_range[1][0]
@@ -303,7 +302,7 @@ def n_agents_ddpg(env, num_episodes, tau=0.0025, gamma=0.99, batch_size=240, lr_
         # Test agent
         done = False
         subkey, key = jax.random.split(key)
-        env_state, states = env.reset(subkey) # Make sure the reset seed is the same as for training
+        env_state, states = env.reset(subkey)
         for i_t in range(step_max):
             for i_a in range(n_agents):
                 data["actions"][i,i_t,i_a,:] = actors_t[i_a](states[i_a])
@@ -340,6 +339,5 @@ def n_agents_ddpg(env, num_episodes, tau=0.0025, gamma=0.99, batch_size=240, lr_
         save_policies(actors_t, "actors", current_path)
         save_policies(critics_t, "critics", current_path)
         metadata["current_path"] = os.path.abspath(current_path)
-    
     return data, ((actors_t, actor_weights), (critics_t, critic_weights)), env_info, metadata, buffer_data
     
