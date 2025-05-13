@@ -1,18 +1,20 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
-from matplotlib.colors import ListedColormap, BoundaryNorm, Normalize
+from matplotlib.colors import ListedColormap, BoundaryNorm
 from matplotlib.collections import LineCollection
 from matplotlib.ticker import FuncFormatter
-from matplotlib.patches import Circle
 import os
 import json
-from environment import compute_NSW
+from run import run_actor_test
+
+
+COLORS = plt.cm.Set1.colors
 
 """
 Plots the Kullback-Leibler divergence between the learned critic and the target critic for each timestep across agents
 """
-def plot_kl(path, data, colors=plt.cm.Set1.colors):
+def plot_kl(path, data, colors=COLORS):
     fig = plt.figure()
     plt.title(f"Kullback-Leibler distance for Actor vs batch actions")
     plt.xlabel("Timestep")
@@ -41,19 +43,21 @@ def plot_cvals(path, data):
 
 """
 This function should plot the average, minimum and maximum return of the runs, inside a given folder across their episodes.
-The resulting plot will be put inside this folder
+The resulting plot will be put inside the path folder.
+Runs should be of equal length when running this function.
 
 Input:
     path: location of folder containing runs on device
-Return: None
+    window: if greater than 1 we generate a moving average of the return
+Return: (min, mean, max)
 """
-def get_grouped_return(path):
+def get_grouped_return(path, window=1):
     return_data = []
     num_episodes = 0
     # Get folders of seperate runs
     for run in os.listdir(path): 
         run_p = os.path.join(path, run)
-        if os.path.isdir(run_p):
+        if os.path.isdir(run_p) and os.path.exists(os.path.join(run_p, "metadata.json")):
             # For each run get the return data
             path_return_data = os.path.join(run_p, "data", "returns.dat")
             path_metadata = os.path.join(run_p, "metadata.json")
@@ -62,40 +66,42 @@ def get_grouped_return(path):
                 num_episodes = metadata["n_episodes"]
                 return_shape = (num_episodes, metadata["step_max"], metadata["n_agents"])
                 run_data = np.memmap(path_return_data, mode="r+", shape=return_shape, dtype="float32").copy()
-                # Compute NSW from return data
                 mean_return = np.mean(np.sum(run_data, axis=1),axis=1)
                 return_data.append(mean_return)
     # Convert return data list into an array
     return_data = np.array(return_data)
+    avg_window = np.full((window,), 1/window)
+    min = np.convolve(return_data.min(axis=0), avg_window, 'valid')
+    max = np.convolve(return_data.max(axis=0), avg_window, 'valid')
+    mean = np.convolve(return_data.mean(axis=0), avg_window, 'valid')
     # Generate the plot
-    x_range = np.arange(0,num_episodes)
+    x_range = np.arange(mean.shape[0])
     fig = plt.figure()
     plt.title(f"Average return of agents over episodes")
     plt.xlabel("Episode")
     plt.ylabel("Return")
-    plt.fill_between(x_range, np.min(return_data,axis=0), np.max(return_data,axis=0), color="r", alpha=0.4, label="min, max bound")
-    plt.plot(np.mean(return_data,axis=0), color="b", label="Mean(A1, A2)")
+    plt.fill_between(x_range, min, max, color="r", alpha=0.4, label="min, max bound")
+    plt.plot(x_range, mean, color="b", label="Mean(A1, A2)")
+    plt.grid()
     plt.legend(loc="lower right")
     fig.savefig(os.path.join(path, f"average_NSW.png"))
     plt.close(fig)
-    return (return_data.min(axis=0), return_data.mean(axis=0), return_data.max(axis=0))
+    return (min, mean, max)
 
-def exp1_plots(noise_path, comms_path, fullobs_path, out_path):
-    # Retrieve data
-    noise_min, noise_mean, noise_max = get_grouped_return(noise_path)
-    comms_min, comms_mean, comms_max = get_grouped_return(noise_path)
-    fullobs_min, fullobs_mean, fullobs_max = get_grouped_return(noise_path)
+def exp1_plots(out_path, *paths, colors=COLORS, window=4):
     # Plot data and save to png
     fig = plt.figure()
     plt.title("Comparing learning curves with communication")
     plt.xlabel("Episode")
     plt.ylabel("Return")
-    plt.fill_between(x_range, noise_min, noise_max, color="r", alpha=0.4)
-    plt.fill_between(x_range, comms_min, comms_max, color="g", alpha=0.4)
-    plt.fill_between(x_range, fullobs_min, fullobs_max, color="b", alpha=0.4)
-    plt.plot(noise_mean, color="r", label="Noise only")
-    plt.plot(comms_mean, color="g", label="Adaptive noise (communication)")
-    plt.plot(fullobs_mean, color="b", label="No noise")
+    for i,path in enumerate(paths):
+        label = os.path.basename(path)
+        min, mean, max = get_grouped_return(path, window)
+        x_range = np.arange(0, mean.shape[0])
+        plt.fill_between(x_range, min, max, color=colors[i], alpha=0.2)
+        plt.plot(mean, color=colors[i], label=label)
+    plt.grid()
+    plt.legend()
     fig.savefig(os.path.join(out_path, "experiment1_result.png"))
 
 """
@@ -125,14 +131,14 @@ def episode_results(path, energy, dist_agents, dist_agents_patch, comm_filter, p
     for episode in range(energy.shape[0]):
         sub_path = os.path.join(path, f"episode {episode}")
         os.mkdir(sub_path)
-        rq1_plots_per_episode(episode, sub_path, energy, dist_agents, dist_agents_patch, comm_filter, colors=plt.cm.Set1.colors)
+        rq1_plots_per_episode(episode, sub_path, energy, dist_agents, dist_agents_patch, comm_filter, colors=COLORS)
     # Only make a video for the final episode
     plot_env(episode, sub_path)
 
 """
 Subfunction for generating the plots of a single episode for RQ1
 """
-def rq1_plots_per_episode(episode, path, energy, dist_agents, dist_agents_patch, comm_filter, colors=plt.cm.Set1.colors):
+def rq1_plots_per_episode(episode, path, energy, dist_agents, dist_agents_patch, comm_filter, colors=COLORS):
     # First we implement the plots on the last run, later we can make folders for each successive run and it's results
     energy, dist_agents, dist_agents_patch = energy[episode, :, :], dist_agents[episode, :], dist_agents_patch[episode,:,:]
     x_range = np.arange(0,energy.shape[0])
@@ -155,7 +161,7 @@ def rq1_plots_per_episode(episode, path, energy, dist_agents, dist_agents_patch,
     plt.close(fig2)
     plt.close(fig3)
 
-def plot_comm_frequency(path, comm_filter, colors=plt.cm.Set1.colors):
+def plot_comm_frequency(path, comm_filter, colors=COLORS):
     fig1 = plt.figure()
     plt.title("Mean amount of communication steps over episodes")
     plt.xlabel("Episode")
@@ -169,7 +175,7 @@ def plot_comm_frequency(path, comm_filter, colors=plt.cm.Set1.colors):
     fig1.savefig(os.path.join(path, "comm_steps.png"))
     fig2.savefig(os.path.join(path, "comm_events.png"))
 
-def plot_dist_agents_patch_comm(dist_agents_patch, x_range, comm_filter, colors=plt.cm.Set1.colors):
+def plot_dist_agents_patch_comm(dist_agents_patch, x_range, comm_filter, colors=COLORS):
     fig,ax = plt.subplots(figsize=(10,5))
     ax.set_title("Relation of distance to patch and communication")
     ax.set_xlabel("Timestep")
@@ -184,7 +190,7 @@ def plot_dist_agents_patch_comm(dist_agents_patch, x_range, comm_filter, colors=
     plt.legend()
     return fig
 
-def plot_dist_agents_patch(dist_agents_patch, x_range, colors=plt.cm.Set1.colors):
+def plot_dist_agents_patch(dist_agents_patch, x_range, colors=COLORS):
     fig = plt.figure()
     plt.title("Relation of distance to patch")
     plt.xlabel("Timestep")
@@ -195,7 +201,7 @@ def plot_dist_agents_patch(dist_agents_patch, x_range, colors=plt.cm.Set1.colors
     plt.legend()
     return fig
 
-def plot_internal_energy_comm(energy, x_range, comm_filter, colors=plt.cm.Set1.colors):
+def plot_internal_energy_comm(energy, x_range, comm_filter, colors=COLORS):
     fig,ax = plt.subplots(figsize=(10,5))
     ax.set_title("Relation between internal energy and communication")
     ax.set_xlabel("Timestep")
@@ -226,7 +232,7 @@ def plot_color_lines(x,y,c,ax,cmap=plt.get_cmap('viridis')):
         
         
 
-def plot_internal_energy(energy, x_range, colors=plt.cm.Set1.colors):
+def plot_internal_energy(energy, x_range, colors=COLORS):
     fig = plt.figure()
     plt.title("Internal energy of agents")
     plt.xlabel("Timestep")
@@ -236,7 +242,7 @@ def plot_internal_energy(energy, x_range, colors=plt.cm.Set1.colors):
     plt.legend()
     return fig
 
-def plot_dist_agents(dist_agents, x_range, colors=plt.cm.Set1.colors):
+def plot_dist_agents(dist_agents, x_range, colors=COLORS):
     fig = plt.figure()
     plt.title("Distance between agents per episode")
     plt.xlabel("Timestep")
@@ -262,7 +268,7 @@ def env_vars_data(patch_info, agents_state, actions):
     agents_data.append(("Energy", energy_state))
     return resource_state, agents_data
 
-def plot_env_vars(resource_state, agents_data, axes, trail=100, a_colors=plt.cm.Set1.colors):
+def plot_env_vars(resource_state, agents_data, axes, trail=100, a_colors=COLORS):
     font_size = 11
     scale_y = lambda ax, data: ax.set_ylim([data.min()-data.max()*0.1, data.max()*1.1])
     resource = axes[0].plot(resource_state[0], c='g')[0]
@@ -293,7 +299,7 @@ def update_env_vars(frame, data, plots, trail=100):
         for i_a in range(d.shape[-1]):
             plots[1][i][i_a].set_data(x_range, d[start:frame, i_a])
 
-def plot_rewards(path, rewards, colors=plt.cm.Set1.colors):
+def plot_rewards(path, rewards, colors=COLORS):
     x_range = np.arange(0,rewards.shape[0])
     returns = np.sum(rewards, axis=1)
     n_agents = rewards.shape[2]
@@ -311,7 +317,7 @@ def plot_rewards(path, rewards, colors=plt.cm.Set1.colors):
     fig.savefig(os.path.join(path, "agent_episodes_return.png"))
     plt.close(fig)
 
-def plot_final_welfare(path, returns, colors=plt.cm.Set1.colors):
+def plot_final_welfare(path, returns, colors=COLORS):
     nsw = np.sqrt(np.prod(returns, axis=2)).sum(axis=1)
     fig = plt.figure()
     plt.plot(nsw)
@@ -333,14 +339,25 @@ def plot_succes_rate_comm(path, actions):
     plt.plot(comm_amount, linewidth=2)
     fig.savefig(os.path.join(path, "comm_amount.png"))
 
+def plot_actor_returns(out_path, *paths, num_episodes=30):
+    fig = plt.figure()
+    plt.title("Compare return histograms")
+    returns = np.array([run_actor_test(path, num_episodes)[2].mean(axis=2).sum(axis=1) for path in paths])
+    for i,path in enumerate(paths):
+        label = os.path.basename(os.path.dirname(path))
+        plt.hist(returns[i], bins=30, range=(returns.min(), returns.max()), label=label, alpha=0.4)  
+    plt.xlabel("Return")
+    plt.ylabel("Frequency")
+    plt.legend()
+    fig.savefig(os.path.join(out_path, "exp1_return_hists.png"))
 
 """
 The agent_state and the patch_state of the NAgentsEnv class are used as input here
 agent_state's shape: [n_episodes, step_max, n_agents, dim(x,y,x_dot,y_dot,e)]
 patch_info's shape: ([dim(x,y,r)], [n_episodes, step_max, dim(s))])
 """
-def plot_env(path, episode, env_shape, patch_info, agents_state, actions, a_colors=plt.cm.Set1.colors):
-    a_colors=plt.cm.Set1.colors
+def plot_env(path, episode, env_shape, patch_info, agents_state, actions, a_colors=COLORS):
+    a_colors=COLORS
     n_episodes, step_max, n_agents, *_ = agents_state.shape
     action_names = ["Horizontal acc", "Vertical acc", "Communication", "Attention"]
     patch_energy = patch_info[1]
@@ -384,7 +401,7 @@ def plot_env(path, episode, env_shape, patch_info, agents_state, actions, a_colo
     anim.save(os.path.join(path, "env_result_episode.mp4"))
     plt.close(fig) 
 
-def plot_loss(path, name, data, colors=plt.cm.Set1.colors):
+def plot_loss(path, name, data, colors=COLORS):
     steps, n_agents = data.shape
     fig = plt.figure()
     if name == "critic":
@@ -398,7 +415,7 @@ def plot_loss(path, name, data, colors=plt.cm.Set1.colors):
     fig.savefig(os.path.join(path, f"{name}_loss.png"))
     plt.close(fig)
         
-def plot_final_states_env(path, is_in_patch, patch_info, agents_states, rewards, colors=plt.cm.Set1.colors):
+def plot_final_states_env(path, is_in_patch, patch_info, agents_states, rewards, colors=COLORS):
     step_max, n_agents, *_ = agents_states.shape
     agents_energy = agents_states[:,:,4]
     patch_ss = patch_info[1][-1]
@@ -429,7 +446,7 @@ def plot_final_states_env(path, is_in_patch, patch_info, agents_states, rewards,
     plt.close(fig)
     
 # Works for two agents only
-def mark_patch_events(is_in_patch, colors=plt.cm.Set1.colors, step=-1, ax=plt):
+def mark_patch_events(is_in_patch, colors=COLORS, step=-1, ax=plt):
     n_episodes, step_max, n_agents = is_in_patch.shape
     encoding = np.arange(1,n_agents+1).reshape(-1,1)
     event_coding = np.sum(np.dot(is_in_patch[step, :, :],encoding), axis=1)[np.newaxis, :]
@@ -458,7 +475,7 @@ def update_patch_events(is_in_patch, frame, image, ax=plt):
     event_coding = np.sum(np.dot(is_in_patch[frame, :, :],encoding), axis=1)[np.newaxis, :]
     image.set_array(event_coding)
 
-def plot_penalty(path, is_in_patch, data, name, colors=plt.cm.Set1.colors, bins=20):
+def plot_penalty(path, is_in_patch, data, name, colors=COLORS, bins=20):
     n_episodes, step_max, n_agents = data.shape
     # Penalty across episodes
     fig = plt.figure()

@@ -1,6 +1,6 @@
 import wandb
 from environment import *
-from save_utils import load_policy, save_policy
+from save_utils import load_policy, load_policies, save_policy
 from td3 import Actor, n_agents_ddpg
 from welfare_functions import *
 import os
@@ -113,13 +113,44 @@ def run_experiment(**kwargs):
         main_folder, path = create_exp_folder(kwargs["out"])
         os.mkdir(os.path.join(path, "data"))
         train_args=dict(**kwargs)
-        print("seed before: ", train_args["seed"])
         train_args["seed"] = s+i_r*e
-        print("seed after: ", train_args["seed"])
         # Single run of DDPG on the environment
         run_ddpg(env, e, n_agents_ddpg, path, train_args, skip_vid=not kwargs["video"])
     # Compute the average return over the amount of runs done
     get_grouped_return(main_folder)
+
+# TODO: Make this function load an actor network, 
+# and run it with the same metadata of the environment it was trained in, 
+# except for the seed (needs to be different to guarantee no training correlation is present)
+def run_actor_test(path, num_episodes):
+    # Get metadata
+    metadata = json.load(open(os.path.join(path, "metadata.json"), "r"))
+    # Initialize and load actor model
+    hidden_dims = [int(hd) for hd in metadata["hidden_dims"]]
+    actors = [Actor(metadata["state_dim"], metadata["action_dim"], metadata["v_max"], 0, hidden_dims) for i_a in range(metadata["n_agents"])]
+    load_policies(actors, "actors", path)
+    print("An actor: ", actors[0])
+    # Initialize data variables
+    all_states = np.empty((num_episodes, metadata["step_max"]+1, metadata["n_agents"], metadata["state_dim"]))
+    all_actions = np.empty((num_episodes, metadata["step_max"], metadata["n_agents"], metadata["action_dim"]))
+    returns = np.empty((num_episodes, metadata["step_max"], metadata["n_agents"]))
+    # Initialize environment and run episodes
+    env = NAgentsEnv(**metadata)
+    key = jax.random.key(metadata["seed"]+1)
+    for e_i in range(num_episodes):
+        print(f"Running episode {e_i}...", end="\r")
+        env_state, states = env.reset(key)
+        all_states[e_i, 0] = states
+        for s_i in range(metadata["step_max"]):
+            subkey, key = jax.random.split(key)
+            actions = [actors[i_a](states[i_a]) for i_a in range(metadata["n_agents"])]
+            env_state, next_states, (rewards, penalties), terminated, truncated, _ = env.step(subkey, env_state, *actions)
+            all_actions[e_i, s_i] = actions 
+            all_states[e_i, s_i+1] = states
+            returns[e_i, s_i] = rewards
+            states = next_states
+    # Return data
+    return all_states, all_actions, returns
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

@@ -39,16 +39,17 @@ def compute_targets(critic_t: nnx.Module, actor_t: nnx.Module, rs: jnp.array, ne
 ## Actor network and it's complementary functions
 class Actor(nnx.Module):
     def __init__(self, in_dim, out_dim, action_max, seed, hidden_dim=[16,32,16]):
-        self.a_max = action_max
         rngs = nnx.Rngs(seed)
         self.input = nnx.Linear(in_dim, hidden_dim[0], rngs=rngs)
         self.lhs = tuple([nnx.Linear(hidden_dim[i], hidden_dim[i+1], rngs=rngs) for i in range(len(hidden_dim) - 1)])
         self.out = nnx.Linear(hidden_dim[-1], out_dim, rngs=rngs)
-        self.act_mask = jnp.ones(out_dim)
+        act_mask = jnp.ones(out_dim)
         if out_dim > 2:
-            self.act_mask = self.act_mask.at[2:].set(0)
+            act_mask = act_mask.at[2:].set(0)
+        self.act_mask = nnx.Variable(act_mask)
+        self.a_max = nnx.Variable(action_max)
     def final_activation(self, x):
-        return jnp.where(self.act_mask, nnx.tanh(x)*self.a_max, nnx.sigmoid(x))
+        return jnp.where(self.act_mask.value, nnx.tanh(x)*self.a_max.value, nnx.sigmoid(x))
     def __call__(self, state):
         x = nnx.relu(self.input(state))
         for lh in self.lhs:
@@ -187,9 +188,6 @@ def create_data_files(path, **info):
 
 def n_agents_ddpg(env, num_episodes, tau=0.0025, gamma=0.99, batch_size=240, lr_a=3e-4, lr_c=1e-3, seed=0, action_dim=2, state_dim=9, action_range=[[-4,0],[4,1]], hidden_dim=[400,300], act_noise=0.13, log_fun=print_log_ddpg_n_agents, current_path="", update_every=1, **kwargs):
     # Initialize metadata object for keeping track of (hyper-)parameters and/or additional settings of the environment
-    hidden_dims = [str(h_dim) for h_dim in hidden_dim]
-    action_range_str = [[str(type[0]), str(type[-1])]  for type in action_range]
-    action_range = jnp.array(action_range)
     n_agents = env.n_agents
     step_max = env.step_max
     patch_resize = env.patch_resize
@@ -197,9 +195,10 @@ def n_agents_ddpg(env, num_episodes, tau=0.0025, gamma=0.99, batch_size=240, lr_
     metadata = dict(update_every=update_every, n_episodes=num_episodes.item(), tau=tau, 
                     gamma=gamma, batch_size=batch_size, lr_actor=lr_a, lr_critic=lr_c, 
                     action_dim=action_dim, state_dim=state_dim,
-                    action_range=action_range_str, hidden_dims=hidden_dims,
+                    action_range=action_range, hidden_dims=hidden_dim,
                     warmup_size=warmup_size, act_noise=act_noise, alg_name="Normal DDPG", 
                     current_path=current_path, seed=seed, **env.get_params())
+    action_range = jnp.array(action_range)
     # Initialize neural networks
     actor_dim = action_dim
     action_max = action_range[1][0]
@@ -208,7 +207,7 @@ def n_agents_ddpg(env, num_episodes, tau=0.0025, gamma=0.99, batch_size=240, lr_
     actors_t = [Actor(state_dim,actor_dim,action_max,seed+i_a,hidden_dim=hidden_dim) for i_a in range(n_agents)]
     critics = [Critic(state_dim+actor_dim,seed+i_a,out_dim=1,hidden_dim=hidden_dim) for i_a in range(n_agents)]
     critics_t = [Critic(state_dim+actor_dim,seed+i_a,out_dim=1,hidden_dim=hidden_dim) for i_a in range(n_agents)]
-    
+
     optim_actors = [nnx.Optimizer(actors[i_a], optax.adam(lr_a)) for i_a in range(n_agents)]
     optim_critics = [nnx.Optimizer(critics[i_a], optax.adam(lr_c)) for i_a in range(n_agents)]
     # Add seperate experience replay buffer for each agent 

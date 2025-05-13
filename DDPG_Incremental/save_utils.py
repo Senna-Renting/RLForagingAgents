@@ -1,7 +1,8 @@
-import orbax.checkpoint
+import orbax.checkpoint as ocp
 from flax import nnx
 import os
-orbax_checkpointer = orbax.checkpoint.PyTreeCheckpointer()
+import jax
+orbax_checkpointer = ocp.StandardCheckpointer()
 
 def load_policy(model, wandb_code):
     state = nnx.state(model)
@@ -15,13 +16,12 @@ def save_policy(model, wandb_code):
 # Below two functions will be used for our re-train implementation
 def save_policies(models, type, path):
     for i, model in enumerate(models):
-        state = nnx.state(model)
+        graphdef, state = nnx.split(model)
         orbax_checkpointer.save(os.path.abspath(os.path.join(path, type, f"A{i}")), state)
 
 def load_policies(models, type, path):
     for i, model in enumerate(models):
-        state = nnx.state(model)
-        restored_model = orbax_checkpointer.restore(os.path.join(path, type, f"A{i}"), item=state)
+        graphdef, state = nnx.split(model)
+        restored_model = orbax_checkpointer.restore(os.path.join(path, type, f"A{i}"), state)
         nnx.update(model, restored_model)
-        
     

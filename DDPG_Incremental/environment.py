@@ -10,7 +10,7 @@ def compute_NSW(rewards):
     return NSW
     
 class NAgentsEnv():
-    def __init__(self, patch_radius=10,s_init=10, e_init=5, eta=0.1, beta=0.1, env_gamma=0.01, step_max=600, x_max=50, y_max=50, v_max=2, n_agents=2, in_patch_only=False, p_welfare=0, patch_resize=False, comm_type=0, msg_type=[], **kwargs):
+    def __init__(self, patch_radius=10,s_init=10, e_init=5, eta=0.1, beta=0.1, env_gamma=0.01, step_max=600, x_max=50, y_max=50, v_max=2, n_agents=2, p_welfare=0, patch_resize=False, comm_type=0, msg_type=[], **kwargs):
         # Main variables used in environment
         self.x_max = x_max
         self.y_max = y_max
@@ -70,8 +70,8 @@ class NAgentsEnv():
         params = dict(**self.__dict__)
         params["patch_radius"] = self.patch.get_radius()
         params["s_init"] = self.patch.s_init
-        params["msg_type"] = [self.get_msg_types()[type][2] for type in self.msg_type]
-        params["comm_type"] = self.get_comm_types()[self.comm_type]
+        params["msg_type"] = self.msg_type
+        params["comm_type"] = self.comm_type
         del params["patch"]
         del params["agents"]
         del params["latest_obs"]
