@@ -52,7 +52,7 @@ def run_ddpg(env, num_episodes, train_fun, path, train_args=dict(), prev_path=No
         
     # Train agent(s)
     train_data, networks, agents_info, metadata, buffer_data = train_fun(env, episodes[-1], **train_args)
-    ((actors, a_weights), (critics, c_weights)) = networks
+    (actor, critic) = networks
     (penalties, is_in_patch, agent_states, patch_info) = agents_info
     # Save all data (as efficiently as possible)
     data = {
@@ -63,8 +63,6 @@ def run_ddpg(env, num_episodes, train_fun, path, train_args=dict(), prev_path=No
         "b_next_states": buffer_data[3]
     }
     np.savez(os.path.join(path, "data"), **data)
-    np.savez(os.path.join(path, "actor_weights"), *a_weights)
-    np.savez(os.path.join(path, "critic_weights"), *c_weights)
     # Save metadata
     save_metadata(metadata, path)
     
@@ -119,17 +117,21 @@ def run_experiment(**kwargs):
     # Compute the average return over the amount of runs done
     get_grouped_return(main_folder)
 
-# TODO: Make this function load an actor network, 
-# and run it with the same metadata of the environment it was trained in, 
-# except for the seed (needs to be different to guarantee no training correlation is present)
+"""
+Function used to do inference on trained policy.
+Parameters:
+- path: Location on device of training session
+- num_episodes: How many episodes we want to evaluate the learned actor on
+
+Returns: (states, actions, rewards)
+"""
 def run_actor_test(path, num_episodes):
     # Get metadata
     metadata = json.load(open(os.path.join(path, "metadata.json"), "r"))
     # Initialize and load actor model
     hidden_dims = [int(hd) for hd in metadata["hidden_dims"]]
-    actors = [Actor(metadata["state_dim"], metadata["action_dim"], metadata["v_max"], 0, hidden_dims) for i_a in range(metadata["n_agents"])]
-    load_policies(actors, "actors", path)
-    print("An actor: ", actors[0])
+    actor = Actor(metadata["state_dim"], metadata["action_dim"], metadata["v_max"], 0, hidden_dims)
+    load_policies([actor], "actors", path)
     # Initialize data variables
     all_states = np.empty((num_episodes, metadata["step_max"]+1, metadata["n_agents"], metadata["state_dim"]))
     all_actions = np.empty((num_episodes, metadata["step_max"], metadata["n_agents"], metadata["action_dim"]))
@@ -143,7 +145,7 @@ def run_actor_test(path, num_episodes):
         all_states[e_i, 0] = states
         for s_i in range(metadata["step_max"]):
             subkey, key = jax.random.split(key)
-            actions = [actors[i_a](states[i_a]) for i_a in range(metadata["n_agents"])]
+            actions = [actor(states[i_a]) for i_a in range(metadata["n_agents"])]
             env_state, next_states, (rewards, penalties), terminated, truncated, _ = env.step(subkey, env_state, *actions)
             all_actions[e_i, s_i] = actions 
             all_states[e_i, s_i+1] = states

@@ -28,17 +28,16 @@ def plot_kl(path, data, colors=COLORS):
 Plots a histogram of the learned and target critic values seen in the last episode
 """
 def plot_cvals(path, data):
-    for i_a in range(data.shape[1]):
-        fig = plt.figure()
-        plt.title(f"Distribution of Q-values for Agent {i_a+1}")
-        plt.xlabel("Q(s,a)")
-        plt.ylabel("Amount")
-        d_range = (data[:,i_a,:].min(),data[:,i_a,:].max())
-        plt.hist(data[:,i_a,1], label="$Q_{target}$", bins=100, alpha=0.5, range=d_range)
-        plt.hist(data[:,i_a,0], label=f"$Q$", bins=100, alpha=0.5, range=d_range)
-        plt.legend()
-        fig.savefig(os.path.join(path, f"critic_values_agent{i_a+1}.png"))
-        plt.close()
+    fig = plt.figure()
+    plt.title(f"Distribution of sampled Q-values at last timestep")
+    plt.xlabel("Q(s,a)")
+    plt.ylabel("Amount")
+    d_range = (data[:,:].min(),data[:,:].max())
+    plt.hist(data[:,1], label="$Q_{target}$", bins=100, alpha=0.5, range=d_range)
+    plt.hist(data[:,0], label=f"$Q$", bins=100, alpha=0.5, range=d_range)
+    plt.legend()
+    fig.savefig(os.path.join(path, f"critic_values_agents.png"))
+    plt.close()
         
 
 """
@@ -345,7 +344,7 @@ def plot_actor_returns(out_path, *paths, num_episodes=30):
     returns = np.array([run_actor_test(path, num_episodes)[2].mean(axis=2).sum(axis=1) for path in paths])
     for i,path in enumerate(paths):
         label = os.path.basename(os.path.dirname(path))
-        plt.hist(returns[i], bins=30, range=(returns.min(), returns.max()), label=label, alpha=0.4)  
+        plt.hist(returns[i], bins=num_episodes//4, range=(returns.min(), returns.max()), label=label, alpha=0.4)  
     plt.xlabel("Return")
     plt.ylabel("Frequency")
     plt.legend()
@@ -402,15 +401,14 @@ def plot_env(path, episode, env_shape, patch_info, agents_state, actions, a_colo
     plt.close(fig) 
 
 def plot_loss(path, name, data, colors=COLORS):
-    steps, n_agents = data.shape
+    steps = data.shape
     fig = plt.figure()
     if name == "critic":
         data = np.clip(data, 0, 100)
     plt.title(f"{name} loss of agents")
     plt.xlabel("Timestep")
     plt.ylabel(f"{name} loss")
-    for i_a in range(n_agents):
-        plt.plot(data[:,i_a], label=f"$A_{i_a+1}$", color=colors[i_a])
+    plt.plot(data, color=colors[0])
     plt.legend(loc="lower right")
     fig.savefig(os.path.join(path, f"{name}_loss.png"))
     plt.close(fig)
