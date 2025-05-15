@@ -201,7 +201,7 @@ class Agent:
         #    return msg
         # Add noise to message if not communicating
         noise = np.asarray(jax.random.normal(key,self.noise_arr.shape))*self.noise_arr
-        return msg + (1-attention_other*communication)*noise
+        return msg + (1-np.sqrt(attention_other*communication))*noise
 
     """
     Always send messages in full quality between agents

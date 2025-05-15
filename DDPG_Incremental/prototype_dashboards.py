@@ -1,7 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
-from matplotlib.colors import ListedColormap, BoundaryNorm
+from matplotlib.colors import ListedColormap, Normalize
 from matplotlib.collections import LineCollection
 from matplotlib.ticker import FuncFormatter
 import os
@@ -39,6 +39,30 @@ def plot_cvals(path, data):
     fig.savefig(os.path.join(path, f"critic_values_agents.png"))
     plt.close()
         
+"""
+Function that groups data of a given type found in the given run folder.
+Also by standard gives the metadata of the run folder.
+
+Parameters:
+- path: location of the run folder on the device
+- filename: file to pull the data from
+
+Returns: (grouped data, metadata)
+"""
+def get_grouped_data(path, filename):
+    data = []
+    # Get folders of seperate runs
+    for run in os.listdir(path): 
+        run_p = os.path.join(path, run)
+        if os.path.isdir(run_p) and os.path.exists(os.path.join(run_p, "metadata.json")):
+            # For each run get the return data
+            path_data = os.path.join(run_p, "data", filename)
+            path_metadata = os.path.join(run_p, "metadata.json")
+            with open(path_metadata, 'r') as f:
+                metadata = json.load(f)
+                run_data = np.load(path_data, mmap_mode="r")
+                data.append(run_data)
+    return np.asarray(data), metadata
 
 """
 This function should plot the average, minimum and maximum return of the runs, inside a given folder across their episodes.
@@ -116,7 +140,7 @@ def rq1_data(patch_info, agents_state, actions):
     if actions.shape[3] > 2:
         communication = actions[:,:,:,2]
         attention_other = np.flip(actions[:,:,:,3],axis=2)
-        comm_filter = (communication > 0.5) & (attention_other > 0.5)
+        comm_filter = np.sqrt(communication*attention_other)
     else: 
         comm_filter = None
     return energy, dist_agents, dist_agents_patch, comm_filter
@@ -184,8 +208,7 @@ def plot_dist_agents_patch_comm(dist_agents_patch, x_range, comm_filter, colors=
         cmap = plt.get_cmap('viridis')
         plt.scatter(x_range[::20], dist_agents_patch[::20,a_i], label=f"Agent {a_i}", color=colors[a_i])
         sm = plot_color_lines(x_range, dist_agents_patch[:,a_i], comm_filter[:,a_i], ax, cmap)
-    cbar = plt.colorbar(sm, ax=ax, ticks=[0.25,0.75])
-    cbar.ax.set_yticklabels(['No communication', 'Communication'])
+    plt.colorbar(sm, ax=ax, label="Communication strength")
     plt.legend()
     return fig
 
@@ -209,20 +232,17 @@ def plot_internal_energy_comm(energy, x_range, comm_filter, colors=COLORS):
         cmap = plt.get_cmap('viridis')
         plt.scatter(x_range[::20], energy[::20,a_i], label=f"Agent {a_i}", color=colors[a_i])
         sm = plot_color_lines(x_range, energy[:,a_i], comm_filter[:,a_i], ax, cmap)
-    cbar = plt.colorbar(sm, ax=ax, ticks=[0.25,0.75])
-    cbar.ax.set_yticklabels(['No communication', 'Communication'])
+    plt.colorbar(sm, ax=ax, label="Communication strength")
     plt.legend()
     return fig
 
 def plot_color_lines(x,y,c,ax,cmap=plt.get_cmap('viridis')):
     points = np.array([x, y]).T.reshape(-1, 1, 2)
     segments = np.concatenate([points[:-1], points[1:]], axis=1)
-    cmap = ListedColormap([cmap(0.0), cmap(1.0)], N=2)
-    bounds = [-0.5, 0.5, 1.5]  # so 0 → bin 0, 1 → bin 1
-    norm = BoundaryNorm(bounds, cmap.N)
+    norm = Normalize(vmin=0, vmax=1)
     sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
     sm.set_array([])  # dummy array — colorbar only needs cmap + norm
-    lc = LineCollection(segments, cmap=cmap, norm=norm, linewidth=2)
+    lc = LineCollection(segments, cmap=cmap, linewidth=2)
     c = c.astype(int)
     lc.set_array(c[:-1])
     ax.add_collection(lc)
@@ -344,7 +364,7 @@ def plot_actor_returns(out_path, *paths, num_episodes=30):
     returns = np.array([run_actor_test(path, num_episodes)[2].mean(axis=2).sum(axis=1) for path in paths])
     for i,path in enumerate(paths):
         label = os.path.basename(os.path.dirname(path))
-        plt.hist(returns[i], bins=num_episodes//4, range=(returns.min(), returns.max()), label=label, alpha=0.4)  
+        plt.hist(returns[i], bins=max(num_episodes//4,40), range=(returns.min(), returns.max()), label=label, alpha=0.4)  
     plt.xlabel("Return")
     plt.ylabel("Frequency")
     plt.legend()

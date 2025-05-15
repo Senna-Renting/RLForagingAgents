@@ -184,7 +184,7 @@ def create_data_files(path, **info):
     }
     return data
 
-def n_agents_ddpg(env, num_episodes, tau=0.0025, gamma=0.99, batch_size=240, lr_a=3e-4, lr_c=1e-3, seed=0, action_dim=2, state_dim=9, action_range=[[-4,0],[4,1]], hidden_dim=[400,300], act_noise=0.13, log_fun=print_log_ddpg_n_agents, current_path="", update_every=1, **kwargs):
+def n_agents_ddpg(env, num_episodes, tau=0.0025, gamma=0.99, batch_size=240, lr_a=3e-4, lr_c=1e-3, seed=0, action_dim=2, state_dim=9, action_range=[[-4,0],[4,1]], hidden_dim=[256,256], act_noise=0.13, log_fun=print_log_ddpg_n_agents, current_path="", update_every=1, **kwargs):
     # Initialize metadata object for keeping track of (hyper-)parameters and/or additional settings of the environment
     n_agents = env.n_agents
     step_max = env.step_max
