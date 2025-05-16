@@ -57,12 +57,9 @@ def get_grouped_data(path, filename):
         if os.path.isdir(run_p) and os.path.exists(os.path.join(run_p, "metadata.json")):
             # For each run get the return data
             path_data = os.path.join(run_p, "data", filename)
-            path_metadata = os.path.join(run_p, "metadata.json")
-            with open(path_metadata, 'r') as f:
-                metadata = json.load(f)
-                run_data = np.load(path_data, mmap_mode="r")
-                data.append(run_data)
-    return np.asarray(data), metadata
+            run_data = np.lib.format.open_memmap(path_data, mode="r")
+            data.append(run_data)
+    return np.asarray(data)
 
 """
 This function should plot the average, minimum and maximum return of the runs, inside a given folder across their episodes.
@@ -75,22 +72,7 @@ Input:
 Return: (min, mean, max)
 """
 def get_grouped_return(path, window=1):
-    return_data = []
-    num_episodes = 0
-    # Get folders of seperate runs
-    for run in os.listdir(path): 
-        run_p = os.path.join(path, run)
-        if os.path.isdir(run_p) and os.path.exists(os.path.join(run_p, "metadata.json")):
-            # For each run get the return data
-            path_return_data = os.path.join(run_p, "data", "returns.dat")
-            path_metadata = os.path.join(run_p, "metadata.json")
-            with open(path_metadata, 'r') as f:
-                metadata = json.load(f)
-                num_episodes = metadata["n_episodes"]
-                return_shape = (num_episodes, metadata["step_max"], metadata["n_agents"])
-                run_data = np.memmap(path_return_data, mode="r+", shape=return_shape, dtype="float32").copy()
-                mean_return = np.mean(np.sum(run_data, axis=1),axis=1)
-                return_data.append(mean_return)
+    return_data = get_grouped_data(path, "returns.npy").mean(axis=3).sum(axis=2)
     # Convert return data list into an array
     return_data = np.array(return_data)
     avg_window = np.full((window,), 1/window)
@@ -243,7 +225,7 @@ def plot_color_lines(x,y,c,ax,cmap=plt.get_cmap('viridis')):
     sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
     sm.set_array([])  # dummy array — colorbar only needs cmap + norm
     lc = LineCollection(segments, cmap=cmap, linewidth=2)
-    c = c.astype(int)
+    c = c.astype(float)
     lc.set_array(c[:-1])
     ax.add_collection(lc)
     ax.autoscale()

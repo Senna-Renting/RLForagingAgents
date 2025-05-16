@@ -164,7 +164,7 @@ def print_log_ddpg_n_agents(epoch, returns, energies):
 
 def create_data_files(path, **info):
     data_path = os.path.abspath(os.path.join(path, "data"))
-    make_file = lambda fname, shape: np.memmap(os.path.join(data_path, fname), dtype="float32", mode="w+", shape=shape)
+    make_file = lambda fname, shape: np.lib.format.open_memmap(os.path.join(data_path, fname), mode="w+", dtype="float32", shape=shape)
     n_ep = info["num_episodes"]
     s_max = info["step_max"]
     b_size = info["batch_size"]
@@ -172,15 +172,15 @@ def create_data_files(path, **info):
     n_ag = info["n_agents"]
     update_every = info["update_every"]
     data = {
-        "critics_vals": make_file("critics_vals.dat", (s_max*b_size//update_every, 2)),
-        "critics_loss": make_file("critics_loss.dat", (steps//update_every)),
-        "actors_loss": make_file("actors_loss.dat", (steps//update_every)),
-        "returns": make_file("returns.dat", (n_ep, s_max, n_ag)),
-        "penalties": make_file("test_penalties.dat", (n_ep, s_max, n_ag, 1)),
-        "is_in_patch": make_file("is_in_patch.dat", (n_ep, s_max, n_ag)),
-        "agent_states": make_file("agent_states.dat", (n_ep, s_max, *info["agents_state_shape"])),
-        "patch_states": make_file("patch_states.dat", (n_ep, s_max, 1)),
-        "actions": make_file("actions.dat", (n_ep, s_max, n_ag, info["action_dim"])) 
+        "critics_vals": make_file("critics_vals.npy", (s_max*b_size//update_every, 2)),
+        "critics_loss": make_file("critics_loss.npy", (steps//update_every,)),
+        "actors_loss": make_file("actors_loss.npy", (steps//update_every,)),
+        "returns": make_file("returns.npy", (n_ep, s_max, n_ag)),
+        "penalties": make_file("test_penalties.npy", (n_ep, s_max, n_ag, 1)),
+        "is_in_patch": make_file("is_in_patch.npy", (n_ep, s_max, n_ag)),
+        "agent_states": make_file("agent_states.npy", (n_ep, s_max, *info["agents_state_shape"])),
+        "patch_states": make_file("patch_states.npy", (n_ep, s_max, 1)),
+        "actions": make_file("actions.npy", (n_ep, s_max, n_ag, info["action_dim"])) 
     }
     return data
 
@@ -306,8 +306,6 @@ def n_agents_ddpg(env, num_episodes, tau=0.0025, gamma=0.99, batch_size=240, lr_
             data["returns"][i,step_idx] = rewards
             if done:
                 break
-        # Save all written data to disk indefinitely
-        [d.flush() for k,d in data.items() if k != "critics_vals"]
         # Log the important variables to some logger
         (agents_state, patch_state, step_idx) = env_state
         end_energy = agents_state[:, 4]
@@ -317,7 +315,6 @@ def n_agents_ddpg(env, num_episodes, tau=0.0025, gamma=0.99, batch_size=240, lr_
         env_info = (data["penalties"], data["is_in_patch"], data["agent_states"], patch_info)
     # Store the critic values on disk
     data["critics_vals"][:,:] = c_vals
-    data["critics_vals"].flush()
     # Gather buffer data for storing purposes
     buffer_data = buffer.get_all()
     # Save learned actor and critic

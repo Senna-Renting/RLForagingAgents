@@ -80,7 +80,7 @@ def run_ddpg(env, num_episodes, train_fun, path, train_args=dict(), prev_path=No
     
     a_shape = (metadata["n_episodes"], metadata["step_max"], metadata["n_agents"], metadata["action_dim"])
     d_path = os.path.abspath(os.path.join(metadata["current_path"], "data"))
-    actions = np.memmap(os.path.join(d_path, "actions.dat"), mode="r", dtype="float32", shape=a_shape)
+    actions = train_data["actions"]
     # Only plot the environment if video toggle is on
     plot_episode_env = lambda episode, path: None
     if not skip_vid:
@@ -160,8 +160,6 @@ if __name__ == "__main__":
     parser.add_argument("runs", type=int, help="Number of runs")
     parser.add_argument("out", type=str, help="Output folder for results")
     parser.add_argument("-na", "--n-agents", type=int, default=1)
-    parser.add_argument("--obs-others", action=argparse.BooleanOptionalAction, default=False, help="Toggle to allow agents to observe each other")
-    parser.add_argument("-ipo", "--in-patch-only", action=argparse.BooleanOptionalAction, default=True, help="Toggle for agents to only observe the state of the patch when inside")
     parser.add_argument("-pw","--p-welfare", type=float, default=0.0, help="Adjusts the proportion of Nash Social Welfare (NSW) used in the reward of agents")
     parser.add_argument("-s", "--seed", type=int, default=0, help="General seed on which we generate our random numbers for the script")
     parser.add_argument("-t", "--tau", type=float, default=0.005, help="Polyak parameter (between 0 and 1) for updating the neural networks")
@@ -172,8 +170,10 @@ if __name__ == "__main__":
     parser.add_argument("-an", "--act-noise", type=float, default=1, help="Adjust the exploration noise added to actions of agents")
     parser.add_argument("--msg-type", nargs="*", type=int, default=[], help="Choose zero or more messages that should be used by the agent: \n 0. Energy \n 1. Position \n 2. Velocity \n 3. Action \n Choosing no message will produce a channel that directly uses the communication value, so the agents learn from communication by themselves.")
     parser.add_argument("--comm-type", type=int, default=0, help="Choose type of communication: \n 0. No communication \n 1. Communication \n 2. Always Communication \n 3. Only Noise")
-    parser.add_argument("--rof", type=int, default=0, help="Size of ring of fire around patch")
-    parser.add_argument("--patch-resize", action=argparse.BooleanOptionalAction, default=False, help="Allow the patch to resize based on the amount of resources present")
     parser.add_argument("--video", action=argparse.BooleanOptionalAction, help="Toggle for video generation of episodes")
+    parser.add_argument("-pc", "--p-comm", type=float, default=0, help="Communication penalty scalar")
+    parser.add_argument("-pt", "--p-att", type=float, default=0, help="Attention penalty scalar")
+    parser.add_argument("-pa", "--p-act", type=float, default=0, help="Action penalty scalar")
+    parser.add_argument("-ps", "--p-still", type=float, default=0, help="Resting penalty scalar")
     args = parser.parse_args()
     run_experiment(**vars(args))

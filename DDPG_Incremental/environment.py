@@ -10,7 +10,10 @@ def compute_NSW(rewards):
     return NSW
     
 class NAgentsEnv():
-    def __init__(self, patch_radius=10,s_init=10, e_init=5, eta=0.1, beta=0.1, env_gamma=0.01, step_max=600, x_max=50, y_max=50, v_max=2, n_agents=2, p_welfare=0, patch_resize=False, comm_type=0, msg_type=[], **kwargs):
+    def __init__(self, patch_radius=10,s_init=10, e_init=5, eta=0.1, beta=0.1, 
+                 env_gamma=0.01, step_max=600, x_max=50, y_max=50, v_max=2, 
+                 n_agents=2, p_welfare=0, patch_resize=False, comm_type=0, 
+                 msg_type=[], p_still=0.03, p_act=0.2, p_att=0, p_comm=0,  **kwargs):
         # Main variables used in environment
         self.x_max = x_max
         self.y_max = y_max
@@ -21,10 +24,10 @@ class NAgentsEnv():
         self.step_max = step_max
         self.step_idx = 0
         self.damping = 0.3
-        self.p_still = 0.03
-        self.p_act = 0.2
-        self.p_att = 0.0
-        self.p_comm = 0.0
+        self.p_still = p_still
+        self.p_act = p_act
+        self.p_att = p_att
+        self.p_comm = p_comm
         self.msg_noise = 2
         self.n_agents = n_agents
         self.beta = beta
