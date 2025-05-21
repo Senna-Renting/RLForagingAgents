@@ -123,7 +123,7 @@ Parameters:
 - path: Location on device of training session
 - num_episodes: How many episodes we want to evaluate the learned actor on
 
-Returns: (states, actions, rewards)
+Returns: (states, actions, rewards, metadata)
 """
 def run_actor_test(path, num_episodes):
     # Get metadata
@@ -152,7 +152,7 @@ def run_actor_test(path, num_episodes):
             returns[e_i, s_i] = rewards
             states = next_states
     # Return data
-    return all_states, all_actions, returns
+    return all_states, all_actions, returns, metadata
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

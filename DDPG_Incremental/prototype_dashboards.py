@@ -61,6 +61,68 @@ def get_grouped_data(path, filename):
             data.append(run_data)
     return np.asarray(data)
 
+def get_grouped_comm(path, window=1):
+    comm_data = get_grouped_data(path, "actions.npy")[:,:,:,:,2:]
+    max_amount = comm_data.shape[2]*comm_data.shape[3]
+    comm_filter = np.sqrt(comm_data[:,:,:,:,0]*np.flip(comm_data[:,:,:,:,1])).sum(axis=3).sum(axis=2)/max_amount
+    # Convert return data list into an array
+    avg_window = np.full((window,), 1/window)
+    min = np.convolve(comm_filter.min(axis=0), avg_window, 'valid')
+    max = np.convolve(comm_filter.max(axis=0), avg_window, 'valid')
+    mean = np.convolve(comm_filter.mean(axis=0), avg_window, 'valid')
+    # Generate the plot
+    x_range = np.arange(mean.shape[0])
+    fig = plt.figure()
+    plt.title(f"Percentage of communication between agents")
+    plt.xlabel("Episode")
+    plt.ylabel("Communication %")
+    plt.fill_between(x_range, min, max, color="r", alpha=0.4, label="min, max bound")
+    plt.plot(x_range, mean, color="b", label="Mean(A1, A2)")
+    plt.grid()
+    plt.legend(loc="lower right")
+    fig.savefig(os.path.join(path, f"comm_amount.png"))
+    plt.close(fig)
+    return (min, mean, max)
+
+def get_comm_trend(out_path, num_episodes, *run_paths):
+    # Get data
+    data = []
+    data2 = []
+    labels = []
+    for path in run_paths:
+        print(f"Starting test for run: {path}...")
+        _, actions, rewards, metadata = run_actor_test(path, num_episodes)
+        returns = rewards.mean(axis=2).sum(axis=1)
+        comm_filter = get_comm_filter(actions)
+        labels.append(f'({metadata["p_comm"]}, {metadata["p_att"]})')
+        r_std, r_mean = (returns.std(), returns.mean())
+        data.append(r_mean-r_std, r_mean, r_mean+r_std)
+        c_std, c_mean = (comm_filter.std(), comm_filter.mean()) 
+        data2.append(np.clip(c_mean-c_std, 0,1), c_mean, np.clip(c_mean+c_std, 0, 1))
+    data = np.array(data)
+    data2 = np.array(data2)
+    x_range = np.arange(data.shape[0])
+    # Plot the data
+    fig1 = plt.figure(figsize=(8,5))
+    plt.title("Effect of cost of communication")
+    plt.plot(data[:,1], c='b')
+    plt.fill_between(x_range, data[:,0], data[:,2], color="b", alpha=0.4, label="min, max bound")
+    plt.scatter(x_range, data[:,1], c='b')
+    plt.xticks(x_range, labels)
+    plt.ylabel("Return")
+    plt.xlabel("Penalty setting: $(p_{comm}, p_{att})$")
+    fig1.savefig(os.path.join(out_path, "comm_return_trend.png"))
+    fig2 = plt.figure(figsize=(8,5))
+    plt.title("Communication strength trend")
+    plt.plot(data2[:,1], c='b')
+    plt.fill_between(x_range, data2[:,0], data2[:,2], color="b", alpha=0.4, label="min, max bound")
+    plt.scatter(x_range, data2[:,1], c='b')
+    plt.xticks(x_range, labels)
+    plt.ylabel("Communication strength")
+    plt.xlabel("Penalty setting: $(p_{comm}, p_{att})$")
+    fig2.savefig(os.path.join(out_path, "comm_percent_trend.png"))
+
+
 """
 This function should plot the average, minimum and maximum return of the runs, inside a given folder across their episodes.
 The resulting plot will be put inside the path folder.
@@ -109,6 +171,12 @@ def exp1_plots(out_path, *paths, colors=COLORS, window=4):
     plt.legend()
     fig.savefig(os.path.join(out_path, "experiment1_result.png"))
 
+def get_comm_filter(actions):
+    communication = actions[:,:,:,2]
+    attention_other = np.flip(actions[:,:,:,3],axis=2)
+    comm_filter = np.sqrt(communication*attention_other)
+    return comm_filter
+
 """
 This function derives the data needed for RQ1 plots, based on the stored data
 """
@@ -120,9 +188,7 @@ def rq1_data(patch_info, agents_state, actions):
     # We compute the distance of each agent w.r.t the edge of the patch
     dist_agents_patch = np.sqrt(np.sum(np.power(positions - patch_position[np.newaxis,np.newaxis,np.newaxis,:],2),axis=3)) - patch_info[0][2]
     if actions.shape[3] > 2:
-        communication = actions[:,:,:,2]
-        attention_other = np.flip(actions[:,:,:,3],axis=2)
-        comm_filter = np.sqrt(communication*attention_other)
+        comm_filter = get_comm_filter(actions)
     else: 
         comm_filter = None
     return energy, dist_agents, dist_agents_patch, comm_filter
@@ -172,13 +238,7 @@ def plot_comm_frequency(path, comm_filter, colors=COLORS):
     plt.xlabel("Episode")
     plt.ylabel("Communication steps")
     plt.plot(comm_filter.sum(axis=1).mean(axis=1), linewidth=2)
-    fig2 = plt.figure()
-    plt.title("Mean amount of communication events over episodes")
-    plt.xlabel("Episode")
-    plt.ylabel("Communication events")
-    plt.plot(np.diff(comm_filter,axis=1).sum(axis=1).mean(axis=1), linewidth=2)
     fig1.savefig(os.path.join(path, "comm_steps.png"))
-    fig2.savefig(os.path.join(path, "comm_events.png"))
 
 def plot_dist_agents_patch_comm(dist_agents_patch, x_range, comm_filter, colors=COLORS):
     fig,ax = plt.subplots(figsize=(10,5))
