@@ -7,7 +7,8 @@ from matplotlib.ticker import FuncFormatter
 import os
 import json
 from run import run_actor_test
-
+from environment import compute_NSW, energy_to_reward
+from scipy.stats import ttest_ind
 
 COLORS = plt.cm.Set1.colors
 
@@ -91,14 +92,14 @@ def get_comm_trend(out_path, num_episodes, *run_paths):
     labels = []
     for path in run_paths:
         print(f"Starting test for run: {path}...")
-        _, actions, rewards, metadata = run_actor_test(path, num_episodes)
-        returns = rewards.mean(axis=2).sum(axis=1)
+        states, actions, rewards, metadata = run_actor_test(path, num_episodes)
+        nsw_returns = compute_NSW(energy_to_reward(states[:,:,:,4], metadata["e_max"]), axis=2).sum(axis=1)
         comm_filter = get_comm_filter(actions)
         labels.append(f'({metadata["p_comm"]}, {metadata["p_att"]})')
-        r_std, r_mean = (returns.std(), returns.mean())
-        data.append(r_mean-r_std, r_mean, r_mean+r_std)
+        r_std, r_mean = (nsw_returns.std(), nsw_returns.mean())
+        data.append([r_mean-r_std, r_mean, r_mean+r_std])
         c_std, c_mean = (comm_filter.std(), comm_filter.mean()) 
-        data2.append(np.clip(c_mean-c_std, 0,1), c_mean, np.clip(c_mean+c_std, 0, 1))
+        data2.append([np.clip(c_mean-c_std, 0,1), c_mean, np.clip(c_mean+c_std, 0, 1)])
     data = np.array(data)
     data2 = np.array(data2)
     x_range = np.arange(data.shape[0])
@@ -404,9 +405,15 @@ def plot_actor_returns(out_path, *paths, num_episodes=30):
     fig = plt.figure()
     plt.title("Compare return histograms")
     returns = np.array([run_actor_test(path, num_episodes)[2].mean(axis=2).sum(axis=1) for path in paths])
+    labels = []
     for i,path in enumerate(paths):
         label = os.path.basename(os.path.dirname(path))
+        labels.append(label)
         plt.hist(returns[i], bins=max(num_episodes//4,40), range=(returns.min(), returns.max()), label=label, alpha=0.4)  
+    for i in range(returns.shape[0]):
+        for j in range(returns.shape[0]):
+            if j > i:
+                plt.plot([], [], ' ', label=f"({labels[i]},{labels[j]}): p={round(ttest_ind(returns[i], returns[j]).pvalue,3)}")
     plt.xlabel("Return")
     plt.ylabel("Frequency")
     plt.legend()

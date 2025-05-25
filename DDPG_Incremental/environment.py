@@ -5,9 +5,12 @@ import matplotlib.pyplot as plt
 import os
 
 # Helper function for computing the Nash Social Welfare function (aka geometric mean)
-def compute_NSW(rewards):
-    NSW = np.power(np.prod(rewards,axis=0), 1/rewards.shape[0])
+def compute_NSW(rewards, axis=0):
+    NSW = np.power(np.prod(rewards,axis=axis), 1/rewards.shape[axis])
     return NSW
+
+def energy_to_reward(energy, e_max):
+    return (1+np.clip(energy/e_max, -1, 1))/2
     
 class NAgentsEnv():
     def __init__(self, patch_radius=10,s_init=10, e_init=5, eta=0.1, beta=0.1, 
@@ -254,7 +257,7 @@ class Agent:
         # Update step (differential equation)
         de = s_eaten - dt*penalty
         agent_state[4] = agent_state[4]+de
-        reward = (1+np.clip(agent_state[4]/self.e_max, -1, 1))/2 # Reward has range [0,1]  
+        reward = energy_to_reward(agent_state[4], self.e_max) # Reward has range [0,1]  
         return agent_state, reward, s_eaten, penalty
         
     def update_position(self,agent_state,action, dt=0.1):
