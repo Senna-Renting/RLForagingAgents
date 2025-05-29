@@ -11,6 +11,19 @@ def compute_NSW(rewards, axis=0):
 
 def energy_to_reward(energy, e_max):
     return (1+np.clip(energy/e_max, -1, 1))/2
+
+"""
+Converts de to a normalized reward between [0,1]
+
+Parameters:
+de: current difference in energy
+max_penalty: the maximum penalty that can be obtained 
+max_eaten: the maximum amount that can be eaten
+
+Returns: normalized reward
+"""
+def de_to_reward(de, max_penalty, max_eaten):
+    return (de + max_penalty)/(max_penalty + max_eaten)
     
 class NAgentsEnv():
     def __init__(self, patch_radius=10,s_init=10, e_init=5, eta=0.1, beta=0.1, 
@@ -46,6 +59,9 @@ class NAgentsEnv():
         # Initialize latest observation states
         self.latest_obs = np.zeros((self.n_agents, self.n_agents, self.agents[0].num_vars-1))
         self.latest_patch = s_init
+    
+    def get_smax(self):
+        return self.eta/self.env_gamma
 
     def get_action_space(self):
         message_dim = len(self.msg_type) > 0 # Add a channel for each message type
@@ -140,9 +156,8 @@ class NAgentsEnv():
             tot_eaten += s_eaten
             agents_state[i] = agent_state
         # Compute welfare
-        positive_rewards = rewards.copy()
-        positive_rewards[positive_rewards < 0] = 0
-        welfare = compute_NSW(positive_rewards) 
+        normalized_e = energy_to_reward(agents_state[:,4], self.e_max)
+        welfare = compute_NSW(normalized_e)
         # Compute reward with welfare
         rewards = (1-self.p_welfare)*rewards + self.p_welfare*welfare
         # Update patch resources
@@ -162,7 +177,8 @@ class NAgentsEnv():
 
 class Agent:
     def __init__(self,x,y,env,id=0):
-        self.beta = env.beta # amount of eating per timestep
+        self.beta = env.beta # amount of eating per timestep 
+        self.s_max = env.get_smax()
         self.v_max = env.v_max
         self.size = [env.x_max, env.y_max]
         self.e_init = env.e_init
@@ -221,14 +237,17 @@ class Agent:
     def never_msg(self,key,agents_state,actions,msg):
         return msg + np.asarray(jax.random.normal(key,self.noise_arr.shape))*self.noise_arr
 
-    def get_penalty(self,agent_state,patch_state,action):
+    def max_penalty(self):
+        return np.linalg.norm(np.full(2, self.v_max))
+
+    def get_penalty(self,action):
         penalty = self.p_still
         comm_pens = [lambda c,a: self.p_comm*c + self.p_att*a, lambda c,a: self.p_comm + self.p_att, lambda c,a: 0] # Expects 1:comm, 2:fullobs and 3:noise
         if self.msg_size > 0:
             attention = action[3]
             communication = action[2]
             penalty += comm_pens[self.comm_type-1](communication, attention)
-        max_penalty = np.linalg.norm(np.full_like(action[:2], self.v_max))
+        max_penalty = self.max_penalty()
         penalty += np.linalg.norm(action[:2])/max_penalty*self.p_act
         return penalty
     
@@ -253,11 +272,13 @@ class Agent:
     
     def update_energy(self,agent_state,patch_state,action,dt=0.1):
         s_eaten = self.is_in_patch(agent_state, patch_state)*self.beta*patch_state[-1]
-        penalty = self.get_penalty(agent_state, patch_state, action)
+        penalty = self.get_penalty(action)
         # Update step (differential equation)
         de = s_eaten - dt*penalty
         agent_state[4] = agent_state[4]+de
-        reward = energy_to_reward(agent_state[4], self.e_max) # Reward has range [0,1]  
+        max_p = dt*self.max_penalty()
+        max_eaten = self.s_max*self.beta
+        reward = de_to_reward(de, max_p, max_eaten) # Reward has range [0,1]  
         return agent_state, reward, s_eaten, penalty
         
     def update_position(self,agent_state,action, dt=0.1):
