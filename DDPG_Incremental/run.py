@@ -1,4 +1,3 @@
-import wandb
 from environment import *
 from save_utils import load_policy, load_policies, save_policy
 from td3 import Actor, n_agents_ddpg
@@ -71,7 +70,7 @@ def run_ddpg(env, num_episodes, train_fun, path, train_args=dict(), prev_path=No
     plot_loss(path, "critic", train_data["critics_loss"])
     plot_loss(path, "actor", train_data["actors_loss"])
     plot_penalty(path, is_in_patch, penalties[:,:,:,0], "action")
-    plot_final_welfare(path, train_data["returns"])
+    plot_final_welfare(path, train_data["agent_states"], metadata)
     plot_cvals(path, train_data["critics_vals"])
     plot_succes_rate_comm(path, train_data["actions"])
     
@@ -152,7 +151,23 @@ def run_actor_test(path, num_episodes):
             returns[e_i, s_i] = rewards
             states = next_states
     # Return data
-    return all_states, all_actions, returns, metadata
+    return all_states, all_actions, returns, metadata 
+
+def run_multi_actor_test(path, num_episodes):
+    states = []
+    actions = []
+    returns = []
+    runs = [ f.path for f in os.scandir(path) if f.is_dir()]
+    for path in runs:
+        print(f"Testing {path}...")
+        s, a, r, metadata = run_actor_test(path, num_episodes)
+        states.append(s)
+        actions.append(a)
+        returns.append(r)
+    states = np.concatenate(states, axis=0)
+    actions = np.concatenate(actions, axis=0)
+    returns = np.concatenate(returns, axis=0)
+    return states, actions, returns, metadata
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -178,6 +193,6 @@ if __name__ == "__main__":
     parser.add_argument("-d", "--env-gamma", type=float, default=0.01, help="Decay parameter of patch resource")
     parser.add_argument("-gr", "--eta", type=float, default=0.1, help="Growth parameter of patch resource")
     parser.add_argument("-ba", "--beta", type=float, default=0.1, help="Eating rate of agents")
-    parser.add_argument("-si", "--s-init", type=int, default=10, help="Initial amount of resources")
+    parser.add_argument("-si", "--s-init", type=float, default=10, help="Initial amount of resources")
     args = parser.parse_args()
     run_experiment(**vars(args))

@@ -125,7 +125,7 @@ class NAgentsEnv():
         for i in range(self.n_agents):
             sub1, sub2, key = jax.random.split(key,3)
             x = jax.random.uniform(sub1, minval=0, maxval=1)*self.x_max
-            y = jax.random.uniform(sub2, minval=0, maxval=2)*self.y_max
+            y = jax.random.uniform(sub2, minval=0, maxval=1)*self.y_max
             pos = [x,y]
             agents_state[i] = self.agents[i].reset(*pos, key)
         # Reset counter
@@ -194,7 +194,7 @@ class Agent:
             self.noise_arr = np.concatenate([[noise]*size for i,(size,noise,_) in enumerate(env.get_msg_types()) if i in env.msg_type])
         self.msg_type = env.msg_type
         self.comm_type = env.comm_type
-        self.num_vars = 5+self.msg_size # Variables of interest: (x,y,v_x,v_y,e,[msg]) <- msg may not be there 
+        self.num_vars = 5+self.msg_size+2*(self.comm_type > 0) # Variables of the state: (x,y,v_x,v_y,e,[msg],a_comm, a_att) <- msg may not be there 
         
     def reset(self,x,y,key):
         agent_state = np.zeros(self.num_vars)
@@ -263,11 +263,14 @@ class Agent:
         msg = np.concatenate([msgs[type] for type in self.msg_type])
         msg = self.generate_message(key,agents_state,actions,msg)
         if msg is not None:
-            agents_state[1-self.id,5:] = msg
-        
+            agents_state[1-self.id,5:-2] = msg
+    
+    def update_comm_channels(self, agent_state, actions):
+        agent_state[-2:] = actions[1-self.id][2:]
     
     def step(self,key,agents_state,actions):
         self.send_message(key, agents_state, actions)
+        self.update_comm_channels(agents_state[self.id], actions)
         return self.update_position(agents_state[self.id],actions[self.id])
     
     def update_energy(self,agent_state,patch_state,action,dt=0.1):
