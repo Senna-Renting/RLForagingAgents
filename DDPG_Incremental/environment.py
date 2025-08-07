@@ -136,7 +136,7 @@ class NAgentsEnv():
         env_state = (agents_state, patch_state, step_idx) 
         return env_state, agents_obs
 
-    def step(self, key, env_state, *actions):
+    def step(self, key, env_state, *actions, get_eaten=False):
         (agents_state, patch_state, step_idx) = env_state
         rewards = np.empty(self.n_agents)
         penalties = np.empty((self.n_agents, 1))
@@ -171,6 +171,8 @@ class NAgentsEnv():
         truncated = step_idx >= self.step_max
         env_state = (agents_state.copy(), patch_state.copy(), step_idx)
         agents_info = (penalties, is_in_patch)
+        if get_eaten:
+            agents_info = (penalties, is_in_patch, tot_eaten)
         return env_state, next_states, (rewards, agents_info), terminated, truncated, None # None is to have similar output shape as gym API
 
 

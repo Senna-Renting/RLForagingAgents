@@ -10,6 +10,7 @@ from run import run_actor_test, run_multi_actor_test
 from environment import compute_NSW, energy_to_reward
 from scipy.stats import ttest_ind, pearsonr
 from seaborn import jointplot
+from statsmodels.regression.linear_model import OLS
 
 COLORS = plt.cm.Set1.colors
 
@@ -107,38 +108,53 @@ def get_cond(a, b):
 def get_marg(a):
     return a.sum() / a.size
 
-def get_trend(out_path, var_name, exp_name, num_episodes, *run_paths):
+def get_trend(out_path, var_name, exp_name, num_episodes, *run_paths, multi_actor=False):
     # Get data
     data = []
     data2 = []
     probs = {
-        "$p(a_{att} > 0.7 | a_{comm} > 0.7)$": [],
-        "$p(a_{comm} > 0.7 | a_{att} > 0.7)$": []
+        "$p(a(t) > 0.7 | c(t) > 0)$": [],
+        "$p(c(t) > 0.7 | a(t) > 0)$": []
     }
     keys = list(probs.keys())
     att = []
     comm = []
+    c_strength = []
+    collected = []
+    collected_m = []
+    collected_std = []
     x_range = []
-    x_labels = {"p_welfare": "Proportion of social welfare", 
-                "s_init": "Max resource in patch", 
-                "p_comm": "Communication penalty: $p_{comm} = p_{att}$"}
+    x_labels = {"p_welfare": "Proportion of social welfare: $p_{w}$", 
+                "s_init": "Maximum resources allowed in patch ($\\rho (0)$)", 
+                "p_comm": "Communication penalty: $p_{c} = p_{a}$"}
     runs = [ f.path for f in os.scandir(out_path) if f.is_dir()]
+    if not multi_actor:
+        run_actor = run_actor_test
+    else:
+        run_actor = run_multi_actor_test
 
     for path in runs:
         print(f"Starting test for run: {path}...")
-        states, actions, rewards, metadata = run_actor_test(path, num_episodes)
+        states, actions, eaten, rewards, metadata = run_actor(path, num_episodes)
+        c = actions[:,:,:,2].flatten()
+        a = np.flip(actions[:,:,:,3], axis=2).flatten()
         att.append(get_marg(actions[:,:,:,3] > 0.7))
         comm.append(get_marg(actions[:,:,:,2] > 0.7))
         nsw_returns = compute_NSW(energy_to_reward(states[:,:,:,4], metadata["e_max"]), axis=2).sum(axis=1)
-        comm_filter = get_comm_filter(actions).sum()
-        nonzero_channels = ((actions[:,:,:,3] > 0) & (actions[:,:,:,2] > 0))
+        comm_filter = get_comm_filter(actions)
+        nonzero_channels = ((actions[:,:,:,3] > 0) & (np.flip(actions[:,:,:,2],axis=2) > 0))
         x_range.append(metadata[var_name])
         r_std, r_mean = (nsw_returns.std(), nsw_returns.mean())
         data.append([r_mean-r_std, r_mean, r_mean+r_std])
         c_mean = comm_filter.sum()/nonzero_channels.sum() 
         data2.append(c_mean)
-        probs[keys[0]].append(get_cond(actions[:,:,:,3] > 0.7, actions[:,:,:,2] > 0.7))
-        probs[keys[1]].append(get_cond(actions[:,:,:,2] > 0.7, actions[:,:,:,3] > 0.7))
+        c_means = get_comm_strength(actions).reshape(actions.shape[0], -1).mean(axis=1).flatten()
+        c_strength.extend(c_means)
+        collected.extend(eaten[:,-1].flatten())
+        collected_m.append(eaten[:,-1].mean(axis=0))
+        collected_std.append(eaten[:,-1].std(axis=0))
+        probs[keys[0]].append(get_cond(actions[:,:,:,3].flatten() > 0.7, np.flip(actions[:,:,:,2], axis=2).flatten() > 0))
+        probs[keys[1]].append(get_cond(actions[:,:,:,2].flatten() > 0.7, np.flip(actions[:,:,:,3], axis=2).flatten() > 0))
 
     sorted_idx = np.argsort(x_range)
     x_range = np.array(x_range)[sorted_idx]
@@ -146,6 +162,8 @@ def get_trend(out_path, var_name, exp_name, num_episodes, *run_paths):
     data2 = np.array(data2)[sorted_idx]
     comm = np.array(comm)[sorted_idx]
     att = np.array(att)[sorted_idx]
+    collected_m = np.array(collected_m)[sorted_idx]
+    collected_std = np.array(collected_std)[sorted_idx]
     probs = {key: np.array(value)[sorted_idx] for key, value in probs.items()}
     # Plot the data
     fig1 = plt.figure(figsize=(8,5))
@@ -155,30 +173,60 @@ def get_trend(out_path, var_name, exp_name, num_episodes, *run_paths):
     plt.scatter(x_range, data[:,1], c='b')
     plt.ylabel("Return")
     plt.xlabel(var_name)
+    plt.grid()
     fig1.savefig(os.path.join(out_path, "comm_return_trend.png"))
     fig2 = plt.figure(figsize=(8,5))
-    plt.title(f"{exp_name}")
-    plt.plot(x_range, data2, c='b', label=r"$p(comm > 0.7 | a_{att} \neq 0 \wedge a_{comm} \neq 0)$")
-    plt.plot(x_range, comm, linestyle="--", color="r", label=r"$p(a_{comm} > 0.7)$")
-    plt.plot(x_range, att, linestyle="--", color="g", label=r"$p(a_{att} > 0.7)$")
+    plt.title(f"Amount of communication for {exp_name}")
+    plt.plot(x_range, data2, c='b', label=r"$p(\sqrt{a(t)\cdot c(t)} > 0.7 | a(t) \neq 0 \wedge c(t) \neq 0)$")
+    plt.plot(x_range, comm, linestyle="--", color="r", label=r"$p(c(t) > 0.7)$")
+    plt.plot(x_range, att, linestyle="--", color="g", label=r"$p(a(t) > 0.7)$")
     plt.scatter(x_range, data2, c='b')
     plt.ylabel("Proportion")
     plt.xlabel(x_labels[var_name])
     plt.legend()
+    plt.grid()
     fig2.savefig(os.path.join(out_path, "comm_percent_trend.png"))
     
     # Plot the lines for analysis of effective communication
     fig3 = plt.figure()
     for i,(key,value) in enumerate(probs.items()):
         plt.plot(x_range, value, label=key)
-    plt.plot(x_range, np.full_like(x_range, 0.3), linestyle="--", c="r", label="Chance baseline")
     # Add some text for labels, title and custom x-axis tick labels, etc.
     plt.ylabel('Probability')
     plt.xlabel(x_labels[var_name])
     plt.title(f'Effectiveness of communication for {exp_name}')
     plt.legend(loc='upper right')
     plt.ylim(0, 1)
+    plt.grid()
     fig3.savefig(os.path.join(out_path, "comm_effectiveness.png"))
+
+    # Plot resource collection efficiency
+    fig4 = plt.figure()
+    plt.title(f"Resource collection efficiency for {exp_name}")
+    plt.xlabel(x_labels[var_name])
+    plt.ylabel("Collected resources")
+    plt.errorbar(x_range, collected_m, yerr=collected_std, fmt='-o', color='b', label="Mean collected resources ± 1 std")
+    plt.legend()
+    plt.grid()
+    fig4.savefig(os.path.join(out_path, "resource_collection_efficiency.png"))
+
+    # Plot scatterplot of resource collection against communication
+    collected = np.array(collected)[:,np.newaxis]
+    res = OLS(c_strength, np.hstack((collected, np.ones_like(collected)))).fit()
+    fig5 = plt.figure()
+    plt.title(f"Resource collection vs communication for {exp_name}")
+    plt.xlabel("Collected resources")
+    plt.ylabel("Mean(Communication strength)")
+    plt.scatter(collected, c_strength, c='b')
+    plt.plot(collected, res.fittedvalues, label="Fitted line", color='r', linestyle='--')
+    plt.plot([], [], ' ', label="$r^2$ = {:.2f}".format(res.rsquared))
+    plt.plot([], [], ' ', label="y = {:.2f}x + {:.2f}".format(res.params[0], res.params[1]))
+    plt.plot([], [], ' ', label="p values: [{:.2f}, {:.2f}]".format(res.pvalues[0], res.pvalues[1]))
+    plt.legend()
+    plt.grid()
+    fig5.savefig(os.path.join(out_path, "resource_collection_vs_comm.png"))
+
+
     
 
 def get_comm_strength(actions):
@@ -204,11 +252,38 @@ Parameters:
 - path: path to save to and get the actor network from
 - num_episodes: amount of episodes to sample
 """
-def compute_variable_plots(path, num_episodes=10):
-    run_data = run_actor_test(path, num_episodes)
+def compute_variable_plots(path, num_episodes=10, multi_actor=False):
+    if not multi_actor:
+        run_actor = run_actor_test
+    else:
+        run_actor = run_multi_actor_test
+    run_data = run_actor(path, num_episodes)
     get_correlation_plots(path, run_data)
     get_time_communication(path, run_data)
     communication_hists(path, run_data)
+    cumulative_eaten(path, run_data)
+    get_comm_resource_regression(path, run_data)
+
+def get_comm_resource_regression(path, run_data):
+    (states, actions, eaten, rewards, metadata) = run_data
+    # Get the communication strength and resource collection
+    c_means = get_comm_strength(actions).reshape(actions.shape[0], -1).mean(axis=1).flatten()
+    eaten = eaten[:,-1].flatten()[:, np.newaxis]
+    # Perform linear regression
+    res = OLS(c_means, np.hstack((eaten, np.ones_like(eaten)))).fit()
+    fig = plt.figure()
+    plt.title("Communication strength vs resource collection")
+    plt.xlabel("Collected resources")
+    plt.ylabel("Mean(Communication strength)")
+    plt.scatter(eaten, c_means, c='b')
+    plt.plot(eaten, res.fittedvalues, label="Fitted line", color='r', linestyle='--')
+    plt.plot([], [], ' ', label="$r^2$ = {:.2f}".format(res.rsquared))
+    plt.plot([], [], ' ', label="y = {:.2f}x + {:.2f}".format(res.params[0], res.params[1]))
+    plt.plot([], [], ' ', label="p-value: {:.2f}".format(res.pvalues[0]))
+    plt.plot([], [], ' ', label="t-value: {:.2f}".format(res.tvalues[0]))
+    plt.legend()
+    plt.grid()
+    fig.savefig(os.path.join(path, "comm_resource_regression.png"))
 
 """
 Creates scatterplots of two variables. The variables of interest are:
@@ -221,7 +296,7 @@ Parameters:
 Returns: None
 """
 def get_correlation_plots(path, run_data):
-    (states, actions, rewards, metadata) = run_data
+    (states, actions, eaten, rewards, metadata) = run_data
     a, c, energy, c_strength, d_to_patch = get_derived_data(states, actions)
     # Plot correlation between communication and attention
     #fig1 = plt.figure()
@@ -243,25 +318,28 @@ def get_correlation_plots(path, run_data):
     plt.ylabel("Internal energy")
     ax.savefig(os.path.join(path, "comm_energy_relation.png"))
 
+def cumulative_eaten(path, run_data): 
+    (states, actions, eaten, rewards, metadata) = run_data
+    # Make plot of the removed metabolism
+    fig, ax = plt.subplots(figsize=(10,5))
+    ax.set_title("Resources eaten by agents")
+    ax.set_xlabel("Timestep")
+    ax.set_ylabel("Cumulative resources eaten")
+    ax.plot(eaten.mean(axis=0), color='b')
+    fig.savefig(os.path.join(path, "resources_eaten.png"))
+
+
+
 def communication_hists(path, run_data):
-    (states, actions, rewards, metadata) = run_data
+    (states, actions, eaten, rewards, metadata) = run_data
     a, c, energy, c_strength, d_to_patch = get_derived_data(states, actions)
     in_patch = np.where(d_to_patch <= 0, True, False)
     ip_counts = np.unique(in_patch.sum(axis=2), return_counts=True)[1]
-    c_filter = np.where(c_strength > 0.7, True, False)
-    c_in_patch = np.where(in_patch & c_filter, True, False)
-    c_ip_counts = np.unique(c_in_patch.sum(axis=2), return_counts=True)[1]
-    p_ip = c_ip_counts / ip_counts[:c_ip_counts.shape[0]]
-    c_energy = energy[c_filter].flatten()
     energy = energy.flatten()
-    c_d_to_patch = d_to_patch[c_filter].flatten()
     d_to_patch = d_to_patch.flatten()
-    e_tot = np.histogram(energy, bins=40, range=(c_energy.min(), c_energy.max()))[0]
-    d_tot = np.histogram(d_to_patch, bins=40, range=(c_d_to_patch.min(), c_d_to_patch.max()))[0]
-    e_c, e_bins = np.histogram(c_energy, bins=40, range=(c_energy.min(), c_energy.max()))
-    d_c, d_bins = np.histogram(c_d_to_patch, bins=40, range=(c_d_to_patch.min(), c_d_to_patch.max()))
-    e_c = e_c.astype(float) / e_tot.astype(float) 
-    d_c = d_c.astype(float) / d_tot.astype(float)
+    c_strength = c_strength.flatten()
+    e_c, e_bins = np.histogram(energy, bins=40, range=(energy.min(), energy.max()), weights=c_strength)
+    d_c, d_bins = np.histogram(d_to_patch, bins=40, range=(d_to_patch.min(), d_to_patch.max()), weights=c_strength)
 
     fig, ax = plt.subplots(1,3, figsize=(15,4))
     ax[0].set_title("Distribution of energy when communicating")
@@ -278,10 +356,31 @@ def communication_hists(path, run_data):
 
     ax[2].set_title("Categories of resource collection when communicating")
     categories = ["None", "One", "Both"]
-    ax[2].bar(categories[:len(p_ip)], p_ip, edgecolor='black')
+    ax[2].bar(categories[:len(ip_counts)], ip_counts, edgecolor='black')
     ax[2].set_ylabel("p(communication)")
     ax[2].set_xlabel("Number of agents inside patch")
     fig.savefig(os.path.join(path, "comm_hists.png"))
+
+    fig2, ax = plt.subplots(2,2, figsize=(10,8))
+    ax[0,0].set_title("Observed values for $c(t)$")
+    ax[0,0].set_xlabel("Values")
+    ax[0,0].set_ylabel("Density")
+    ax[0,0].hist(c.flatten(), bins=30, density=True)
+    ax[1,0].set_title("Observed values for $a(t)$")
+    ax[1,0].set_xlabel("Values")
+    ax[1,0].set_ylabel("Density")
+    ax[1,0].hist(a.flatten(), bins=30, density=True)
+    ax[0,1].set_title("Observed values for $c(t)$ if $a(t) > 0.7$")
+    ax[0,1].set_xlabel("Values")
+    ax[0,1].set_ylabel("Density")
+    ax[0,1].hist(c[a > 0.7].flatten(), bins=30, density=True)
+    ax[1,1].set_title("Observed values for $a(t)$ if $c(t) > 0.7$")
+    ax[1,1].set_xlabel("Values")
+    ax[1,1].set_ylabel("Density")
+    ax[1,1].hist(a[c > 0.7].flatten(), bins=30, density=True)
+    plt.tight_layout()
+    fig2.savefig(os.path.join(path, "comm_channel_hists.png"))
+
 
 """
 Seperate the run data into time bins and seeing 
@@ -293,13 +392,13 @@ Parameters:
 - run_data: data gathered from running the final actor network
 """
 def get_time_communication(path, run_data):
-    (states, actions, rewards, metadata) = run_data
+    (states, actions, eaten, rewards, metadata) = run_data
     c_strength = get_comm_strength(actions)
-    c_strength = c_strength.reshape((c_strength.shape[0], c_strength.shape[1]//12, 12, 2))
-    c_max = [(c_strength[:,:,i,:] == 1).mean() for i in range(c_strength.shape[2])]
+    c_strength_bins = np.split(c_strength, 12, axis=1)
+    c_amount = [bin.sum() for bin in c_strength_bins]
     x_range = np.arange(1,13)
     fig = plt.figure()
-    plt.bar(x_range, c_max)
+    plt.bar(x_range, c_amount)
     plt.title("Density of communication throughout an average episode")
     plt.xlabel("Bin")
     plt.ylabel("Average communication strength")
@@ -517,7 +616,7 @@ def env_vars_data(patch_info, agents_state, actions):
     action_state = np.linalg.norm(np.reshape(actions[:,:,:,:2], (-1, n_agents, 2)), axis=2)
     agents_data.append(("Action", action_state))
     if action_dim >= 3:
-        comms_state = np.reshape(np.max(actions[:,:,:,2:-1], axis=3), (-1, n_agents))
+        comms_state = np.reshape(actions[:,:,:,-2], (-1, n_agents))
         agents_data.append(("Comms", comms_state))
     if action_dim >= 4:
         attention_state = np.reshape(actions[:,:,:,-1], (-1, n_agents))
@@ -527,17 +626,20 @@ def env_vars_data(patch_info, agents_state, actions):
 
 def plot_env_vars(resource_state, agents_data, axes, trail=100, a_colors=COLORS):
     font_size = 11
-    scale_y = lambda ax, data: ax.set_ylim([data.min()-data.max()*0.1, data.max()*1.1])
+    def scale_y(ax, name, data):
+        ax.set_ylim([data.min()-data.max()*0.1, data.max()*1.1])
+        if name in ["Attention", "Comms"]:
+            ax.set_ylim([-0.1, 1.1])
     resource = axes[0].plot(resource_state[0], c='g')[0]
     axes[0].set_ylabel("Patch", fontsize=font_size)
     axes[0].set_xlim([0,trail])
-    scale_y(axes[0], resource_state)
+    scale_y(axes[0], "Resource", resource_state)
     axes[0].tick_params(left = False, right = False , labelleft = False , 
                 labelbottom = False, bottom = False) 
     agent_plots = []
     for i,(name,d) in enumerate(agents_data):
         agent_plots.append([axes[i+1].plot(d[0, i_a], c=a_colors[i_a])[0] for i_a in range(d.shape[-1])])
-        scale_y(axes[i+1], d)
+        scale_y(axes[i+1], name, d)
         axes[i+1].set_xlim([0,trail])
         axes[i+1].set_ylabel(name, fontsize=font_size)
         axes[i+1].tick_params(left = False, right = False , labelleft = False , 
@@ -795,4 +897,4 @@ def plot_penalty(path, is_in_patch, data, name, colors=COLORS, bins=20):
 
 if __name__ == "__main__":
     # Put any function of this file here to individually test/assess them
-    pass
+    passttt

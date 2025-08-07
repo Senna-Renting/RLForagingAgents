@@ -135,6 +135,7 @@ def run_actor_test(path, num_episodes):
     all_states = np.empty((num_episodes, metadata["step_max"]+1, metadata["n_agents"], metadata["state_dim"]))
     all_actions = np.empty((num_episodes, metadata["step_max"], metadata["n_agents"], metadata["action_dim"]))
     returns = np.empty((num_episodes, metadata["step_max"], metadata["n_agents"]))
+    consumed_resources = np.empty((num_episodes, metadata["step_max"]))
     # Initialize environment and run episodes
     env = NAgentsEnv(**metadata)
     key = jax.random.key(metadata["seed"]+1)
@@ -145,29 +146,33 @@ def run_actor_test(path, num_episodes):
         for s_i in range(metadata["step_max"]):
             subkey, key = jax.random.split(key)
             actions = [actor(states[i_a]) for i_a in range(metadata["n_agents"])]
-            env_state, next_states, (rewards, penalties), terminated, truncated, _ = env.step(subkey, env_state, *actions)
+            env_state, next_states, (rewards, penalties), terminated, truncated, _ = env.step(subkey, env_state, *actions, get_eaten=True)
             all_actions[e_i, s_i] = actions 
             all_states[e_i, s_i+1] = states
+            consumed_resources[e_i, s_i] = penalties[-1]
             returns[e_i, s_i] = rewards
             states = next_states
     # Return data
-    return all_states, all_actions, returns, metadata 
+    return all_states, all_actions, consumed_resources.cumsum(axis=1), returns, metadata 
 
-def run_multi_actor_test(path, num_episodes):
+def run_multi_actor_test(path, num_episodes): 
     states = []
     actions = []
     returns = []
+    eaten = []
     runs = [ f.path for f in os.scandir(path) if f.is_dir()]
     for path in runs:
         print(f"Testing {path}...")
-        s, a, r, metadata = run_actor_test(path, num_episodes)
+        s, a, e, r, metadata = run_actor_test(path, num_episodes)
         states.append(s)
         actions.append(a)
         returns.append(r)
+        eaten.append(e)
     states = np.concatenate(states, axis=0)
     actions = np.concatenate(actions, axis=0)
     returns = np.concatenate(returns, axis=0)
-    return states, actions, returns, metadata
+    eaten = np.concatenate(eaten, axis=0)
+    return states, actions, eaten, returns, metadata
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
